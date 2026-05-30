@@ -1,113 +1,88 @@
-# Immersphere Pro · CRM Comercial Local
+# Immersphere Pro CRM Leads
 
-App standalone para captación, seguimiento y cierre de leads comerciales de **Immersphere Pro** y **Rubik SOTA**.
-Zona: Torrevieja / Orihuela Costa · 2026.
+App CRM standalone para captación, seguimiento y cierre comercial de leads de **Immersphere Pro / Rubik SOTA**. Enfocada en inmobiliarias, promotoras, decoración, arquitectura, museos y empresas locales.
 
 🔗 **[Abrir App](https://Juanmaes83.github.io/immersphere-pro-crm-leads/)**
 
 ---
 
-## ⚠ Advertencia de privacidad
+## Secciones
 
-Este repositorio puede contener datos comerciales reales (emails, teléfonos, estrategia de venta). **No usar como repo público con datos reales.** Si necesitas mostrar la app públicamente, crea primero una versión demo con datos ficticios. Para uso interno, mantener el repositorio en privado.
+- Dashboard comercial
+- Leads
+- Journey visual
+- Pipeline
+- Top 10
+- Plantillas comerciales
+- Ficha completa de lead
+- Generador de oferta v0
+- Document Hub preparado
+- Export / Import
+- Reset demo
 
 ---
 
-## Funcionalidades implementadas
+## Funciones implementadas
 
-### 📊 Dashboard comercial
-- KPIs de pipeline: Sin contactar / Contactado / Propuesta / Cerrado
-- KPIs de temperatura: Frío / Templado / Caliente / Muy caliente
-- KPIs comerciales: Valor potencial total, Pipeline ponderado (valor × probabilidad), Calientes sin próxima acción, Propuestas pendientes
-- Acciones pendientes hoy y follow-ups vencidos
-- Top 5 leads por score y distribución por sector
+- 50 leads base
+- Crear lead
+- Editar lead
+- Estados comerciales
+- Temperatura del lead
+- Next Best Action
+- Notas internas
+- Historial de actividad
+- Próxima acción y fecha
+- Filtros rápidos: Hoy, Vencidas, Calientes, Propuesta, Sin próxima acción
+- Valor potencial
+- Probabilidad de cierre
+- Pipeline ponderado
+- Plantillas WhatsApp / email / objeciones / cierres
+- Personalización de plantillas con placeholders
+- Plantillas conectadas al lead activo
+- Generador de ofertas con promos base
+- Guardar oferta en historial
+- Export JSON
+- Import JSON
+- Export CSV
+- Reset demo con doble confirmación
+- Botones WhatsApp, email, llamada, web y Maps
 
-### 🎯 Leads
-- 50 leads base + creación ilimitada de leads custom
-- Filtros: prioridad (A/B/C), temperatura, estado comercial, búsqueda libre (empresa, sector, zona, responsable, email)
-- Filtros rápidos: Hoy / Vencidas / Calientes / Propuesta / Sin próxima acción
+---
 
-### 🗺 Journey del cliente
-- 6 fases: Detectado → Validado → Contactado → Propuesta → Cerrado → No interesa
-- Cada tarjeta con temperatura, NBA, botones rápidos (WhatsApp / Email / Tel)
+## ⚠ Aviso de privacidad
 
-### 🌡 Temperatura del lead
-- Cálculo automático según estado + responsable + WhatsApp + score + prioridad
-- Override manual desde el modal del lead
+Esta app puede contener datos comerciales reales. Si el repositorio contiene emails, teléfonos, direcciones o estrategia comercial, debe ser privado. Para demo pública se recomienda crear una versión sanitizada con datos ficticios.
 
-### ⚡ Next Best Action
-- Recomendación contextual por lead según estado, temperatura y próxima fecha
+---
 
-### 📝 Notas, historial y próxima acción
-- Notas internas editables por lead
-- Próxima acción con fecha (visible en tarjeta + alerta vencida)
-- Historial de actividad con 9 tipos: Llamada, WhatsApp, Email, Reunión/Demo, Propuesta, Objeción, Cierre, Visita, Nota
-- Persistencia en localStorage
+## Limitaciones actuales
 
-### ✏ Crear y editar leads
-- 24 campos editables (empresa, contacto, comercial, oportunidad)
-- Campos comerciales: valor potencial (€), probabilidad cierre (%), presupuesto, pack recomendado, fecha último contacto
-- Eliminar leads custom con confirmación
+- Sin backend
+- Sin login real
+- Sin sincronización entre dispositivos
+- Sin envío automático real de WhatsApp/email
+- Sin generación PDF todavía
+- Sin contratos/facturas reales
+- Sin integración Google Drive / Holded / asesoría todavía
 
-### 📋 Biblioteca de plantillas
-- 31 plantillas: 8 WhatsApp, 8 Email, 8 Objeciones, 7 Cierres
-- Copy-paste + botones WhatsApp test y Email test
-- **Personalización automática** con datos del lead: `[NOMBRE]`, `[EMPRESA]`, `[SERVICIO]`, `[PRECIO]`, `[FECHA]`, `[ZONA]`, `[WEB]`, `[OBJECION]`, `[CTA]`
-- **Usar plantilla con este lead** desde el modal: selecciona, previsualiza con datos reales, copia o abre directamente en WhatsApp/Email
+---
 
-### 🎯 Generador de ofertas
-- Pack, servicio, precio, descuento, bonus, caducidad, objetivo, CTA, notas
-- 7 promos base aplicables con un clic: Demo 360 piloto, Tour 360 + QR, Pack Inmobiliaria 360, Pack Propiedad Premium, Pack Video+Landing+Tour, Reactivación, Pack mensual
-- Genera automáticamente: mensaje WhatsApp, email completo, texto para llamada, respuesta a objeción de precio
-- Botones directos para abrir WhatsApp y Email pre-rellenados
-- Guardar oferta en historial del lead → registra actividad + cambia estado a Propuesta + programa follow-up en 48h
+## Roadmap siguiente
 
-### 📄 Document Hub (preparado)
-- Estructura visual de propuestas, contratos, facturas, briefings y entregables
-- **Implementación pendiente** de generación PDF e integración Drive/Holded
-
-### 🔄 Pipeline Kanban
-- 5 columnas con conteo en tiempo real
-
-### 🔥 Top 10
-- Ranking visual por score con gancho personalizado
-
-### ⬇⬆ Export / Import
-- JSON v1.2 con todos los datos (estados, notas, actividad, edits, comercial, leads custom)
-- CSV con 17 columnas incluidos valor potencial, probabilidad y pipeline ponderado
-- Import retrocompatible con backups v1.0, v1.1, v1.2
-
-### ↺ Reset demo
-- Borra todos los datos guardados con doble confirmación
+- Document Hub real
+- Propuestas PDF
+- Contratos
+- Facturas mediante integración externa
+- Carpetas cliente
+- Envío a asesoría
+- Migración futura al SaaS principal con backend, auth y base de datos
 
 ---
 
 ## Stack
 
-- HTML + CSS + JavaScript vanilla
-- Sin backend
-- Sin base de datos
-- Sin dependencias externas
-- Datos hardcodeados en JSON, estado persistido en `localStorage`
-
-## Despliegue
-
-GitHub Pages — rama `main`, carpeta raíz.
-
-## Uso
-
-Abre `index.html` en cualquier navegador. No requiere servidor.
-
----
-
-## Roadmap
-
-- ✅ **Fase 1** — App standalone con 50 leads, filtros, pipeline, plantillas
-- ✅ **Fase 2** — CRM operativo: editar/crear leads, notas, historial, próxima acción
-- ✅ **Fase 3** — Motor comercial: temperatura, NBA, Journey, plantillas contextuales, generador de ofertas
-- 🔜 **Fase 4** — Document Hub: generación PDF de propuestas, contratos, facturas, integración Drive/Holded/asesoría
-- 🔜 **Fase 5** — Mobile polish + modo demo sanitizado
-- 🔜 **Fase 6** — Integración SaaS Immersphere Pro con auth, Prisma, multiusuario
+HTML + CSS + JavaScript vanilla. Sin dependencias. Persistencia local con `localStorage`. Despliegue en GitHub Pages.
 
 ---
 
