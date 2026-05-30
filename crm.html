@@ -68,8 +68,22 @@ nav{background:var(--bg2);border-bottom:1px solid var(--border);padding:0 24px;d
 .est-propuesta{background:rgba(245,158,11,.1);color:var(--gold);border:1px solid rgba(245,158,11,.3)}
 .est-cerrado{background:rgba(16,185,129,.1);color:var(--green);border:1px solid rgba(16,185,129,.3)}
 .est-no{background:rgba(239,68,68,.1);color:var(--red);border:1px solid rgba(239,68,68,.3)}
-.card-dolor{font-size:13px;color:var(--text2);line-height:1.5;margin-bottom:12px}
+.card-dolor{font-size:13px;color:var(--text2);line-height:1.5;margin-bottom:10px}
+.card-prox{display:flex;align-items:center;gap:6px;background:rgba(59,130,246,.08);border:1px solid rgba(59,130,246,.2);border-radius:6px;padding:6px 10px;margin-bottom:10px;font-size:12px;color:var(--text2)}
+.prox-icon{flex-shrink:0}
+.prox-text{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.prox-vencida{flex-shrink:0;background:rgba(239,68,68,.15);color:var(--red);border:1px solid rgba(239,68,68,.3);border-radius:4px;padding:1px 6px;font-size:10px;font-weight:700}
 .card-foot{display:flex;gap:8px;align-items:center;font-size:12px;color:var(--text3)}
+.notas-area{width:100%;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:10px 12px;font-size:13px;font-family:inherit;resize:vertical;min-height:80px;outline:none;line-height:1.5;transition:border-color .2s}
+.notas-area:focus{border-color:var(--accent)}
+.notas-area::placeholder{color:var(--text3)}
+.prox-row{display:grid;grid-template-columns:1fr 160px;gap:10px;margin-top:10px}
+.prox-input{background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:9px 12px;font-size:13px;font-family:inherit;outline:none;transition:border-color .2s;width:100%}
+.prox-input:focus{border-color:var(--accent)}
+.prox-input::placeholder{color:var(--text3)}
+.save-inline-btn{margin-top:10px;background:rgba(124,58,237,.2);border:1px solid rgba(124,58,237,.3);color:var(--accent2);padding:7px 16px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;transition:all .2s}
+.save-inline-btn:hover{background:rgba(124,58,237,.4)}
+.save-inline-btn.saved{background:rgba(16,185,129,.2);border-color:rgba(16,185,129,.3);color:var(--green)}
 .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:1000;display:none;align-items:flex-start;justify-content:center;padding:24px;overflow-y:auto}
 .modal-overlay.open{display:flex}
 .modal{background:var(--bg2);border:1px solid var(--border);border-radius:16px;width:100%;max-width:860px;overflow:hidden;margin:auto}
@@ -277,20 +291,33 @@ let leads = JSON.parse(JSON.stringify(LEADS));
 
 function loadState(){
   try{
-    const s = localStorage.getItem(STORAGE_KEY);
-    if(s){ const st=JSON.parse(s); leads.forEach(l=>{ if(st[l.id]!==undefined) l.estado=st[l.id]; }); }
+    const s=localStorage.getItem(STORAGE_KEY);
+    if(s){
+      const st=JSON.parse(s);
+      leads.forEach(l=>{
+        const r=st[l.id];
+        if(!r) return;
+        if(typeof r==='string') l.estado=r;
+        else{
+          if(r.estado!==undefined) l.estado=r.estado;
+          if(r.notas!==undefined) l._notas=r.notas;
+          if(r.proxAccion!==undefined) l._proxAccion=r.proxAccion;
+          if(r.proxFecha!==undefined) l._proxFecha=r.proxFecha;
+        }
+      });
+    }
   }catch(e){}
 }
 function saveState(){
   const st={};
-  leads.forEach(l=>st[l.id]=l.estado);
+  leads.forEach(l=>{ st[l.id]={estado:l.estado,notas:l._notas||'',proxAccion:l._proxAccion||'',proxFecha:l._proxFecha||''}; });
   localStorage.setItem(STORAGE_KEY,JSON.stringify(st));
 }
 
 function exportarJSON(){
   const st={};
-  leads.forEach(l=>st[l.id]=l.estado);
-  const payload=JSON.stringify({version:'1.0',fecha:new Date().toISOString().slice(0,10),estados:st},null,2);
+  leads.forEach(l=>{ st[l.id]={estado:l.estado,notas:l._notas||'',proxAccion:l._proxAccion||'',proxFecha:l._proxFecha||''}; });
+  const payload=JSON.stringify({version:'1.1',fecha:new Date().toISOString().slice(0,10),datos:st},null,2);
   const a=document.createElement('a');
   a.href='data:application/json;charset=utf-8,'+encodeURIComponent(payload);
   a.download='immersphere-crm-backup-'+new Date().toISOString().slice(0,10)+'.json';
@@ -307,12 +334,21 @@ function importarJSON(){
     reader.onload=ev=>{
       try{
         const data=JSON.parse(ev.target.result);
-        const st=data.estados||data;
+        const st=data.datos||data.estados||data;
         let count=0;
-        leads.forEach(l=>{ if(st[l.id]!==undefined){l.estado=st[l.id];count++;} });
+        leads.forEach(l=>{
+          const r=st[l.id];
+          if(!r) return;
+          count++;
+          if(typeof r==='string'){ l.estado=r; return; }
+          if(r.estado!==undefined) l.estado=r.estado;
+          if(r.notas!==undefined) l._notas=r.notas;
+          if(r.proxAccion!==undefined) l._proxAccion=r.proxAccion;
+          if(r.proxFecha!==undefined) l._proxFecha=r.proxFecha;
+        });
         saveState();
         renderDashboard();renderLeads();renderTop10();renderPipeline();
-        alert('Backup restaurado correctamente: '+count+' estados cargados.');
+        alert('Backup restaurado: '+count+' leads cargados.');
       }catch(err){ alert('Error al leer el archivo. Asegúrate de que es un backup válido.'); }
     };
     reader.readAsText(file);
@@ -321,6 +357,35 @@ function importarJSON(){
 }
 
 let filters={prioridad:'all',estado:'all',search:''};
+
+function formatFecha(f){
+  if(!f) return '';
+  const [y,m,d]=f.split('-');
+  return d+'/'+m+'/'+y;
+}
+function isVencida(f){
+  if(!f) return false;
+  return new Date(f) < new Date(new Date().toDateString());
+}
+function isHoy(f){
+  if(!f) return false;
+  return new Date(f).toDateString()===new Date().toDateString();
+}
+
+function guardarNotas(id){
+  const l=leads.find(x=>x.id===id);
+  if(!l) return;
+  const notasEl=document.getElementById('notas-'+id);
+  const proxEl=document.getElementById('prox-accion-'+id);
+  const fechaEl=document.getElementById('prox-fecha-'+id);
+  if(notasEl) l._notas=notasEl.value;
+  if(proxEl) l._proxAccion=proxEl.value;
+  if(fechaEl) l._proxFecha=fechaEl.value;
+  saveState();
+  renderLeads();renderPipeline();
+  const btn=document.getElementById('save-btn-'+id);
+  if(btn){ btn.textContent='✓ Guardado';btn.classList.add('saved');setTimeout(()=>{btn.textContent='Guardar';btn.classList.remove('saved');},2000); }
+}
 
 function getFiltered(){
   return leads.filter(l=>{
@@ -361,6 +426,7 @@ function renderLeads(){
       </div>
       <div class="card-tags">${priTag(l.prioridad)}${estadoTag(l.estado)}<span class="tag" style="background:rgba(100,116,139,.1);color:var(--text2);border:1px solid var(--border)">${l.dificultad||'—'}</span></div>
       <div class="card-dolor">${l.dolor}</div>
+      ${(l._proxAccion||l._proxFecha)?'<div class="card-prox"><span class="prox-icon">📅</span><span class="prox-text">'+(l._proxAccion||'Próxima acción')+(l._proxFecha?' · <strong>'+formatFecha(l._proxFecha)+'</strong>':'')+'</span>'+(l._proxFecha&&isVencida(l._proxFecha)?'<span class="prox-vencida">VENCIDA</span>':'')+'</div>':''}
       <div class="card-foot"><span>💰 ${l.precio}</span><span style="margin-left:auto">📦 ${l.pack}</span></div>
     </div>
   `).join('');
@@ -536,8 +602,17 @@ function openModal(id){
         <div style="font-size:14px;color:var(--text);font-style:italic;line-height:1.6">"<span style="color:var(--green)">${l.cierre||'—'}</span>"</div>
       </div>
     </div>
-    ${l.cta?'<div style="background:linear-gradient(135deg,rgba(16,185,129,.1),rgba(6,182,212,.1));border:1px solid rgba(16,185,129,.2);border-radius:var(--radius);padding:18px"><div style="font-size:11px;color:var(--green);font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">🎯 CTA — Próxima acción</div><div style="font-size:15px;color:var(--text);font-weight:600">'+l.cta+'</div></div>':''}
-    ${l.proximaAccion?'<div style="margin-top:12px;background:var(--bg3);border-radius:8px;padding:12px;font-size:13px;color:var(--text2)"><strong style="color:var(--accent2)">Próxima acción:</strong> '+l.proximaAccion+'</div>':''}
+    ${l.cta?'<div style="background:linear-gradient(135deg,rgba(16,185,129,.1),rgba(6,182,212,.1));border:1px solid rgba(16,185,129,.2);border-radius:var(--radius);padding:18px;margin-bottom:16px"><div style="font-size:11px;color:var(--green);font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">🎯 CTA recomendado</div><div style="font-size:15px;color:var(--text);font-weight:600">'+l.cta+'</div></div>':''}
+    <div class="modal-section">
+      <div class="modal-section-title">Notas Comerciales</div>
+      <textarea class="notas-area" id="notas-${l.id}" placeholder="Anota aquí lo que sabes, lo que dijo, lo que acordaste...">${l._notas||''}</textarea>
+      <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--accent2);margin-top:16px;margin-bottom:8px">📅 Próxima Acción</div>
+      <div class="prox-row">
+        <input class="prox-input" id="prox-accion-${l.id}" type="text" placeholder="Ej: Llamar, enviar follow-up, visita, demo..." value="${l._proxAccion||''}">
+        <input class="prox-input" id="prox-fecha-${l.id}" type="date" value="${l._proxFecha||''}">
+      </div>
+      <button class="save-inline-btn" id="save-btn-${l.id}" onclick="guardarNotas(${l.id})">Guardar</button>
+    </div>
   `;
 
   document.getElementById('modal-overlay').classList.add('open');
