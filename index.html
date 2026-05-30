@@ -308,6 +308,70 @@ nav{background:var(--bg2);border-bottom:1px solid var(--border);padding:0 20px;d
   .edit-grid{grid-template-columns:1fr}
   .edit-field.full{grid-column:1}
 }
+
+/* OFERTA GENERATOR */
+.oferta-overlay{position:fixed;inset:0;background:rgba(0,0,0,.93);z-index:1300;display:none;align-items:flex-start;justify-content:center;padding:16px;overflow-y:auto}
+.oferta-overlay.open{display:flex}
+.oferta-modal{background:var(--bg2);border:1px solid var(--border);border-radius:16px;width:100%;max-width:780px;overflow:hidden;margin:auto}
+.oferta-header{background:var(--bg3);padding:18px 24px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--border)}
+.oferta-body{padding:24px;overflow-y:auto;max-height:80vh}
+.of-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px}
+.of-field{display:flex;flex-direction:column;gap:4px}
+.of-field.full{grid-column:1/-1}
+.of-label{font-size:10px;color:var(--text3);font-weight:700;text-transform:uppercase;letter-spacing:.05em}
+.of-input,.of-select,.of-textarea{background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:8px 12px;font-size:13px;font-family:inherit;outline:none;width:100%;transition:border-color .2s}
+.of-textarea{resize:vertical;min-height:60px;line-height:1.5}
+.of-input:focus,.of-select:focus,.of-textarea:focus{border-color:var(--accent)}
+.promo-chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px}
+.promo-chip{background:var(--bg3);border:1px solid var(--border);color:var(--text2);padding:5px 11px;border-radius:20px;font-size:11px;font-weight:600;cursor:pointer;transition:all .2s}
+.promo-chip:hover{border-color:var(--accent);color:var(--accent2)}
+.of-out-section{margin-top:16px;border-top:1px solid var(--border);padding-top:16px}
+.of-out-tab-row{display:flex;gap:4px;margin-bottom:12px;flex-wrap:wrap}
+.of-out-tab{background:var(--bg3);border:1px solid var(--border);color:var(--text2);padding:5px 12px;border-radius:7px;font-size:12px;font-weight:600;cursor:pointer;transition:all .2s}
+.of-out-tab.active{background:rgba(124,58,237,.2);border-color:var(--accent);color:var(--accent2)}
+.of-out-panel{display:none}
+.of-out-panel.active{display:block}
+.of-actions{display:flex;gap:8px;justify-content:space-between;align-items:center;margin-top:16px;padding-top:14px;border-top:1px solid var(--border);flex-wrap:wrap}
+.of-save-btn{background:linear-gradient(135deg,var(--accent),var(--accent2));color:white;border:none;padding:9px 20px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer}
+.of-gen-btn{background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:9px 16px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer}
+.of-gen-btn:hover{border-color:var(--accent)}
+
+/* TEMPLATE IN LEAD */
+.tpl-in-lead{background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:14px;margin-top:10px}
+.tpl-in-lead-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px}
+.tpl-preview-box{display:none;margin-top:10px}
+
+/* QUICK FILTERS */
+.quick-filters{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
+.quick-btn{background:var(--bg3);border:1px solid var(--border);color:var(--text2);padding:5px 12px;border-radius:20px;font-size:11px;font-weight:700;cursor:pointer;transition:all .2s}
+.quick-btn:hover{border-color:var(--accent)}
+.quick-btn.active{background:rgba(245,158,11,.15);border-color:var(--gold);color:var(--gold)}
+.quick-btn.active-red{background:rgba(239,68,68,.15);border-color:var(--red);color:var(--red)}
+.quick-btn.active-cal{background:rgba(245,158,11,.15);border-color:var(--gold);color:var(--gold)}
+
+/* DOCUMENT HUB PLACEHOLDER */
+.doc-hub-ph{background:var(--bg3);border:1px dashed var(--border);border-radius:10px;padding:16px;text-align:center}
+.doc-hub-badges{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-bottom:10px}
+.doc-badge{background:var(--bg2);border:1px solid var(--border);color:var(--text3);padding:4px 10px;border-radius:6px;font-size:11px}
+.doc-hub-msg{font-size:12px;color:var(--text3);line-height:1.5}
+
+/* RESET DEMO */
+.reset-btn{background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.2);color:var(--red);padding:5px 10px;border-radius:7px;font-size:11px;font-weight:600;cursor:pointer;transition:all .2s}
+.reset-btn:hover{background:rgba(239,68,68,.2)}
+
+/* ACTIVITY FEEDBACK */
+.act-feedback{font-size:11px;color:var(--red);margin-top:4px;display:none}
+.act-feedback.show{display:block}
+
+/* NEW DASHBOARD KPI */
+.kpi.teal::before{background:linear-gradient(90deg,#0d9488,#06b6d4)}
+.kpi.orange::before{background:linear-gradient(90deg,#ea580c,#f59e0b)}
+
+@media(max-width:600px){
+  .of-grid{grid-template-columns:1fr}
+  .of-field.full{grid-column:1}
+  .tpl-in-lead-row{grid-template-columns:1fr}
+}
 </style>
 </head>
 <body>
@@ -326,6 +390,7 @@ nav{background:var(--bg2);border-bottom:1px solid var(--border);padding:0 20px;d
     <button class="nav-action-btn" onclick="exportarJSON()">⬇ JSON</button>
     <button class="nav-action-btn" onclick="importarJSON()">⬆ JSON</button>
     <button class="nav-action-btn" onclick="exportarCSV()">⬇ CSV</button>
+    <button class="reset-btn" onclick="resetDemo()" title="Borrar todos los datos guardados">↺ Reset</button>
     <span class="badge-pill">50 leads</span>
   </div>
 </nav>
@@ -353,6 +418,14 @@ nav{background:var(--bg2);border-bottom:1px solid var(--border);padding:0 20px;d
     <div class="kpi red"><div class="kpi-label">⚡ Muy caliente</div><div class="kpi-value" id="kpi-muy">—</div><div class="kpi-sub">Propuesta activa</div></div>
   </div>
 
+  <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);margin-bottom:8px">Pipeline comercial</div>
+  <div class="kpi-grid" style="grid-template-columns:repeat(auto-fit,minmax(160px,1fr));margin-bottom:20px">
+    <div class="kpi teal"><div class="kpi-label">💰 Valor potencial total</div><div class="kpi-value" id="kpi-valor">—</div><div class="kpi-sub">Suma de todos los leads</div></div>
+    <div class="kpi orange"><div class="kpi-label">📊 Pipeline ponderado</div><div class="kpi-value" id="kpi-pipeline">—</div><div class="kpi-sub">Valor × probabilidad</div></div>
+    <div class="kpi gold"><div class="kpi-label">🔥 Calientes sin acción</div><div class="kpi-value" id="kpi-cal-sin">—</div><div class="kpi-sub">Necesitan siguiente paso</div></div>
+    <div class="kpi gold"><div class="kpi-label">📄 Propuestas pendientes</div><div class="kpi-value" id="kpi-prop-pend">—</div><div class="kpi-sub">Esperando respuesta</div></div>
+  </div>
+
   <div id="dash-hoy" style="margin-bottom:20px"></div>
 
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
@@ -376,8 +449,19 @@ nav{background:var(--bg2);border-bottom:1px solid var(--border);padding:0 20px;d
 <div class="view" id="view-leads">
   <div class="section-header">
     <h2>Base de Leads</h2>
-    <button class="nuevo-lead-btn" onclick="openEditForm(null)">+ Nuevo Lead</button>
-    <span id="leads-count" style="font-size:12px;color:var(--text3)"></span>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <button class="nuevo-lead-btn" onclick="openEditForm(null)">+ Nuevo Lead</button>
+      <span id="leads-count" style="font-size:12px;color:var(--text3)"></span>
+    </div>
+  </div>
+  <div class="quick-filters">
+    <span style="font-size:10px;color:var(--text3);font-weight:700;align-self:center">ACCESO RÁPIDO:</span>
+    <button class="quick-btn active" data-rapido="all">Todos</button>
+    <button class="quick-btn" data-rapido="hoy">📅 Hoy</button>
+    <button class="quick-btn" data-rapido="vencida">🔴 Vencidas</button>
+    <button class="quick-btn" data-rapido="caliente">🔥 Calientes</button>
+    <button class="quick-btn" data-rapido="propuesta">📄 Propuesta</button>
+    <button class="quick-btn" data-rapido="sin-prox">⚪ Sin próxima acción</button>
   </div>
   <div class="filters">
     <div class="filter-group">
@@ -477,6 +561,55 @@ nav{background:var(--bg2);border-bottom:1px solid var(--border);padding:0 20px;d
   </div>
 </div>
 
+<!-- OFERTA OVERLAY -->
+<div class="oferta-overlay" id="oferta-overlay">
+  <div class="oferta-modal">
+    <div class="oferta-header">
+      <h3 id="of-title" style="font-size:17px;font-weight:700">Generar oferta</h3>
+      <button class="modal-close" onclick="closeOfertaForm()">✕</button>
+    </div>
+    <div class="oferta-body">
+      <div style="font-size:11px;color:var(--accent2);font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Aplicar promo base</div>
+      <div class="promo-chips" id="promo-chips"></div>
+      <div class="of-grid">
+        <div class="of-field"><label class="of-label">Pack / Nombre oferta</label><input class="of-input" id="of-pack" oninput="generarOferta()" placeholder="Pack Inmobiliaria 360..."></div>
+        <div class="of-field"><label class="of-label">Servicio gancho</label><input class="of-input" id="of-servicio" oninput="generarOferta()" placeholder="Tour 360 piloto..."></div>
+        <div class="of-field"><label class="of-label">Precio (€)</label><input class="of-input" id="of-precio" type="number" oninput="generarOferta()" placeholder="450"></div>
+        <div class="of-field"><label class="of-label">Descuento (opcional)</label><input class="of-input" id="of-descuento" oninput="generarOferta()" placeholder="10%..."></div>
+        <div class="of-field"><label class="of-label">Bonus incluido</label><input class="of-input" id="of-bonus" oninput="generarOferta()" placeholder="QR escaparate gratuito..."></div>
+        <div class="of-field"><label class="of-label">Caducidad</label><input class="of-input" id="of-caducidad" oninput="generarOferta()" placeholder="7 días"></div>
+        <div class="of-field full"><label class="of-label">Objetivo comercial</label><input class="of-input" id="of-objetivo" oninput="generarOferta()" placeholder="Demostrar experiencia sin compromiso..."></div>
+        <div class="of-field full"><label class="of-label">CTA / Cierre</label><input class="of-input" id="of-cta" oninput="generarOferta()" placeholder="¿Probamos con una propiedad este mes?"></div>
+        <div class="of-field full"><label class="of-label">Notas internas</label><textarea class="of-textarea" id="of-notas" placeholder="Solo visible aquí..."></textarea></div>
+      </div>
+      <div class="of-out-section">
+        <div style="font-size:11px;color:var(--accent2);font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Textos generados</div>
+        <div class="of-out-tab-row">
+          <button class="of-out-tab active" data-tab="wa" onclick="setOfTab('wa')">💬 WhatsApp</button>
+          <button class="of-out-tab" data-tab="email" onclick="setOfTab('email')">📧 Email</button>
+          <button class="of-out-tab" data-tab="llamada" onclick="setOfTab('llamada')">📞 Llamada</button>
+          <button class="of-out-tab" data-tab="obj" onclick="setOfTab('obj')">⚠ Objeción precio</button>
+        </div>
+        <div class="of-out-panel active" data-panel="wa"><div class="copy-box"><div class="copy-box-text" id="of-out-wa"></div><button class="copy-btn" onclick="copyPrevById('of-out-wa')">Copiar</button></div></div>
+        <div class="of-out-panel" data-panel="email">
+          <div class="copy-box" style="margin-bottom:8px"><div class="copy-box-label">Asunto</div><div class="copy-box-text" id="of-out-email-asunto"></div><button class="copy-btn" onclick="copyPrevById('of-out-email-asunto')">Copiar</button></div>
+          <div class="copy-box"><div class="copy-box-label">Cuerpo</div><div class="copy-box-text" id="of-out-email-body"></div><button class="copy-btn" onclick="copyPrevById('of-out-email-body')">Copiar</button></div>
+        </div>
+        <div class="of-out-panel" data-panel="llamada"><div class="copy-box"><div class="copy-box-text" id="of-out-llamada"></div><button class="copy-btn" onclick="copyPrevById('of-out-llamada')">Copiar</button></div></div>
+        <div class="of-out-panel" data-panel="obj"><div class="copy-box"><div class="copy-box-text" id="of-out-obj"></div><button class="copy-btn" onclick="copyPrevById('of-out-obj')">Copiar</button></div></div>
+      </div>
+      <div class="of-actions">
+        <button class="edit-cancel-btn" onclick="closeOfertaForm()">Cancelar</button>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <a id="of-btn-wa" href="#" target="_blank" class="tpl-btn tpl-wa">💬 Abrir WhatsApp</a>
+          <a id="of-btn-email" href="#" class="tpl-btn tpl-mail">📧 Abrir Email</a>
+          <button class="of-save-btn" onclick="guardarOfertaEnHistorial()">💾 Guardar en historial</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- EDIT OVERLAY -->
 <div class="edit-overlay" id="edit-overlay">
   <div class="edit-modal">
@@ -505,6 +638,7 @@ const LEADS = [{"id":1,"empresa":"Casas y Mar","sector":"Inmobiliaria","subsecto
 const TEMPLATES = {"whatsapp":[{"titulo":"WhatsApp inicial frío","tag":"Frío","tagClass":"temp-frio","texto":"Hola, soy Juanma de Immersphere Pro. Estamos trabajando con inmobiliarias y promotoras de la zona para ayudarles a presentar sus propiedades de forma más visual — tours 360, vídeos y landings. ¿Tienes 2 minutos para que te cuente cómo lo estamos haciendo con negocios como el vuestro?"},{"titulo":"WhatsApp inicial personalizado inmobiliaria","tag":"Templado","tagClass":"temp-templado","texto":"Hola [NOMBRE], soy Juanma de Immersphere Pro. He visto [EMPRESA] y creo que una de vuestras propiedades podría venderse mejor si el cliente pudiera recorrerla desde el móvil antes de visitar. No os propongo cambiar nada: solo probar una demo visual concreta. ¿Qué propiedad queréis mover este mes?"},{"titulo":"WhatsApp follow-up 48h sin respuesta","tag":"Seguimiento","tagClass":"temp-templado","texto":"Hola [NOMBRE], te escribo de nuevo porque el enfoque puede ser muy sencillo: elegir un único activo de [EMPRESA], montar una demo rápida y medir si ayuda a captar mejores consultas. Sin coste ni compromiso inicial."},{"titulo":"WhatsApp post llamada","tag":"Caliente","tagClass":"temp-caliente","texto":"Hola [NOMBRE], gracias por la llamada. Como te comenté, el siguiente paso sería elegir una propiedad concreta y preparar una demo visual. Te envío el enlace a un ejemplo real para que lo veas desde el móvil: [LANDING]. ¿Te parece bien que avancemos con esa propiedad?"},{"titulo":"WhatsApp después de enviar propuesta","tag":"Muy caliente","tagClass":"temp-muy-caliente","texto":"Hola [NOMBRE], ¿has podido revisar la propuesta que te envié? Cualquier duda la resolvemos en 5 minutos por teléfono. Si quieres, la oferta piloto tiene validez hasta el [FECHA]. ¿Seguimos adelante?"},{"titulo":"WhatsApp cierre piloto","tag":"Cierre","tagClass":"temp-muy-caliente","texto":"Hola [NOMBRE], quería cerrar el piloto antes de que pase la semana. Propongo empezar con [PROPIEDAD] — el resultado lo tendrías listo en 3-5 días. Solo necesito confirmar y el precio es [PRECIO] €. ¿Lo hacemos?"},{"titulo":"WhatsApp reactivación sin respuesta (30 días)","tag":"Reactivación","tagClass":"temp-frio","texto":"Hola [NOMBRE], cierro por ahora para no insistir. Si en algún momento queréis diferenciar una propiedad o promoción con vídeo, tour 360 o landing, lo retomamos con una demo muy concreta. Gracias por tu tiempo."},{"titulo":"WhatsApp pedir referido","tag":"Fidelización","tagClass":"temp-cliente","texto":"Hola [NOMBRE], estamos preparando demos para inmobiliarias y negocios locales de la zona. ¿Conoces alguna empresa que pueda estar interesada en diferenciarse con este tipo de presencia visual? Te lo agradecería mucho."}],"email":[{"titulo":"Email inicial frío","tag":"Frío","tagClass":"temp-frio","asunto":"Idea visual para [EMPRESA]: demo inmersiva aplicable a vuestra zona","texto":"Hola [NOMBRE],\n\nMe llamo Juanma y trabajo en Immersphere Pro, una empresa especializada en presentación visual de propiedades e inmuebles.\n\nHe revisado [EMPRESA] y veo una oportunidad concreta: transformar un activo específico en una experiencia visual reutilizable en web, WhatsApp, QR y campañas.\n\nNo os propongo cambiar nada de lo que ya hacéis. Solo probar con una propiedad y medir si atrae consultas más cualificadas.\n\n¿Tienes 10 minutos esta semana para que te muestre un ejemplo?\n\nSaludos,\nJuanma\nImmersphere Pro"},{"titulo":"Email con demo y landing","tag":"Templado","tagClass":"temp-templado","asunto":"Demo visual lista para [EMPRESA]","texto":"Hola [NOMBRE],\n\nTe adjunto el enlace a una demo del tipo de experiencia que haría para [EMPRESA]:\n\n[LANDING]\n\nEsta es exactamente la experiencia que pondríamos en vuestra web, WhatsApp y QR de escaparate. El cliente puede recorrer la propiedad desde el móvil antes de visitar.\n\n¿Qué te parece? Si quieres que lo apliquemos a una propiedad vuestra, dímelo y lo tenemos listo en 3-5 días.\n\nSaludos,\nJuanma"},{"titulo":"Email propuesta piloto","tag":"Caliente","tagClass":"temp-caliente","asunto":"Propuesta piloto para [EMPRESA] — [PRECIO] €","texto":"Hola [NOMBRE],\n\nAquí va la propuesta que hablamos:\n\nSERVICIO: [SERVICIO]\nPROPIEDAD: [PROPIEDAD]\nPRECIO PILOTO: [PRECIO] €\nENTREGA: 3-5 días\nBONUS: [BONUS]\n\nEl objetivo es que tengáis un activo visual propio para WhatsApp, web, QR y campañas.\n\nLa propuesta tiene validez hasta el [FECHA].\n\n¿Seguimos adelante?\n\nSaludos,\nJuanma"},{"titulo":"Email follow-up 1","tag":"Seguimiento","tagClass":"temp-templado","asunto":"Re: Propuesta visual para [EMPRESA]","texto":"Hola [NOMBRE],\n\nSolo quería asegurarme de que te llegó bien la propuesta anterior.\n\nSi tienes cualquier duda o quieres ajustar algo — precio, propiedad o servicio — lo resolvemos en 5 minutos.\n\n¿Podemos hablar esta semana?\n\nSaludos,\nJuanma"},{"titulo":"Email follow-up 2 (último)","tag":"Último contacto","tagClass":"temp-frio","texto":"Hola [NOMBRE],\n\nNo quiero seguir insistiendo si no es el momento. Cierro este hilo por ahora.\n\nSi en algún momento queréis diferenciaros con una presentación visual de alguna propiedad o promoción, estamos aquí.\n\nGracias por tu tiempo.\n\nJuanma\nImmersphere Pro","asunto":"Cerramos por ahora — Immersphere Pro"},{"titulo":"Email cierre con urgencia","tag":"Cierre","tagClass":"temp-muy-caliente","asunto":"Oferta piloto válida hasta el [FECHA] — [EMPRESA]","texto":"Hola [NOMBRE],\n\nQuería recordarte que la oferta piloto que te preparé tiene validez hasta el [FECHA].\n\nDespués del [FECHA] el precio base sube a [PRECIO_NORMAL] €.\n\nSi quieres arrancar con una propiedad este mes, hoy es el mejor momento.\n\n¿Lo hacemos?\n\nJuanma"},{"titulo":"Email reactivación (60 días)","tag":"Reactivación","tagClass":"temp-frio","asunto":"Nueva oferta para [EMPRESA] — Piloto actualizado","texto":"Hola [NOMBRE],\n\nHan pasado unas semanas desde nuestro último contacto. Quería volver porque hemos preparado una nueva oferta de entrada más accesible.\n\nPodemos hacer una demo visual de una propiedad concreta por [PRECIO] €, con entrega en 3 días.\n\nSin compromiso. Solo para que veáis el resultado y decidáis.\n\n¿Te interesa?\n\nJuanma"},{"titulo":"Email onboarding cliente cerrado","tag":"Cliente","tagClass":"temp-cliente","asunto":"Comenzamos — Próximos pasos para [EMPRESA]","texto":"Hola [NOMBRE],\n\n¡Perfecto, arrancamos!\n\nPara preparar la experiencia visual necesito:\n\n1. Fotos actuales de la propiedad (o acceso para fotografiarla).\n2. Logo en alta resolución.\n3. Texto breve de presentación.\n4. Teléfono y email de contacto para el formulario.\n\nEn cuanto lo tenga, tenéis la demo lista en 3-5 días.\n\nCualquier duda, aquí estoy.\n\nJuanma\nImmersphere Pro"}],"objeciones":[{"titulo":"Ya tenemos fotos y vídeos","tag":"Objeción","tagClass":"temp-templado","texto":"Objeción: \"Ya tenemos fotos, vídeos o Idealista.\"\n\nRespuesta corta:\nPerfecto. Esto no sustituye fotos ni portales: convierte una propiedad en una experiencia propia para WhatsApp, web, QR y campañas.\n\nRespuesta ampliada:\nImmersphere Pro no compite con lo que ya tienes. Tus fotos siguen en Idealista. Lo que añadimos es una capa de diferenciación: el cliente puede recorrer la propiedad desde el móvil antes de visitarla, y tú tienes un activo propio que reutilizas en todos los canales.\n\nCierre recomendado:\n¿Probamos con una sola propiedad y medimos si mejora la calidad de las visitas?"},{"titulo":"Ya usamos Idealista","tag":"Objeción","tagClass":"temp-templado","texto":"Objeción: \"Ya tenemos Idealista y funciona.\"\n\nRespuesta:\nIdealista trae tráfico al portal. Immersphere Pro mejora la conversión en tus propios canales: web, WhatsApp, QR y redes. Son complementarios, no sustitutos.\n\nCierre:\n¿Y si hacemos un piloto y medimos cuántas consultas genera en 30 días frente a lo habitual?"},{"titulo":"Es caro","tag":"Objeción precio","tagClass":"temp-caliente","texto":"Objeción: \"Es caro / no tenemos presupuesto.\"\n\nRespuesta corta:\nPor eso propongo un piloto con una sola propiedad: sin cambiar nada de lo que ya hacéis, sin compromiso a largo plazo.\n\nRespuesta ampliada:\nEl piloto parte de 450 €. Si la demo no os convence o no genera más consultas, no continuamos. El riesgo es mínimo frente al coste de perder una venta premium por falta de presentación visual.\n\nCierre:\n¿Elegimos la propiedad más cara de vuestra cartera y probamos?"},{"titulo":"Ahora no / no es el momento","tag":"Objeción timing","tagClass":"temp-frio","texto":"Objeción: \"Ahora no es el momento.\"\n\nRespuesta:\nLo entiendo. Por eso lo enfoco a una propiedad concreta que queráis mover este mes. No requiere tiempo de vuestra parte — yo lo preparo todo y vosotros solo revisáis el resultado.\n\nCierre:\n¿Qué propiedad os interesa mover antes de [MES]? Arrancamos con esa."},{"titulo":"Mándame información","tag":"Objeción evasiva","tagClass":"temp-frio","texto":"Objeción: \"Mándame información por email.\"\n\nRespuesta:\nClaro que sí. Para que la info sea útil y no genérica, ¿te parece bien si te mando directamente un ejemplo aplicado a una propiedad de vuestro tipo?\n\nCierre:\nTe mando la demo y hablamos el jueves, ¿a qué hora te viene bien?"},{"titulo":"Lo tengo que consultar","tag":"Objeción decisión","tagClass":"temp-caliente","texto":"Objeción: \"Lo tengo que consultar con mi socio/jefe.\"\n\nRespuesta:\nPerfecto. Para que no tengas que explicarlo tú, te preparo una demo visual con el ejemplo de una propiedad vuestra — así lo ven directamente.\n\nCierre:\n¿Cuándo tenéis la próxima reunión interna? Lo preparo para entonces."},{"titulo":"No veo claro el retorno","tag":"Objeción ROI","tagClass":"temp-caliente","texto":"Objeción: \"No veo claro el retorno / no sé si merece la pena.\"\n\nRespuesta:\nEs la pregunta correcta. Por eso medimos: clics en la demo, tiempo de visualización, CTA y leads generados. Con esos datos decides si continuar.\n\nCierre:\nUn piloto de 450 € con una propiedad premium os da datos reales en 30 días. ¿Empezamos por ahí?"},{"titulo":"Ya tenemos fotógrafo","tag":"Objeción proveedor","tagClass":"temp-templado","texto":"Objeción: \"Ya tenemos fotógrafo / ya hacemos contenido.\"\n\nRespuesta:\nGenial. Podemos trabajar con vuestro material existente o complementarlo. Immersphere Pro no es una agencia de foto — es una capa de experiencia sobre lo que ya tenéis.\n\nCierre:\n¿Tienes fotos de alguna propiedad que quieras convertir en tour 360? Lo hacemos con lo que ya existe."}],"cierres":[{"titulo":"Cierre piloto — bajo riesgo","tag":"Cierre","tagClass":"temp-muy-caliente","texto":"Técnica: Cierre por piloto\n\n\"Propongo hacer una prueba con una sola propiedad, sin cambiar nada de lo que hacéis actualmente. Si el resultado no os convence o no genera consultas mejores, no continuamos. El riesgo es mínimo y podéis ver el resultado en 3-5 días. ¿Qué propiedad elegimos?\"\n\nCuándo usarlo: Lead que tiene dudas pero no dice no. Quiere ver antes de comprometerse."},{"titulo":"Cierre por propiedad concreta","tag":"Cierre","tagClass":"temp-muy-caliente","texto":"Técnica: Cierre por activo específico\n\n\"¿Cuál es la propiedad más cara o más difícil de vender que tenéis ahora mismo? Esa es exactamente la que más se beneficia de una presentación visual. Hacemos la demo con esa y medimos.\"\n\nCuándo usarlo: Lead tiene varias propiedades y no sabe por dónde empezar."},{"titulo":"Cierre por urgencia — fecha límite","tag":"Cierre","tagClass":"temp-muy-caliente","texto":"Técnica: Cierre por caducidad de oferta\n\n\"La oferta piloto que te he preparado tiene validez hasta el [FECHA]. Después el precio base sube. Si quieres arrancar con esta ventaja, hoy es el mejor momento para confirmarlo.\"\n\nCuándo usarlo: Lead interesado pero que no decide. Útil para cerrar en el mismo contacto."},{"titulo":"Cierre por diferenciación","tag":"Cierre","tagClass":"temp-muy-caliente","texto":"Técnica: Coste de oportunidad\n\n\"Cada semana que pasa sin diferenciación visual es una semana en que el competidor que ya lo tiene gana visitas más cualificadas. La pregunta no es si merece la pena — es cuánto cuesta no hacerlo mientras otro sí lo hace.\"\n\nCuándo usarlo: Lead que va bien pero es complaciente. Necesita urgencia."},{"titulo":"Cierre por prueba limitada","tag":"Cierre","tagClass":"temp-muy-caliente","texto":"Técnica: Prueba limitada con condiciones especiales\n\n\"Para los primeros clientes de la zona, estoy ofreciendo el piloto con un bonus incluido: [BONUS]. Solo lo ofrezco a 3 negocios en Torrevieja/Orihuela Costa. ¿Queréis ser de los primeros?\"\n\nCuándo usarlo: Lead que necesita sentir exclusividad o escasez."},{"titulo":"Cierre por reactivación con promo","tag":"Reactivación","tagClass":"temp-frio","texto":"Técnica: Reactivación con nueva propuesta\n\n\"Desde la última vez que hablamos hemos reducido el precio de entrada del piloto. Ahora podemos hacer la demo de una propiedad por [PRECIO] € con entrega en 3 días. Sin compromiso de continuidad. ¿Lo probamos?\"\n\nCuándo usarlo: Lead que dijo no hace 30-60 días. Nueva propuesta para reabrir conversación."},{"titulo":"Cierre por referido","tag":"Fidelización","tagClass":"temp-cliente","texto":"Técnica: Cierre para conseguir referido\n\n\"Ahora que tenéis el tour 360, ¿conocéis alguna inmobiliaria o promotora de la zona a la que le pueda encajar? Os ofrezco un descuento en la siguiente propiedad si nos presentáis a alguien que cierre.\"\n\nCuándo usarlo: Con cliente cerrado satisfecho. Ampliar red comercial local."}]};
 const STORAGE_KEY = 'immersphere_crm_v2';
 const CUSTOM_KEY  = 'immersphere_crm_custom_v1';
+const PROMOS = [{"id":"demo360","label":"Demo 360 piloto","servicio":"Tour 360 piloto","precio":450,"bonus":"QR escaparate gratuito","caducidad":"7 días","objetivo":"Demostrar la experiencia sin compromiso ni cambios en su sistema","cta":"¿Probamos con una propiedad este mes?"},{"id":"tour360qr","label":"Tour 360 + QR escaparate","servicio":"Tour 360 + hotspots + QR","precio":650,"bonus":"Hotspots interactivos y analítica básica","caducidad":"10 días","objetivo":"Diferenciación en escaparate y web propia","cta":"¿Lo aplicamos a vuestra propiedad más cara?"},{"id":"pack360","label":"Pack Inmobiliaria 360","servicio":"Tour 360 + landing + QR + formulario lead","precio":900,"bonus":"Landing page del inmueble incluida","caducidad":"7 días","objetivo":"Pipeline inmobiliario visual completo","cta":"¿Arrancamos con las 3 propiedades que más queréis mover?"},{"id":"packpremium","label":"Pack Propiedad Premium","servicio":"Tour 360 premium + renders 3D","precio":1200,"bonus":"Vídeo social de 60 seg incluido","caducidad":"5 días","objetivo":"Presentación premium de activo de lujo","cta":"¿Qué propiedad premium quieres destacar este mes?"},{"id":"videolandtour","label":"Pack Video + Landing + Tour","servicio":"Vídeo + landing + tour 360","precio":1500,"bonus":"Setup campañas Meta incluido","caducidad":"7 días","objetivo":"Captación activa + conversión en canales propios","cta":"¿Empezamos con la propiedad que más os cuesta vender?"},{"id":"reactivacion","label":"Reactivación propiedades paradas","servicio":"Demo 360 piloto reactivación","precio":350,"bonus":"Consultoría comercial 30 min gratuita","caducidad":"5 días","objetivo":"Dar salida a stock parado de más de 60 días","cta":"¿Qué propiedad lleva más tiempo sin visitas cualificadas?"},{"id":"mensual","label":"Pack mensual inmobiliaria","servicio":"3 propiedades/mes en 360","precio":490,"bonus":"Analítica + informe mensual","caducidad":"Mensual renovable","objetivo":"Visibilidad constante del catálogo de propiedades","cta":"¿Lo activamos este mes?"}];
 let leads = JSON.parse(JSON.stringify(LEADS));
 let _nextCustomId = -1;
 
@@ -525,9 +659,15 @@ function loadState(){
         if(r.temp!==undefined) l._temp=r.temp;
         if(r.actividad!==undefined) l._actividad=r.actividad;
         if(r.edits) { Object.assign(l, r.edits); l._edits=r.edits; }
+        if(r.comercial){
+          l._valorPotencial=r.comercial.valorPotencial||0;
+          l._probabilidad=r.comercial.probabilidad||10;
+          l._presupuesto=r.comercial.presupuesto||'';
+          l._packRec=r.comercial.packRec||'';
+          l._ultimoContacto=r.comercial.ultimoContacto||'';
+        }
       });
     }
-    // Custom leads
     const cl=localStorage.getItem(CUSTOM_KEY);
     if(cl){
       const customs=JSON.parse(cl);
@@ -538,7 +678,11 @@ function loadState(){
 function saveState(){
   const st={};
   leads.filter(l=>l.id>0).forEach(l=>{
-    st[l.id]={estado:l.estado,notas:l._notas||'',proxAccion:l._proxAccion||'',proxFecha:l._proxFecha||'',temp:l._temp||'',actividad:l._actividad||[],edits:l._edits||{}};
+    st[l.id]={
+      estado:l.estado,notas:l._notas||'',proxAccion:l._proxAccion||'',proxFecha:l._proxFecha||'',
+      temp:l._temp||'',actividad:l._actividad||[],edits:l._edits||{},
+      comercial:{valorPotencial:l._valorPotencial||0,probabilidad:l._probabilidad||10,presupuesto:l._presupuesto||'',packRec:l._packRec||'',ultimoContacto:l._ultimoContacto||''}
+    };
   });
   localStorage.setItem(STORAGE_KEY,JSON.stringify(st));
   const customs=leads.filter(l=>l.id<0);
@@ -648,6 +792,7 @@ function renderActividad(l){
     <input class="act-add-input" id="act-texto-${id}" placeholder="Descripción de la actividad..." style="width:100%">
     <button class="act-add-btn" onclick="addActividad(${id})">+ Añadir</button>
   </div>
+  <div class="act-feedback" id="act-feedback-${id}"></div>
   <div class="act-timeline">
     ${acts.length?acts.map(a=>`<div class="act-item">
       <div class="act-dot">${actIcon(a.tipo)}</div>
@@ -664,14 +809,19 @@ function addActividad(id){
   const l=leads.find(x=>x.id===id); if(!l) return;
   const tipoEl=document.getElementById('act-tipo-'+id);
   const textoEl=document.getElementById('act-texto-'+id);
-  if(!tipoEl||!textoEl||!textoEl.value.trim()) return;
+  const feedbackEl=document.getElementById('act-feedback-'+id);
+  if(!tipoEl||!textoEl) return;
+  if(!textoEl.value.trim()){
+    if(feedbackEl){feedbackEl.textContent='Escribe una nota antes de añadir la actividad.';feedbackEl.classList.add('show');setTimeout(()=>feedbackEl.classList.remove('show'),3000);}
+    textoEl.focus(); return;
+  }
+  if(feedbackEl) feedbackEl.classList.remove('show');
   if(!l._actividad) l._actividad=[];
   const now=new Date();
   const fecha=now.toLocaleDateString('es-ES')+' '+now.toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'});
   l._actividad.push({tipo:tipoEl.value,texto:textoEl.value.trim(),fecha});
   textoEl.value='';
   saveState();
-  // Re-render just the activity section
   const actEl=document.getElementById('act-section-'+id);
   if(actEl) actEl.innerHTML=renderActividad(l);
 }
@@ -700,6 +850,12 @@ const EDIT_FIELDS = [
   {key:'dolor',label:'Dolor principal',full:true,type:'textarea'},
   {key:'gancho',label:'Gancho comercial personalizado',full:true,type:'textarea'},
   {key:'objecion',label:'Objeción probable',full:true,type:'textarea'},
+  {key:'sep4',sep:true},
+  {key:'_valorPotencial',label:'Valor potencial (€)',full:false,type:'number',comercial:true},
+  {key:'_probabilidad',label:'Probabilidad cierre (%)',full:false,type:'number',comercial:true},
+  {key:'_presupuesto',label:'Presupuesto estimado',full:false,comercial:true},
+  {key:'_packRec',label:'Pack recomendado',full:false,comercial:true},
+  {key:'_ultimoContacto',label:'Fecha último contacto',full:false,type:'date',comercial:true},
 ];
 
 let _editingId = null;
@@ -753,7 +909,7 @@ function saveEditForm(){
   } else {
     const l = leads.find(x=>x.id===_editingId); if(!l) return;
     const edits = {};
-    EDIT_FIELDS.forEach(f=>{ if(!f.sep){ const v=getVal(f.key); if(v!==undefined) edits[f.key]=f.key==='score'?parseInt(v)||l.score:v; }});
+    EDIT_FIELDS.forEach(f=>{ if(!f.sep){ const v=getVal(f.key); if(v!==undefined){ if(f.comercial) l[f.key]=(f.type==='number'?parseFloat(v)||0:v); else edits[f.key]=f.key==='score'?parseInt(v)||l.score:v; } }});
     Object.assign(l, edits);
     l._edits = Object.assign(l._edits||{}, edits);
   }
@@ -774,6 +930,201 @@ function deleteCustomLead(id){
   renderAll();
 }
 
+// ── applyTemplate ────────────────────────────────────────────────────────────
+function applyTemplate(texto, l){
+  const nombre=(l.responsable&&!l.responsable.includes('No'))?l.responsable:'equipo de '+l.empresa;
+  const hoy=new Date().toLocaleDateString('es-ES');
+  const fecha=l._proxFecha?formatFecha(l._proxFecha):hoy;
+  const precio=l._valorPotencial?(l._valorPotencial+' €'):(l.precio||'');
+  const servicio=l._packRec||l.servGancho||l.pack||l.servicio||'';
+  return (texto||'')
+    .replace(/[NOMBRE]/g,nombre)
+    .replace(/[EMPRESA]/g,l.empresa||'')
+    .replace(/[SERVICIO]/g,servicio)
+    .replace(/[PRECIO]/g,precio)
+    .replace(/[FECHA]/g,fecha)
+    .replace(/[ZONA]/g,l.zona||'')
+    .replace(/[WEB]/g,l.web||'')
+    .replace(/[OBJECION]/g,l.objecion||'')
+    .replace(/[CTA]/g,l.cierre||'');
+}
+
+// ── previewTpl / copyPrevById ─────────────────────────────────────────────────
+function previewTpl(id, tipo){
+  const l=leads.find(x=>x.id===id); if(!l) return;
+  const sel=document.getElementById('tpl-'+tipo+'-sel-'+id);
+  if(!sel) return;
+  const idx=parseInt(sel.value);
+  const previewBox=document.getElementById('tpl-preview-'+id);
+  const previewText=document.getElementById('tpl-preview-text-'+id);
+  const previewActions=document.getElementById('tpl-preview-actions-'+id);
+  const previewLabel=document.getElementById('tpl-preview-label-'+id);
+  if(isNaN(idx)){if(previewBox)previewBox.style.display='none';return;}
+  const tpl=TEMPLATES[tipo==='wa'?'whatsapp':'email'][idx];
+  if(!tpl){if(previewBox)previewBox.style.display='none';return;}
+  const texto=applyTemplate(tpl.texto,l);
+  const asunto=tpl.asunto?applyTemplate(tpl.asunto,l):'';
+  if(previewLabel) previewLabel.textContent=(tipo==='wa'?'💬 WhatsApp':'📧 Email')+' — '+tpl.titulo;
+  if(previewText) previewText.textContent=texto;
+  if(previewBox) previewBox.style.display='block';
+  if(previewActions){
+    const cid='tpl-preview-text-'+id;
+    let btns='<button class="tpl-btn tpl-copy" data-cid="'+cid+'" onclick="copyPrevById(this.dataset.cid)">📋 Copiar</button>';
+    if(tipo==='wa'){
+      const waNum=l.whatsapp?l.whatsapp.replace(/D/g,''):'';
+      if(waNum) btns+='<a href="https://wa.me/'+waNum+'?text='+encodeURIComponent(texto)+'" target="_blank" class="tpl-btn tpl-wa">💬 Abrir WA</a>';
+    }
+    if(tipo==='email'&&l.email){
+      btns+='<a href="mailto:'+l.email+'?subject='+encodeURIComponent(asunto)+'&body='+encodeURIComponent(texto)+'" class="tpl-btn tpl-mail">📧 Abrir Email</a>';
+    }
+    previewActions.innerHTML=btns;
+  }
+}
+function copyPrevById(elId){
+  const el=document.getElementById(elId);
+  if(!el) return;
+  navigator.clipboard.writeText(el.textContent).then(()=>{
+    const copyBtns=document.querySelectorAll('.copy-btn,.tpl-copy');
+    // find nearest copy btn
+  }).catch(()=>{
+    const ta=document.createElement('textarea');ta.value=el.textContent;document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta);
+  });
+}
+
+// ── resetDemo ────────────────────────────────────────────────────────────────
+function resetDemo(){
+  if(!confirm('¿Borrar TODOS los datos guardados? Se perderán estados, notas, actividad y leads creados. No se puede deshacer.')) return;
+  if(!confirm('Segunda confirmación: ¿Seguro? Esta acción es irreversible.')) return;
+  localStorage.removeItem(STORAGE_KEY);
+  localStorage.removeItem(CUSTOM_KEY);
+  location.reload();
+}
+
+// ── Offer Generator ──────────────────────────────────────────────────────────
+let _ofertaLeadId=null;
+
+function openOfertaForm(id){
+  const l=leads.find(x=>x.id===id); if(!l) return;
+  _ofertaLeadId=id;
+  document.getElementById('of-title').textContent='Generar oferta — '+l.empresa;
+  document.getElementById('of-pack').value=l._packRec||l.pack||'';
+  document.getElementById('of-servicio').value=l.servGancho||'';
+  document.getElementById('of-precio').value=l._valorPotencial||'';
+  document.getElementById('of-descuento').value='';
+  document.getElementById('of-bonus').value='';
+  document.getElementById('of-caducidad').value='7 días';
+  document.getElementById('of-objetivo').value='';
+  document.getElementById('of-cta').value=l.cierre||l.cta||'';
+  document.getElementById('of-notas').value='';
+  // Activate first output tab
+  setOfTab('wa');
+  generarOferta();
+  document.getElementById('oferta-overlay').classList.add('open');
+  document.body.style.overflow='hidden';
+}
+function closeOfertaForm(){
+  document.getElementById('oferta-overlay').classList.remove('open');
+  document.body.style.overflow='';
+  _ofertaLeadId=null;
+}
+function applyPromo(id){
+  const p=PROMOS.find(x=>x.id===id); if(!p) return;
+  document.getElementById('of-pack').value=p.label;
+  document.getElementById('of-servicio').value=p.servicio;
+  document.getElementById('of-precio').value=p.precio;
+  document.getElementById('of-bonus').value=p.bonus;
+  document.getElementById('of-caducidad').value=p.caducidad;
+  document.getElementById('of-objetivo').value=p.objetivo;
+  document.getElementById('of-cta').value=p.cta;
+  generarOferta();
+}
+function getOfVal(id){ const el=document.getElementById(id); return el?el.value.trim():''; }
+
+function generarOferta(){
+  if(!_ofertaLeadId) return;
+  const l=leads.find(x=>x.id===_ofertaLeadId); if(!l) return;
+  const pack=getOfVal('of-pack');
+  const servicio=getOfVal('of-servicio');
+  const precio=getOfVal('of-precio');
+  const descuento=getOfVal('of-descuento');
+  const bonus=getOfVal('of-bonus');
+  const caducidad=getOfVal('of-caducidad')||'esta semana';
+  const objetivo=getOfVal('of-objetivo');
+  const cta=getOfVal('of-cta')||l.cierre||'';
+  const nombre=(l.responsable&&!l.responsable.includes('No'))?l.responsable:'equipo de '+l.empresa;
+  const precioTexto=precio?(descuento?precio+' € (descuento especial de '+descuento+')':precio+' €'):'a convenir';
+
+  const wa='Hola '+nombre+', soy Juanma de Immersphere Pro.\n\n'+
+    '📦 Pack: '+pack+'\n'+
+    '💼 Servicio: '+servicio+'\n'+
+    '💰 Inversión: '+precioTexto+
+    (bonus?'\n🎁 Bonus: '+bonus:'')+
+    '\n⏰ Válido: '+caducidad+
+    (objetivo?'\n\n📌 '+objetivo:'')+
+    '\n\n'+cta;
+
+  const emailAsunto='Propuesta '+(pack||'Immersphere Pro')+' para '+l.empresa;
+  const emailBody='Hola '+nombre+',\n\nAquí va la propuesta para '+l.empresa+':\n\n'+
+    '📦 PACK: '+pack+'\n'+
+    '🔧 SERVICIO: '+servicio+'\n'+
+    '💰 INVERSIÓN: '+precioTexto+
+    (bonus?'\n🎁 BONUS: '+bonus:'')+
+    '\n⏰ VALIDEZ: '+caducidad+
+    (objetivo?'\n\n📌 OBJETIVO: '+objetivo:'')+
+    '\n\nSIGUIENTE PASO:\n'+cta+
+    '\n\n¿Avanzamos esta semana?\n\nJuanma\nImmersphere Pro';
+
+  const llamada=(pack?pack+' — ':'')+precioTexto+(bonus?'. Bonus: '+bonus:'.')+' Válido '+caducidad+'. '+cta;
+
+  const objResp='La inversión en '+(pack||'este servicio')+' para '+l.empresa+' es de '+precioTexto+
+    ' — diseñado como prueba concreta, sin cambiar vuestro sistema, con resultado visible en días.';
+
+  const waEl=document.getElementById('of-out-wa');
+  const emailAsEl=document.getElementById('of-out-email-asunto');
+  const emailBEl=document.getElementById('of-out-email-body');
+  const llamEl=document.getElementById('of-out-llamada');
+  const objEl=document.getElementById('of-out-obj');
+  if(waEl) waEl.textContent=wa;
+  if(emailAsEl) emailAsEl.textContent=emailAsunto;
+  if(emailBEl) emailBEl.textContent=emailBody;
+  if(llamEl) llamEl.textContent=llamada;
+  if(objEl) objEl.textContent=objResp;
+
+  // Update action buttons
+  const waNum=l.whatsapp?l.whatsapp.replace(/D/g,''):'';
+  const btnWa=document.getElementById('of-btn-wa');
+  const btnEmail=document.getElementById('of-btn-email');
+  if(btnWa) { if(waNum){ btnWa.href='https://wa.me/'+waNum+'?text='+encodeURIComponent(wa); btnWa.style.display='inline-flex'; }else btnWa.style.display='none'; }
+  if(btnEmail&&l.email) { btnEmail.href='mailto:'+l.email+'?subject='+encodeURIComponent(emailAsunto)+'&body='+encodeURIComponent(emailBody); }
+}
+
+function setOfTab(tab){
+  document.querySelectorAll('.of-out-tab').forEach(t=>t.classList.toggle('active',t.dataset.tab===tab));
+  document.querySelectorAll('.of-out-panel').forEach(p=>p.classList.toggle('active',p.dataset.panel===tab));
+}
+
+function guardarOfertaEnHistorial(){
+  if(!_ofertaLeadId) return;
+  const l=leads.find(x=>x.id===_ofertaLeadId); if(!l) return;
+  const pack=getOfVal('of-pack');
+  const precio=getOfVal('of-precio');
+  if(!pack){ alert('Indica el pack antes de guardar.'); return; }
+  if(!l._actividad) l._actividad=[];
+  const now=new Date();
+  const fecha=now.toLocaleDateString('es-ES')+' '+now.toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'});
+  l._actividad.push({tipo:'propuesta',texto:'Oferta generada: '+pack+(precio?' — '+precio+' €':''),fecha});
+  if(l.estado!=='Propuesta'&&l.estado!=='Cerrado'){
+    if(confirm('¿Cambiar estado del lead a "Propuesta"?')) l.estado='Propuesta';
+  }
+  if(!l._proxFecha){
+    const d=new Date(); d.setDate(d.getDate()+2);
+    l._proxAccion='Follow-up oferta: '+pack;
+    l._proxFecha=d.toISOString().split('T')[0];
+  }
+  saveState(); renderAll(); closeOfertaForm();
+  alert('Oferta guardada en el historial del lead.');
+}
+
 // ── Render: Dashboard ─────────────────────────────────────────────────────────
 function renderDashboard(){
   const sin=leads.filter(l=>!l.estado||l.estado==='Sin contactar').length;
@@ -784,6 +1135,10 @@ function renderDashboard(){
   const tempC=leads.filter(l=>calcTemp(l)==='templado').length;
   const calC=leads.filter(l=>calcTemp(l)==='caliente').length;
   const muyC=leads.filter(l=>calcTemp(l)==='muy-caliente').length;
+  const valorTotal=leads.reduce((s,l)=>s+(l._valorPotencial||0),0);
+  const pipeline=leads.reduce((s,l)=>s+((l._valorPotencial||0)*(l._probabilidad||10)/100),0);
+  const calientesSinProx=leads.filter(l=>['caliente','muy-caliente'].includes(calcTemp(l))&&!l._proxAccion&&!l._proxFecha).length;
+  const propPend=leads.filter(l=>l.estado==='Propuesta').length;
   document.getElementById('kpi-sin').textContent=sin;
   document.getElementById('kpi-cont').textContent=cont;
   document.getElementById('kpi-prop').textContent=prop;
@@ -792,6 +1147,10 @@ function renderDashboard(){
   document.getElementById('kpi-temp').textContent=tempC;
   document.getElementById('kpi-cal').textContent=calC;
   document.getElementById('kpi-muy').textContent=muyC;
+  const vpEl=document.getElementById('kpi-valor');if(vpEl)vpEl.textContent=valorTotal?valorTotal.toLocaleString('es-ES')+'€':'—';
+  const ppEl=document.getElementById('kpi-pipeline');if(ppEl)ppEl.textContent=pipeline?Math.round(pipeline).toLocaleString('es-ES')+'€':'—';
+  const csEl=document.getElementById('kpi-cal-sin');if(csEl)csEl.textContent=calientesSinProx;
+  const ppEl2=document.getElementById('kpi-prop-pend');if(ppEl2)ppEl2.textContent=propPend;
 
   // Top 5
   const top5=[...leads].sort((a,b)=>b.score-a.score).slice(0,5);
@@ -837,16 +1196,21 @@ function renderDashboard(){
 }
 
 // ── Render: Leads ─────────────────────────────────────────────────────────────
-let filters={prioridad:'all',estado:'all',temp:'all',search:''};
+let filters={prioridad:'all',estado:'all',temp:'all',search:'',rapido:'all'};
 
 function getFiltered(){
   return leads.filter(l=>{
     if(filters.prioridad!=='all'&&l.prioridad!==filters.prioridad) return false;
     if(filters.estado!=='all'&&l.estado!==filters.estado) return false;
     if(filters.temp!=='all'&&calcTemp(l)!==filters.temp) return false;
+    if(filters.rapido==='hoy'&&!isHoy(l._proxFecha)) return false;
+    if(filters.rapido==='vencida'&&!isVencida(l._proxFecha)) return false;
+    if(filters.rapido==='sin-prox'&&(l._proxAccion||l._proxFecha)) return false;
+    if(filters.rapido==='caliente'&&!['caliente','muy-caliente'].includes(calcTemp(l))) return false;
+    if(filters.rapido==='propuesta'&&l.estado!=='Propuesta') return false;
     if(filters.search){
       const q=filters.search.toLowerCase();
-      if(!l.empresa.toLowerCase().includes(q)&&!l.sector.toLowerCase().includes(q)&&!l.zona.toLowerCase().includes(q)) return false;
+      if(!l.empresa.toLowerCase().includes(q)&&!l.sector.toLowerCase().includes(q)&&!l.zona.toLowerCase().includes(q)&&!(l.responsable||'').toLowerCase().includes(q)&&!(l.email||'').toLowerCase().includes(q)) return false;
     }
     return true;
   });
@@ -855,7 +1219,7 @@ function getFiltered(){
 function renderLeads(){
   const filtered=getFiltered();
   const grid=document.getElementById('leads-grid');
-  document.getElementById('leads-count').textContent=filtered.length+' de 50';
+  document.getElementById('leads-count').textContent=filtered.length+' de '+leads.length;
   if(!filtered.length){grid.innerHTML='<div class="empty">Sin leads con estos filtros</div>';return;}
   grid.innerHTML=filtered.map(l=>`
     <div class="lead-card pri-${l.prioridad}" onclick="openModal(${l.id})">
@@ -1046,9 +1410,10 @@ function importarJSON(){
   input.click();
 }
 function exportarCSV(){
-  const rows=[['ID','Empresa','Sector','Zona','Prioridad','Score','Temperatura','Estado','Precio','Próxima acción','Fecha próxima acción','Notas']];
+  const rows=[['ID','Empresa','Sector','Zona','Prioridad','Score','Temperatura','Estado','Valor potencial (€)','Probabilidad (%)','Pipeline ponderado (€)','Pack rec.','Precio orientativo','Próxima acción','Fecha próxima acción','Último contacto','Notas']];
   leads.forEach(l=>{
-    rows.push([l.id,l.empresa,l.sector,l.zona,l.prioridad,l.score,getTempCfg(calcTemp(l)).label,l.estado||'Sin contactar',l.precio,l._proxAccion||'',l._proxFecha||'',l._notas||'']);
+    const pp=Math.round((l._valorPotencial||0)*(l._probabilidad||10)/100);
+    rows.push([l.id,l.empresa,l.sector,l.zona,l.prioridad,l.score,getTempCfg(calcTemp(l)).label,l.estado||'Sin contactar',l._valorPotencial||0,l._probabilidad||10,pp,l._packRec||l.pack||'',l.precio,l._proxAccion||'',l._proxFecha||'',l._ultimoContacto||'',l._notas||'']);
   });
   const csv=rows.map(r=>r.map(v=>'"'+(String(v||'').replace(/"/g,'""'))+'"').join(',')).join('\n');
   const a=document.createElement('a');
@@ -1197,20 +1562,83 @@ function openModal(id){
     <!-- NOTAS + PRÓXIMA ACCIÓN -->
     <div class="modal-section">
       <div class="modal-section-title">Notas Comerciales</div>
-      <textarea class="notas-area" id="notas-${l.id}" placeholder="Anota lo que dijo, lo que acordaste, contexto de la llamada...">${l._notas||''}</textarea>
+      <textarea class="notas-area" id="notas-${l.id}" placeholder="Anota lo que dijo, lo que acordaste, contexto de la llamada...">${safeHtml(l._notas||'')}</textarea>
       <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--accent2);margin-top:14px;margin-bottom:6px">📅 Próxima Acción</div>
       <div class="prox-row">
-        <input class="prox-input" id="prox-accion-${l.id}" type="text" placeholder="Llamar, follow-up, demo, visita..." value="${l._proxAccion||''}">
+        <input class="prox-input" id="prox-accion-${l.id}" type="text" placeholder="Llamar, follow-up, demo, visita..." value="${safeHtml(l._proxAccion||'')}">
         <input class="prox-input" id="prox-fecha-${l.id}" type="date" value="${l._proxFecha||''}">
       </div>
       <button class="save-inline-btn" id="save-btn-${l.id}" onclick="guardarNotas(${l.id})">Guardar notas y próxima acción</button>
     </div>
 
-    ${l.cta?'<div style="background:linear-gradient(135deg,rgba(16,185,129,.1),rgba(6,182,212,.1));border:1px solid rgba(16,185,129,.2);border-radius:var(--radius);padding:16px;margin-bottom:16px"><div style="font-size:10px;color:var(--green);font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">🎯 CTA del lead</div><div style="font-size:14px;color:var(--text);font-weight:600">'+l.cta+'</div></div>':''}
+    <!-- CAMPOS COMERCIALES -->
+    <div class="modal-section">
+      <div class="modal-section-title">Datos Comerciales</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px">
+        <div class="info-item"><label>Valor potencial</label><span style="color:var(--green);font-weight:700">${l._valorPotencial?l._valorPotencial+' €':'—'}</span></div>
+        <div class="info-item"><label>Probabilidad cierre</label><span style="color:var(--blue);font-weight:700">${l._probabilidad||10}%</span></div>
+        <div class="info-item"><label>Pipeline ponderado</label><span style="color:var(--accent2);font-weight:700">${l._valorPotencial?Math.round(l._valorPotencial*(l._probabilidad||10)/100)+' €':'—'}</span></div>
+        <div class="info-item"><label>Pack recomendado</label><span>${safeHtml(l._packRec||l.pack||'—')}</span></div>
+        <div class="info-item"><label>Último contacto</label><span>${l._ultimoContacto?formatFecha(l._ultimoContacto):'—'}</span></div>
+        <div class="info-item"><label>Presupuesto</label><span>${safeHtml(l._presupuesto||'—')}</span></div>
+      </div>
+      <button class="save-inline-btn" style="margin-top:10px" onclick="openEditForm(${l.id})">✏ Editar datos comerciales</button>
+    </div>
+
+    <!-- GENERAR OFERTA -->
+    <div class="modal-section">
+      <div class="modal-section-title">Generador de Oferta</div>
+      <button class="of-save-btn" onclick="openOfertaForm(${l.id})">🎯 Crear oferta para ${safeHtml(l.empresa)}</button>
+    </div>
+
+    <!-- PLANTILLAS CON ESTE LEAD -->
+    <div class="modal-section">
+      <div class="modal-section-title">Usar Plantilla con este Lead</div>
+      <div class="tpl-in-lead-row">
+        <div><label class="of-label">WhatsApp</label>
+          <select class="of-select" id="tpl-wa-sel-${l.id}" onchange="previewTpl(${l.id},'wa')">
+            <option value="">— Elegir plantilla —</option>
+            ${TEMPLATES.whatsapp.map((t,i)=>'<option value="'+i+'">'+t.titulo+'</option>').join('')}
+          </select>
+        </div>
+        <div><label class="of-label">Email</label>
+          <select class="of-select" id="tpl-email-sel-${l.id}" onchange="previewTpl(${l.id},'email')">
+            <option value="">— Elegir plantilla —</option>
+            ${TEMPLATES.email.map((t,i)=>'<option value="'+i+'">'+t.titulo+'</option>').join('')}
+          </select>
+        </div>
+      </div>
+      <div class="tpl-preview-box" id="tpl-preview-${l.id}">
+        <div class="copy-box">
+          <div class="copy-box-label" id="tpl-preview-label-${l.id}">Vista previa</div>
+          <div class="copy-box-text" id="tpl-preview-text-${l.id}"></div>
+          <button class="copy-btn" data-cid="tpl-preview-text-${l.id}" onclick="copyPrevById(this.dataset.cid)">Copiar</button>
+        </div>
+        <div id="tpl-preview-actions-${l.id}" style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap"></div>
+      </div>
+    </div>
+
+    ${l.cta?'<div style="background:linear-gradient(135deg,rgba(16,185,129,.1),rgba(6,182,212,.1));border:1px solid rgba(16,185,129,.2);border-radius:var(--radius);padding:16px;margin-bottom:16px"><div style="font-size:10px;color:var(--green);font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">🎯 CTA del lead</div><div style="font-size:14px;color:var(--text);font-weight:600">'+safeHtml(l.cta)+'</div></div>':''}
     <!-- HISTORIAL DE ACTIVIDAD -->
     <div class="modal-section">
       <div class="modal-section-title">Historial de Actividad</div>
       <div id="act-section-${l.id}">${renderActividad(l)}</div>
+    </div>
+
+    <!-- DOCUMENT HUB (Próximamente) -->
+    <div class="modal-section">
+      <div class="modal-section-title">Documentos</div>
+      <div class="doc-hub-ph">
+        <div class="doc-hub-badges">
+          <span class="doc-badge">📄 Propuestas</span>
+          <span class="doc-badge">📝 Contratos</span>
+          <span class="doc-badge">🧾 Facturas</span>
+          <span class="doc-badge">📋 Briefings</span>
+          <span class="doc-badge">📦 Entregables</span>
+          <span class="doc-badge">🔗 Drive / Holded</span>
+        </div>
+        <div class="doc-hub-msg">Pendiente Document Hub: generación PDF, contratos, facturas e integración Drive/Holded/asesoría.</div>
+      </div>
     </div>
   `;
 
@@ -1281,7 +1709,21 @@ document.getElementById('search-input').addEventListener('input',e=>{filters.sea
 document.querySelectorAll('.tpl-tab').forEach(t=>{
   t.addEventListener('click',()=>{activeTplTab=t.dataset.tab;renderTemplates();});
 });
-document.addEventListener('keydown',e=>{if(e.key==='Escape')closeModalBtn();});
+document.querySelectorAll('[data-rapido]').forEach(btn=>{
+  btn.addEventListener('click',()=>{
+    document.querySelectorAll('[data-rapido]').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    filters.rapido=btn.dataset.rapido;
+    renderLeads();
+  });
+});
+document.addEventListener('keydown',e=>{
+  if(e.key==='Escape'){closeModalBtn();closeEditForm();closeOfertaForm();}
+});
+
+// Render promo chips in oferta overlay
+const promoChips=document.getElementById('promo-chips');
+if(promoChips) promoChips.innerHTML=PROMOS.map(p=>'<button class="promo-chip" data-pid="'+p.id+'" onclick="applyPromo(this.dataset.pid)">'+p.label+'</button>').join('');
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 loadState();
