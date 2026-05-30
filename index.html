@@ -18,6 +18,8 @@ nav{background:var(--bg2);border-bottom:1px solid var(--border);padding:0 24px;d
 .nav-tab.active{color:var(--accent2);background:rgba(124,58,237,.15)}
 .nav-right{margin-left:auto;display:flex;gap:8px;align-items:center}
 .badge-pill{background:rgba(124,58,237,.2);color:var(--accent2);border:1px solid rgba(124,58,237,.3);padding:4px 10px;border-radius:20px;font-size:12px;font-weight:600}
+.nav-action-btn{background:var(--bg3);border:1px solid var(--border);color:var(--text2);padding:6px 12px;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;transition:all .2s}
+.nav-action-btn:hover{border-color:var(--accent);color:var(--accent2)}
 .view{display:none;padding:24px;max-width:1400px;margin:0 auto}
 .view.active{display:block}
 .kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:16px;margin-bottom:24px}
@@ -159,7 +161,11 @@ nav{background:var(--bg2);border-bottom:1px solid var(--border);padding:0 24px;d
     <button class="nav-tab" data-view="top10">🔥 Top 10</button>
     <button class="nav-tab" data-view="pipeline">🔄 Pipeline</button>
   </div>
-  <div class="nav-right"><span class="badge-pill">50 leads · Torrevieja</span></div>
+  <div class="nav-right">
+    <button class="nav-action-btn" onclick="exportarJSON()" title="Exportar backup JSON">⬇ Exportar</button>
+    <button class="nav-action-btn" onclick="importarJSON()" title="Importar backup JSON">⬆ Importar</button>
+    <span class="badge-pill">50 leads · Torrevieja</span>
+  </div>
 </nav>
 
 <!-- DASHBOARD -->
@@ -279,6 +285,39 @@ function saveState(){
   const st={};
   leads.forEach(l=>st[l.id]=l.estado);
   localStorage.setItem(STORAGE_KEY,JSON.stringify(st));
+}
+
+function exportarJSON(){
+  const st={};
+  leads.forEach(l=>st[l.id]=l.estado);
+  const payload=JSON.stringify({version:'1.0',fecha:new Date().toISOString().slice(0,10),estados:st},null,2);
+  const a=document.createElement('a');
+  a.href='data:application/json;charset=utf-8,'+encodeURIComponent(payload);
+  a.download='immersphere-crm-backup-'+new Date().toISOString().slice(0,10)+'.json';
+  a.click();
+}
+
+function importarJSON(){
+  const input=document.createElement('input');
+  input.type='file';input.accept='.json';
+  input.onchange=e=>{
+    const file=e.target.files[0];
+    if(!file) return;
+    const reader=new FileReader();
+    reader.onload=ev=>{
+      try{
+        const data=JSON.parse(ev.target.result);
+        const st=data.estados||data;
+        let count=0;
+        leads.forEach(l=>{ if(st[l.id]!==undefined){l.estado=st[l.id];count++;} });
+        saveState();
+        renderDashboard();renderLeads();renderTop10();renderPipeline();
+        alert('Backup restaurado correctamente: '+count+' estados cargados.');
+      }catch(err){ alert('Error al leer el archivo. Asegúrate de que es un backup válido.'); }
+    };
+    reader.readAsText(file);
+  };
+  input.click();
 }
 
 let filters={prioridad:'all',estado:'all',search:''};
