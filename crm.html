@@ -2499,9 +2499,10 @@ function importarJSON(){
       try{
         const data=JSON.parse(ev.target.result);
         const st=data.datos||data.estados||data;
-        let count=0;
-        leads.forEach(l=>{
-          const r=st[l.id];if(!r) return;count++;
+        let updated=0;
+        let added=0;
+
+        const applyRecord=(l,r)=>{
           if(typeof r==='string'){l.estado=r;return;}
           if(r.estado!==undefined) l.estado=r.estado;
           if(r.notas!==undefined) l._notas=r.notas;
@@ -2515,23 +2516,88 @@ function importarJSON(){
           if(r.presupuestos!==undefined) l._presupuestos=r.presupuestos;
           if(r.propuestas!==undefined) l._propuestas=r.propuestas;
           if(r.admin!==undefined) l._admin=r.admin;
+          if(r.edits){Object.assign(l,r.edits);l._edits=r.edits;}
           if(r.comercial){
             l._valorPotencial=r.comercial.valorPotencial||0;
             l._probabilidad=r.comercial.probabilidad||10;
+            l._presupuesto=r.comercial.presupuesto||'';
             l._packRec=r.comercial.packRec||'';
             l._ultimoContacto=r.comercial.ultimoContacto||'';
           }
+        };
+
+        Object.keys(st).forEach(k=>{
+          const r=st[k];
+          let l=leads.find(x=>String(x.id)===String(k));
+
+          if(l){
+            applyRecord(l,r);
+            updated++;
+            return;
+          }
+
+          if(typeof r==='string') return;
+
+          const newId=--_nextCustomId;
+          const e=r.edits||{};
+          const custom={
+            id:newId,
+            _custom:true,
+            empresa:e.empresa||('Lead importado '+k),
+            sector:e.sector||'',
+            subsector:e.subsector||'',
+            zona:e.zona||'',
+            direccion:e.direccion||'',
+            web:e.web||'',
+            telefono:e.telefono||'',
+            whatsapp:e.whatsapp||'',
+            email:e.email||'',
+            responsable:e.responsable||'No localizado',
+            cargo:e.cargo||'No localizado',
+            prioridad:e.prioridad||'B',
+            score:e.score||60,
+            pack:e.pack||'',
+            precio:e.precio||'',
+            servGancho:e.servGancho||'',
+            dolor:e.dolor||'',
+            gancho:e.gancho||'',
+            objecion:e.objecion||'',
+            estado:'Sin contactar',
+            _fechaEstado:'',
+            _notas:'',
+            _proxAccion:'',
+            _proxFecha:'',
+            _temp:'',
+            _actividad:[],
+            _edits:e,
+            _objecionAsignada:'',
+            _cierreAsignado:'',
+            _presupuestos:[],
+            _propuestas:[],
+            _admin:_emptyAdmin(),
+            _valorPotencial:0,
+            _probabilidad:10,
+            _presupuesto:'',
+            _packRec:e.pack||'',
+            _ultimoContacto:''
+          };
+
+          applyRecord(custom,r);
+          leads.push(custom);
+          added++;
         });
+
         if(data.integraciones&&typeof data.integraciones==='object') Object.assign(integConfig,data.integraciones);
         saveState();saveIntegrations();
         renderAll();
-        alert('Backup restaurado: '+count+' leads cargados.');
+        alert('Backup restaurado. Actualizados: '+updated+'. Nuevos añadidos: '+added+'. Total CRM: '+leads.length+'.');
       }catch(err){alert('Error al leer el archivo: '+err.message);}
     };
     reader.readAsText(file);
   };
   input.click();
 }
+
 function exportarCSV(){
   const rows=[['ID','Empresa','Sector','Zona','Prioridad','Score','Temperatura','Estado','Valor potencial (€)','Probabilidad (%)','Pipeline ponderado (€)','Pack rec.','Precio orientativo','Próxima acción','Fecha próxima acción','Último contacto','Objeción asignada','Cierre asignado','Último presupuesto estado','Último presupuesto total (€)','Último presupuesto fecha','Último presupuesto caducidad','Última propuesta estado','Última propuesta título','Última propuesta total (€)','Última propuesta fecha','Última propuesta caducidad','Contrato estado','Factura estado','Factura total (€)','Factura fecha cobro','Enviado asesor','Seguimiento estado','Carpeta cliente','Notas']];
   leads.forEach(l=>{
