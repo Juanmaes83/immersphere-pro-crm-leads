@@ -1933,10 +1933,12 @@ function saveEditForm(){
     l._edits = Object.assign(l._edits||{}, edits);
   }
 
+  const savedId = _editingId;
   saveState();
   closeEditForm();
   renderAll();
-  if(!isNew) openModal(_editingId||leads[leads.length-1].id);
+  if(!isNew && savedId!==null) setTimeout(()=>openModal(savedId),50);
+  if(isNew) setTimeout(()=>openModal(leads[leads.length-1].id),50);
 }
 
 function deleteCustomLead(id){
