@@ -766,6 +766,14 @@ nav{background:var(--bg2);border-bottom:1px solid var(--border);padding:0 20px;d
     <div class="kpi gold"><div class="kpi-label">📄 Propuestas pendientes</div><div class="kpi-value" id="kpi-prop-pend">—</div><div class="kpi-sub">Esperando respuesta</div></div>
   </div>
 
+  <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);margin-bottom:8px">Conversión & Forecast</div>
+  <div class="kpi-grid" style="grid-template-columns:repeat(auto-fit,minmax(160px,1fr));margin-bottom:20px">
+    <div class="kpi blue"><div class="kpi-label">Tasa respuesta</div><div class="kpi-value" id="kpi-conv-resp">—</div><div class="kpi-sub">Respondidos / contactados</div></div>
+    <div class="kpi gold"><div class="kpi-label">Tasa propuesta</div><div class="kpi-value" id="kpi-conv-prop">—</div><div class="kpi-sub">Propuestas / contactados</div></div>
+    <div class="kpi green"><div class="kpi-label">Tasa cierre</div><div class="kpi-value" id="kpi-conv-cierre">—</div><div class="kpi-sub">Cerrados / propuestas</div></div>
+    <div class="kpi orange"><div class="kpi-label">Forecast abierto</div><div class="kpi-value" id="kpi-forecast">—</div><div class="kpi-sub">Pipeline sin cerrados</div></div>
+  </div>
+
   <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);margin-bottom:8px">Presupuestos</div>
   <div class="kpi-grid" style="margin-bottom:20px">
     <div class="kpi teal"><div class="kpi-label">📋 Total presupuestos</div><div class="kpi-value" id="kpi-q-total">—</div><div class="kpi-sub">Todos los leads</div></div>
@@ -2173,6 +2181,21 @@ function renderDashboard(){
   const ppEl=document.getElementById('kpi-pipeline');if(ppEl)ppEl.textContent=pipeline?Math.round(pipeline).toLocaleString('es-ES')+'€':'—';
   const csEl=document.getElementById('kpi-cal-sin');if(csEl)csEl.textContent=calientesSinProx;
   const ppEl2=document.getElementById('kpi-prop-pend');if(ppEl2)ppEl2.textContent=propPend;
+  const leadsContactados=leads.filter(l=>l.estado&&l.estado!=='Sin contactar').length;
+  const leadsRespondidos=leads.filter(l=>l.respuesta&&String(l.respuesta).trim()&&String(l.respuesta).trim()!=='—').length;
+  const leadsConPropuesta=leads.filter(l=>['Propuesta','Cerrado'].includes(l.estado)).length;
+  const basePropuestas=leadsConPropuesta||prop||0;
+  const tasaRespuesta=leadsContactados?Math.round((leadsRespondidos/leadsContactados)*100):0;
+  const tasaPropuesta=leadsContactados?Math.round((leadsConPropuesta/leadsContactados)*100):0;
+  const tasaCierre=basePropuestas?Math.round((cerr/basePropuestas)*100):0;
+  const forecastAbierto=leads
+    .filter(l=>!['Cerrado','No interesa'].includes(l.estado))
+    .reduce((s,l)=>s+((l._valorPotencial||0)*(l._probabilidad||10)/100),0);
+  const setKC=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent=v;};
+  setKC('kpi-conv-resp',tasaRespuesta?tasaRespuesta+'%':'—');
+  setKC('kpi-conv-prop',tasaPropuesta?tasaPropuesta+'%':'—');
+  setKC('kpi-conv-cierre',tasaCierre?tasaCierre+'%':'—');
+  setKC('kpi-forecast',forecastAbierto?Math.round(forecastAbierto).toLocaleString('es-ES')+'€':'—');
   // Quote KPIs
   const allQ=leads.flatMap(l=>l._presupuestos||[]);
   const today=new Date().toISOString().split('T')[0];
