@@ -1783,7 +1783,7 @@ function statusBtnClass(s){
   const m={'Sin contactar':'sbtn-sin','Contactado':'sbtn-contactado','Propuesta':'sbtn-propuesta','Cerrado':'sbtn-cerrado','No interesa':'sbtn-no'};
   return m[s]||'sbtn-sin';
 }
-function safeHtml(s){return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+function safeHtml(s){return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 
 // ── Activity timeline ─────────────────────────────────────────────────────────
 const ACT_TIPOS = [
