@@ -3852,6 +3852,7 @@ function renderAdminHub(l){
         <button class="admin-save-btn" onclick="saveSeguimientoAdmin(${l.id})">💾 Guardar</button>
         <button class="admin-btn" onclick="copiarMsgPostEntrega(${l.id})">📋 Post-entrega</button>
         <button class="admin-btn" onclick="copiarMsgUpsell(${l.id})">📋 Upsell</button>
+        <button class="admin-btn" onclick="copiarMsgReferido(${l.id})">📋 Pedir referido</button>
       </div>
     </div>
   </div>`;
@@ -4063,6 +4064,14 @@ function copiarMsgUpsell(lid){
   navigator.clipboard.writeText(txt).catch(()=>{const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta);});
   _showToast('✓ Mensaje de upsell copiado.','var(--blue)');
 }
+function copiarMsgReferido(lid){
+  const l=leads.find(x=>x.id===lid);if(!l) return;
+  const nombre=(l.responsable&&!l.responsable.includes('No'))?l.responsable:'equipo de '+l.empresa;
+  const txt='Hola '+nombre+', soy Juanma.\n\nSi el proyecto os ha resultado \u00fatil, quer\u00eda pedirte una cosa concreta: \u00bfse te ocurre alguna inmobiliaria, promotora o profesional del sector a quien le pueda encajar algo parecido?\n\nNo necesito que vendas nada por m\u00ed. Solo una presentaci\u00f3n breve por WhatsApp o email.\n\nSi te parece, te paso un texto corto para reenviarlo.';
+  navigator.clipboard.writeText(txt).catch(()=>{const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta);});
+  _showToast('Mensaje para pedir referido copiado.','var(--blue)');
+}
+
 function exportMensual(){
   const now=new Date();const mes=now.getMonth();const año=now.getFullYear();
   const nombre=now.toLocaleDateString('es-ES',{month:'long',year:'numeric'});
