@@ -949,6 +949,7 @@ nav{background:var(--bg2);border-bottom:1px solid var(--border);padding:0 20px;d
   <div class="section-header">
     <h2>Catálogo / Tarifario</h2>
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <button class="nuevo-lead-btn" onclick="crearServicioCatalogo()">+ Nuevo servicio</button>
       <button class="nuevo-lead-btn" onclick="restaurarCatalogo()">↺ Restaurar demo</button>
     </div>
   </div>
@@ -3539,6 +3540,32 @@ function _qstBadge(estado){
 
 // ── Catalog Render ─────────────────────────────────────────────────────────────
 let _catTab='servicios',_catLinea='all';
+const CATALOG_CUSTOM_KEY='immersphere_catalog_custom_v1';
+
+function guardarCatalogoCustom(){
+  try{
+    localStorage.setItem(CATALOG_CUSTOM_KEY,JSON.stringify({
+      services:SERVICES_CATALOG,
+      packs:PACKS_CATALOG
+    }));
+  }catch(e){}
+}
+
+function cargarCatalogoCustom(){
+  try{
+    const raw=localStorage.getItem(CATALOG_CUSTOM_KEY);
+    if(!raw) return;
+    const data=JSON.parse(raw);
+    if(data.services&&Array.isArray(data.services)){
+      SERVICES_CATALOG.length=0;
+      data.services.forEach(s=>SERVICES_CATALOG.push(s));
+    }
+    if(data.packs&&Array.isArray(data.packs)){
+      PACKS_CATALOG.length=0;
+      data.packs.forEach(p=>PACKS_CATALOG.push(p));
+    }
+  }catch(e){}
+}
 
 function setCatTab(tab){
   _catTab=tab;
@@ -3576,6 +3603,7 @@ function renderServiciosView(){
       <div style="font-size:11px;color:var(--text3);margin-bottom:8px">📦 ${safeHtml(s.entregables)}</div>
       <div class="service-card-actions">
         <button class="svc-btn" onclick="editarServicio('${s.id}')">✏ Editar</button>
+        <button class="svc-btn" onclick="duplicarServicioCatalogo('${s.id}')">⧉ Duplicar</button>
         <button class="svc-btn${s.activo?' toggle-off':''}" onclick="toggleServicioActivo('${s.id}')">${s.activo?'⊘ Desactivar':'✓ Activar'}</button>
       </div>
     </div>`).join('')+`</div>`;
@@ -3606,6 +3634,60 @@ function _fmtTipoPrecio(tipo,unidad){
   if(tipo==='desde') return 'desde';
   if(tipo==='personalizado') return 'personalizado';
   return 'precio fijo';
+}
+
+function _slugServicioCatalogo(txt){
+  return String(txt||'servicio').toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+    .replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'') || 'servicio';
+}
+
+function _uniqueServicioId(base){
+  let id=base;
+  let i=2;
+  while(SERVICES_CATALOG.some(s=>s.id===id)){
+    id=base+'-'+i;
+    i++;
+  }
+  return id;
+}
+
+function crearServicioCatalogo(){
+  const id=_uniqueServicioId('servicio-custom');
+  const nuevo={
+    id,
+    nombre:'Nuevo servicio',
+    categoria:'Personalizado',
+    lineaNegocio:'Proyecto personalizado',
+    precioBase:0,
+    tipoPrecio:'personalizado',
+    unidad:'proyecto',
+    costeInterno:0,
+    margenMinimo:50,
+    tiempoEstimado:'A definir',
+    descripcionComercial:'Describe aquí el servicio, el valor para el cliente y cuándo recomendarlo.',
+    entregables:'A definir',
+    condiciones:'A definir',
+    activo:true
+  };
+  SERVICES_CATALOG.push(nuevo);
+  guardarCatalogoCustom();
+  renderCatalogo();
+  setTimeout(()=>editarServicio(id),50);
+}
+
+function duplicarServicioCatalogo(sId){
+  const s=SERVICES_CATALOG.find(x=>x.id===sId);if(!s) return;
+  const base=_slugServicioCatalogo(s.nombre||s.id)+'-copia';
+  const id=_uniqueServicioId(base);
+  const copia=JSON.parse(JSON.stringify(s));
+  copia.id=id;
+  copia.nombre=(s.nombre||'Servicio')+' (copia)';
+  copia.activo=true;
+  SERVICES_CATALOG.push(copia);
+  guardarCatalogoCustom();
+  renderCatalogo();
+  setTimeout(()=>editarServicio(id),50);
 }
 
 function editarServicio(sId){
