@@ -1251,6 +1251,10 @@ nav{background:var(--bg2);border-bottom:1px solid var(--border);padding:0 20px;d
         <label class="prop-label">Título de la propuesta</label>
         <input class="prop-input" id="prop-titulo" type="text" placeholder="Propuesta comercial para [Empresa]">
       </div>
+      <div class="prop-field" id="prop-visual-wrap" style="display:none">
+        <label class="prop-label"><input type="checkbox" id="prop-include-visual" style="vertical-align:middle;margin-right:6px">Incluir estado del activo visual</label>
+        <div id="prop-visual-summary" style="font-size:12px;color:var(--text2);line-height:1.55;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:9px;margin-top:6px"></div>
+      </div>
       <div class="prop-section-head">Contenido comercial</div>
       <div class="prop-field">
         <label class="prop-label">Resumen ejecutivo</label>
@@ -1427,8 +1431,108 @@ function _emptyAdmin(){
       herramienta:'',estado:'no-iniciado',
       enlaceExterno:'',fechaEnvio:'',fechaFirma:'',responsable:'',notas:''
     },
+    visualPipeline:_emptyVisualPipeline(),
     logIntegraciones:[]
   };
+}
+
+function _emptyVisualPipeline(){
+  return{
+    status:'sin_activo_visual',
+    assetType:'',
+    materialStatus:'pendiente',
+    qaStatus:'no_iniciado',
+    riskLevel:'bajo',
+    outputUrl:'',
+    qrStatus:'no_aplica',
+    clientApproval:'pendiente',
+    nextAction:'',
+    dueDate:'',
+    notes:'',
+    linkedQuoteId:'',
+    linkedProposalId:'',
+    updatedAt:''
+  };
+}
+
+function ensureVisualPipeline(l){
+  if(!l) return _emptyVisualPipeline();
+  if(!l._admin) l._admin=_emptyAdmin();
+  if(!l._admin.visualPipeline) l._admin.visualPipeline=_emptyVisualPipeline();
+  l._admin.visualPipeline={..._emptyVisualPipeline(),...l._admin.visualPipeline};
+  return l._admin.visualPipeline;
+}
+
+function _visualPipelineStatusLabel(status){
+  return({
+    sin_activo_visual:'Sin activo visual',
+    material_pendiente:'Material pendiente',
+    material_recibido:'Material recibido',
+    en_revision:'En revisión',
+    en_produccion:'En producción',
+    qa_pendiente:'QA pendiente',
+    demo_lista:'Demo lista',
+    publicado:'Publicado',
+    conectado_crm:'Conectado a CRM',
+    bloqueado:'Bloqueado'
+  })[status]||'Sin activo visual';
+}
+
+function _visualPipelineStatusClass(status){
+  if(['demo_lista','publicado','conectado_crm'].includes(status)) return 'ok';
+  if(['material_pendiente','qa_pendiente','en_revision','en_produccion'].includes(status)) return 'warn';
+  if(status==='bloqueado') return 'danger';
+  if(status==='material_recibido') return 'info';
+  return 'neutral';
+}
+
+function _visualAssetTypeLabel(type){
+  return({
+    diagnostico_visual_360:'Diagnóstico Visual 360',
+    demo_inmersiva_premium:'Demo Inmersiva Premium',
+    propiedad_3d_premium:'Propiedad 3D Premium',
+    showroom_inmersivo_pro:'Showroom Inmersivo Pro',
+    viewer_qa_optimizacion:'Viewer QA & Optimización',
+    otro:'Otro'
+  })[type]||'No definido';
+}
+
+function _visualValueLabel(value,mapName){
+  const maps={
+    material:{pendiente:'Pendiente',parcial:'Parcial',recibido:'Recibido',insuficiente:'Insuficiente',no_aplica:'No aplica'},
+    qa:{no_iniciado:'No iniciado',pendiente:'Pendiente',aprobado:'Aprobado',requiere_ajustes:'Requiere ajustes',no_aplica:'No aplica'},
+    risk:{bajo:'Bajo',medio:'Medio',alto:'Alto',bloqueado:'Bloqueado'},
+    qr:{no_aplica:'No aplica',pendiente:'Pendiente',generado:'Generado',entregado:'Entregado'},
+    approval:{pendiente:'Pendiente',aprobado:'Aprobado',cambios_solicitados:'Cambios solicitados',no_aplica:'No aplica'}
+  };
+  return (maps[mapName]&&maps[mapName][value])||'—';
+}
+
+function _visualPipelineSuggestNextAction(vp){
+  if(!vp) return '';
+  if(vp.status==='material_pendiente') return 'Solicitar material visual al cliente.';
+  if(vp.status==='material_recibido') return 'Revisar calidad, permisos y alcance del material.';
+  if(vp.status==='en_revision') return 'Cerrar diagnóstico visual y decidir siguiente fase.';
+  if(vp.status==='en_produccion') return 'Preparar demo, landing, QR o informe según el pack.';
+  if(vp.status==='qa_pendiente') return 'Completar QA móvil, carga, CTA y revisión comercial.';
+  if(vp.status==='demo_lista') return 'Enviar demo al cliente y agendar revisión.';
+  if(vp.status==='publicado') return 'Registrar seguimiento comercial y proponer siguiente paso.';
+  if(vp.status==='bloqueado') return 'Resolver bloqueo antes de prometer entrega.';
+  return 'Definir oportunidad visual o seleccionar pack inmersivo.';
+}
+
+function _visualPipelineIsEmpty(vp){
+  if(!vp) return true;
+  return !vp.assetType&&(!vp.status||vp.status==='sin_activo_visual')&&!vp.outputUrl&&!vp.nextAction&&!vp.notes&&!vp.linkedQuoteId;
+}
+
+function _visualPipelineChecklist(vp){
+  return[
+    {label:'Material',done:['recibido','no_aplica'].includes(vp.materialStatus)},
+    {label:'QA',done:['aprobado','no_aplica'].includes(vp.qaStatus)},
+    {label:'URL/demo',done:!!vp.outputUrl},
+    {label:'Aprobación',done:['aprobado','no_aplica'].includes(vp.clientApproval)}
+  ];
 }
 
 function _astBadge(estado,colorMap){
@@ -1739,6 +1843,7 @@ function loadState(){
         if(r.presupuestos!==undefined) l._presupuestos=r.presupuestos;
         if(r.propuestas!==undefined) l._propuestas=r.propuestas;
         if(r.admin!==undefined) l._admin=r.admin;
+        ensureVisualPipeline(l);
         if(r.edits) { Object.assign(l, r.edits); l._edits=r.edits; }
         if(r.comercial){
           l._valorPotencial=r.comercial.valorPotencial||0;
@@ -1759,6 +1864,7 @@ function loadState(){
 function saveState(){
   const st={};
   leads.filter(l=>l.id>0).forEach(l=>{
+    ensureVisualPipeline(l);
     st[l.id]={
       estado:l.estado,notas:l._notas||'',proxAccion:l._proxAccion||'',proxFecha:l._proxFecha||'',
       temp:l._temp||'',actividad:l._actividad||[],edits:l._edits||{},
@@ -2736,6 +2842,7 @@ function copyTplText(i){
 function exportarJSON(){
   const st={};
   leads.filter(l=>l.id>0).forEach(l=>{
+    ensureVisualPipeline(l);
     st[l.id]={
       estado:l.estado,notas:l._notas||'',proxAccion:l._proxAccion||'',proxFecha:l._proxFecha||'',
       temp:l._temp||'',actividad:l._actividad||[],edits:l._edits||{},
@@ -2777,6 +2884,7 @@ function importarJSON(){
           if(r.presupuestos!==undefined) l._presupuestos=r.presupuestos;
           if(r.propuestas!==undefined) l._propuestas=r.propuestas;
           if(r.admin!==undefined) l._admin=r.admin;
+          ensureVisualPipeline(l);
           if(r.edits){Object.assign(l,r.edits);l._edits=r.edits;}
           if(r.comercial){
             l._valorPotencial=r.comercial.valorPotencial||0;
@@ -3739,6 +3847,7 @@ function saveQuote(){
   } else {
     l._presupuestos.push(quote);
   }
+  const visualPrefilled=prefillVisualPipelineFromQuote(l,quote);
   if(quote.baseImponible>0){
     l._valorPotencial=quote.baseImponible;
     l._probabilidad=prob;
@@ -3746,6 +3855,7 @@ function saveQuote(){
   }
   if(!l._actividad) l._actividad=[];
   l._actividad.push({tipo:'propuesta',texto:(_qCurrentId?'Presupuesto actualizado: ':'Presupuesto creado: ')+formatEuro(quote.total)+' · '+estado,fecha:fechaAct});
+  if(visualPrefilled) l._actividad.push({tipo:'visual',texto:'Pipeline Visual conectado al presupuesto '+(quote.packNombre||quote.pack),fecha:fechaAct});
   if(estado==='enviado'&&(l.estado==='Sin contactar'||l.estado==='Contactado')){
     if(confirm('¿Pasar el lead a estado "Propuesta"?')){l.estado='Propuesta';l._fechaEstado=fechaISO;}
   }
@@ -4093,9 +4203,63 @@ function restaurarCatalogo(){
 
 function cerrarSvcEdit(){document.getElementById('svc-edit-overlay').classList.remove('open');}
 
+function renderVisualPipeline(l){
+  const vp=ensureVisualPipeline(l);
+  const statusMap={sin_activo_visual:'neutral',material_pendiente:'warn',material_recibido:'info',en_revision:'warn',en_produccion:'warn',qa_pendiente:'warn',demo_lista:'ok',publicado:'ok',conectado_crm:'ok',bloqueado:'danger'};
+  const checklist=_visualPipelineChecklist(vp);
+  const statusOpts=['sin_activo_visual','material_pendiente','material_recibido','en_revision','en_produccion','qa_pendiente','demo_lista','publicado','conectado_crm','bloqueado'];
+  const assetOpts=['','diagnostico_visual_360','demo_inmersiva_premium','propiedad_3d_premium','showroom_inmersivo_pro','viewer_qa_optimizacion','otro'];
+  const matOpts=['pendiente','parcial','recibido','insuficiente','no_aplica'];
+  const qaOpts=['no_iniciado','pendiente','aprobado','requiere_ajustes','no_aplica'];
+  const riskOpts=['bajo','medio','alto','bloqueado'];
+  const qrOpts=['no_aplica','pendiente','generado','entregado'];
+  const approvalOpts=['pendiente','aprobado','cambios_solicitados','no_aplica'];
+  const opt=(arr,val,labelFn)=>arr.map(x=>`<option value="${x}"${val===x?' selected':''}>${labelFn?labelFn(x):(x||'—')}</option>`).join('');
+  return `<div class="admin-block">
+    <div class="admin-block-head" onclick="toggleAdminBlock(event,'adb-vp-${l.id}')">
+      <div class="admin-block-title"><span class="admin-block-icon">◉</span>Pipeline Visual</div>
+      <div style="display:flex;gap:6px;align-items:center">${_astBadge(_visualPipelineStatusLabel(vp.status),statusMap)}<button class="admin-toggle">▾</button></div>
+    </div>
+    <div class="admin-block-body open" id="adb-vp-${l.id}">
+      <div class="admin-info-box">Estado del activo visual, material, QA, demo y próxima acción.</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin:8px 0 10px">
+        ${checklist.map(c=>`<span class="ast ${c.done?'ast-ok':'ast-neutral'}">${c.done?'✓':'○'} ${c.label}</span>`).join('')}
+      </div>
+      <div class="admin-2col">
+        <div class="admin-field"><label class="admin-label">Estado</label><select class="admin-select" id="admin-vp-status-${l.id}">${opt(statusOpts,vp.status,_visualPipelineStatusLabel)}</select></div>
+        <div class="admin-field"><label class="admin-label">Tipo de activo</label><select class="admin-select" id="admin-vp-asset-${l.id}">${opt(assetOpts,vp.assetType,_visualAssetTypeLabel)}</select></div>
+      </div>
+      <div class="admin-2col">
+        <div class="admin-field"><label class="admin-label">Material</label><select class="admin-select" id="admin-vp-material-${l.id}">${opt(matOpts,vp.materialStatus,x=>_visualValueLabel(x,'material'))}</select></div>
+        <div class="admin-field"><label class="admin-label">QA</label><select class="admin-select" id="admin-vp-qa-${l.id}">${opt(qaOpts,vp.qaStatus,x=>_visualValueLabel(x,'qa'))}</select></div>
+      </div>
+      <div class="admin-2col">
+        <div class="admin-field"><label class="admin-label">Riesgo</label><select class="admin-select" id="admin-vp-risk-${l.id}">${opt(riskOpts,vp.riskLevel,x=>_visualValueLabel(x,'risk'))}</select></div>
+        <div class="admin-field"><label class="admin-label">Fecha objetivo</label><input class="admin-input" id="admin-vp-due-${l.id}" type="date" value="${vp.dueDate||''}"></div>
+      </div>
+      <div class="admin-field"><label class="admin-label">Output / demo / landing</label><div style="display:grid;grid-template-columns:1fr auto;gap:6px"><input class="admin-input" id="admin-vp-output-${l.id}" type="url" value="${safeHtml(vp.outputUrl)}" placeholder="https://..."><button class="admin-btn ablue" onclick="abrirOutputPipeline(${l.id})">Abrir</button></div></div>
+      <div class="admin-2col">
+        <div class="admin-field"><label class="admin-label">QR</label><select class="admin-select" id="admin-vp-qr-${l.id}">${opt(qrOpts,vp.qrStatus,x=>_visualValueLabel(x,'qr'))}</select></div>
+        <div class="admin-field"><label class="admin-label">Aprobación cliente</label><select class="admin-select" id="admin-vp-approval-${l.id}">${opt(approvalOpts,vp.clientApproval,x=>_visualValueLabel(x,'approval'))}</select></div>
+      </div>
+      <div class="admin-field"><label class="admin-label">Próxima acción visual</label><input class="admin-input" id="admin-vp-next-${l.id}" value="${safeHtml(vp.nextAction||_visualPipelineSuggestNextAction(vp))}"></div>
+      <div class="admin-field"><label class="admin-label">Notas internas</label><textarea class="admin-textarea" id="admin-vp-notes-${l.id}" rows="2">${safeHtml(vp.notes)}</textarea></div>
+      ${vp.linkedQuoteId||vp.linkedProposalId?`<div style="font-size:10px;color:var(--text3);margin-bottom:8px">Vinculado: ${vp.linkedQuoteId?'presupuesto '+safeHtml(vp.linkedQuoteId):''}${vp.linkedQuoteId&&vp.linkedProposalId?' · ':''}${vp.linkedProposalId?'propuesta '+safeHtml(vp.linkedProposalId):''}</div>`:''}
+      <div class="admin-action-row">
+        <button class="admin-save-btn" onclick="guardarVisualPipeline(${l.id})">Guardar Pipeline Visual</button>
+        <button class="admin-btn" onclick="copiarMsgPedirMaterial(${l.id})">Pedir material</button>
+        <button class="admin-btn" onclick="copiarMsgDemoLista(${l.id})">Demo lista</button>
+        <button class="admin-btn agreen" onclick="marcarPipelineDemoLista(${l.id})">Marcar demo lista</button>
+        <button class="admin-btn agreen" onclick="marcarPipelinePublicado(${l.id})">Marcar publicado</button>
+      </div>
+    </div>
+  </div>`;
+}
+
 // ── Admin Hub render ──────────────────────────────────────────────────────────
 function renderAdminHub(l){
   if(!l._admin) l._admin=_emptyAdmin();
+  ensureVisualPipeline(l);
   const a=l._admin;
   const steps=_adminJourneySteps(l);
   const criticals=_adminCriticals(l,a);
@@ -4387,11 +4551,120 @@ function renderAdminHub(l){
     </div>
   </div>`;
 
-  return journey+carpeta+contrato+firmaBlock+factura+asesoria+seguimiento+
+  return journey+renderVisualPipeline(l)+carpeta+contrato+firmaBlock+factura+asesoria+seguimiento+
     `<div style="font-size:10px;color:var(--text3);text-align:center;padding:8px 0;border-top:1px solid var(--border);margin-top:6px">v1.7: Google Drive · OneDrive · Holded · Quipu · Stripe · DocuSign · Email automático</div>`;
 }
 
 // ── Admin action functions ─────────────────────────────────────────────────────
+function _copyVisualText(txt,msg){
+  const fallback=()=>{
+    const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta);
+    _showToast(msg||'✓ Texto copiado.','var(--green)');
+  };
+  if(navigator.clipboard&&navigator.clipboard.writeText) navigator.clipboard.writeText(txt).then(()=>_showToast(msg||'✓ Texto copiado.','var(--green)')).catch(fallback);
+  else fallback();
+}
+
+function _addVisualActivity(l,texto){
+  if(!l._actividad) l._actividad=[];
+  const fechaAct=new Date().toLocaleDateString('es-ES')+' '+new Date().toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'});
+  l._actividad.push({tipo:'visual',texto,fecha:fechaAct});
+}
+
+function guardarVisualPipeline(lid){
+  const l=leads.find(x=>x.id===lid);if(!l) return;
+  const vp=ensureVisualPipeline(l);
+  const gv=id=>{const e=document.getElementById('admin-vp-'+id+'-'+lid);return e?e.value||'':'';};
+  const oldStatus=vp.status;
+  vp.status=gv('status')||'sin_activo_visual';
+  vp.assetType=gv('asset');
+  vp.materialStatus=gv('material')||'pendiente';
+  vp.qaStatus=gv('qa')||'no_iniciado';
+  vp.riskLevel=gv('risk')||'bajo';
+  vp.outputUrl=gv('output');
+  vp.qrStatus=gv('qr')||'no_aplica';
+  vp.clientApproval=gv('approval')||'pendiente';
+  vp.nextAction=gv('next');
+  vp.dueDate=gv('due');
+  vp.notes=gv('notes');
+  vp.updatedAt=new Date().toISOString();
+  _addVisualActivity(l,'Pipeline Visual actualizado: '+_visualPipelineStatusLabel(vp.status));
+  if(vp.status!==oldStatus&&['demo_lista','publicado','bloqueado'].includes(vp.status)) _addVisualActivity(l,_visualPipelineStatusLabel(vp.status));
+  saveState();renderAll();setTimeout(()=>openModal(lid),100);
+  _showToast('✓ Pipeline Visual guardado.','var(--green)');
+}
+
+function copiarMsgPedirMaterial(lid){
+  const l=leads.find(x=>x.id===lid);if(!l) return;
+  const vp=ensureVisualPipeline(l);
+  const nombre=(l.responsable&&!l.responsable.includes('No'))?l.responsable:'equipo de '+l.empresa;
+  const txt=`Hola ${nombre}, soy Juanma de Immersphere Pro.\n\nPara avanzar con ${_visualAssetTypeLabel(vp.assetType).toLowerCase()} necesito que me paséis el material visual disponible: fotos, vídeos, enlaces, tours 360 o cualquier referencia que ya tengáis.\n\nCon eso reviso viabilidad, calidad y siguiente paso antes de producir nada innecesario.\n\n¿Me lo podéis enviar por aquí o por email?`;
+  _copyVisualText(txt,'✓ Mensaje para pedir material copiado.');
+}
+
+function copiarMsgDemoLista(lid){
+  const l=leads.find(x=>x.id===lid);if(!l) return;
+  const vp=ensureVisualPipeline(l);
+  const nombre=(l.responsable&&!l.responsable.includes('No'))?l.responsable:'equipo de '+l.empresa;
+  const url=vp.outputUrl?'\n\nEnlace: '+vp.outputUrl:'';
+  const txt=`Hola ${nombre}, soy Juanma de Immersphere Pro.\n\nYa tengo lista la demo/activo visual para ${l.empresa}.${url}\n\nLa idea es revisarla juntos, confirmar si refleja bien el objetivo comercial y definir el siguiente paso: publicación, QR, propuesta o ajustes.\n\n¿La revisamos esta semana?`;
+  _copyVisualText(txt,'✓ Mensaje de demo lista copiado.');
+}
+
+function marcarPipelineDemoLista(lid){
+  const l=leads.find(x=>x.id===lid);if(!l) return;
+  const vp=ensureVisualPipeline(l);
+  vp.status='demo_lista';
+  vp.qaStatus=vp.qaStatus==='no_aplica'?'no_aplica':'aprobado';
+  vp.nextAction=vp.nextAction||'Enviar demo al cliente y agendar revisión.';
+  vp.updatedAt=new Date().toISOString();
+  _addVisualActivity(l,'Demo lista');
+  saveState();renderAll();setTimeout(()=>openModal(lid),100);
+  _showToast('✓ Pipeline marcado como demo lista.','var(--green)');
+}
+
+function marcarPipelinePublicado(lid){
+  const l=leads.find(x=>x.id===lid);if(!l) return;
+  const vp=ensureVisualPipeline(l);
+  vp.status='publicado';
+  vp.qrStatus=vp.qrStatus==='no_aplica'?'no_aplica':(vp.qrStatus||'generado');
+  vp.nextAction=vp.nextAction||'Registrar seguimiento comercial y proponer siguiente paso.';
+  vp.updatedAt=new Date().toISOString();
+  _addVisualActivity(l,'Publicado');
+  saveState();renderAll();setTimeout(()=>openModal(lid),100);
+  _showToast('✓ Pipeline marcado como publicado.','var(--green)');
+}
+
+function abrirOutputPipeline(lid){
+  const l=leads.find(x=>x.id===lid);if(!l) return;
+  const url=ensureVisualPipeline(l).outputUrl;
+  if(!url){_showToast('Añade una URL de output primero.','var(--gold)');return;}
+  window.open(url,'_blank','noopener');
+}
+
+const IMMERSIVE_PACK_PIPELINE_MAP={
+  'pack-diagnostico-visual-360':{assetType:'diagnostico_visual_360',status:'material_pendiente',materialStatus:'pendiente',qaStatus:'no_aplica',riskLevel:'bajo',nextAction:'Solicitar material visual existente y enlaces al cliente.',qrStatus:'no_aplica',clientApproval:'pendiente'},
+  'pack-demo-inmersiva-premium':{assetType:'demo_inmersiva_premium',status:'material_pendiente',materialStatus:'pendiente',qaStatus:'no_iniciado',riskLevel:'medio',nextAction:'Pedir material base y definir espacio/demo piloto.',qrStatus:'pendiente',clientApproval:'pendiente'},
+  'pack-propiedad-3d-premium':{assetType:'propiedad_3d_premium',status:'material_pendiente',materialStatus:'pendiente',qaStatus:'no_iniciado',riskLevel:'medio',nextAction:'Coordinar acceso/captura de la propiedad y material disponible.',qrStatus:'pendiente',clientApproval:'pendiente'},
+  'pack-showroom-inmersivo-pro':{assetType:'showroom_inmersivo_pro',status:'material_pendiente',materialStatus:'pendiente',qaStatus:'no_iniciado',riskLevel:'medio',nextAction:'Definir zonas del showroom, productos clave y CTA comercial.',qrStatus:'pendiente',clientApproval:'pendiente'},
+  'pack-viewer-qa-optimizacion':{assetType:'viewer_qa_optimizacion',status:'material_recibido',materialStatus:'recibido',qaStatus:'pendiente',riskLevel:'bajo',nextAction:'Solicitar enlace del viewer/tour actual para revisión.',qrStatus:'no_aplica',clientApproval:'pendiente'}
+};
+
+function _isImmersiveQuote(q){return !!(q&&q.pack&&IMMERSIVE_PACK_PIPELINE_MAP[q.pack]);}
+
+function prefillVisualPipelineFromQuote(l,quote){
+  if(!l||!_isImmersiveQuote(quote)) return false;
+  const vp=ensureVisualPipeline(l);
+  const canPrefill=_visualPipelineIsEmpty(vp)||vp.status==='sin_activo_visual';
+  if(!canPrefill) return false;
+  const preset=IMMERSIVE_PACK_PIPELINE_MAP[quote.pack];
+  Object.assign(vp,preset);
+  vp.linkedQuoteId=quote.id||vp.linkedQuoteId||'';
+  vp.updatedAt=new Date().toISOString();
+  _addVisualActivity(l,'Pipeline Visual prellenado desde presupuesto: '+(quote.packNombre||quote.pack));
+  return true;
+}
+
 function autoNombreCarpeta(lid){
   const l=leads.find(x=>x.id===lid);if(!l) return;
   if(!l._admin) l._admin=_emptyAdmin();
@@ -4840,6 +5113,46 @@ function copiarArquitecturaFutura(){
 // ── Proposals ─────────────────────────────────────────────────────────────────
 let _propLeadId=null,_propCurrentId=null,_propSvcLines=[];
 
+function _hasVisualPipelineForProposal(l){
+  const vp=ensureVisualPipeline(l);
+  return !_visualPipelineIsEmpty(vp)&&vp.status!=='sin_activo_visual';
+}
+
+function _visualPipelineProposalSnapshot(l){
+  const vp=ensureVisualPipeline(l);
+  return{
+    assetType:vp.assetType,
+    assetTypeLabel:_visualAssetTypeLabel(vp.assetType),
+    status:vp.status,
+    statusLabel:_visualPipelineStatusLabel(vp.status),
+    materialStatus:vp.materialStatus,
+    materialLabel:_visualValueLabel(vp.materialStatus,'material'),
+    qaStatus:vp.qaStatus,
+    qaLabel:_visualValueLabel(vp.qaStatus,'qa'),
+    qrStatus:vp.qrStatus,
+    qrLabel:_visualValueLabel(vp.qrStatus,'qr'),
+    clientApproval:vp.clientApproval,
+    approvalLabel:_visualValueLabel(vp.clientApproval,'approval'),
+    outputUrl:vp.outputUrl||'',
+    dueDate:vp.dueDate||'',
+    nextAction:vp.nextAction||_visualPipelineSuggestNextAction(vp),
+    notes:vp.notes||''
+  };
+}
+
+function refreshProposalVisualBlock(l,checked){
+  const wrap=document.getElementById('prop-visual-wrap');
+  const summary=document.getElementById('prop-visual-summary');
+  const cb=document.getElementById('prop-include-visual');
+  if(!wrap||!summary||!cb||!l) return;
+  const has=_hasVisualPipelineForProposal(l);
+  wrap.style.display=has?'':'none';
+  if(!has){cb.checked=false;summary.textContent='';return;}
+  if(typeof checked==='boolean') cb.checked=checked; else cb.checked=true;
+  const v=_visualPipelineProposalSnapshot(l);
+  summary.innerHTML=`<strong>${safeHtml(v.assetTypeLabel)}</strong> · ${safeHtml(v.statusLabel)}<br>Material: ${safeHtml(v.materialLabel)} · QA: ${safeHtml(v.qaLabel)} · QR: ${safeHtml(v.qrLabel)} · Aprobación: ${safeHtml(v.approvalLabel)}${v.dueDate?'<br>Fecha objetivo: '+safeHtml(v.dueDate):''}${v.outputUrl?'<br>Output: '+safeHtml(v.outputUrl):''}<br>Próxima acción: ${safeHtml(v.nextAction||'—')}`;
+}
+
 function openProposalEditor(leadId,quoteId){
   _propLeadId=leadId;_propCurrentId=null;_propSvcLines=[];
   const l=leads.find(x=>x.id===leadId);if(!l) return;
@@ -4853,6 +5166,7 @@ function openProposalEditor(leadId,quoteId){
     _fillFromLead(l,PROPOSAL_TEMPLATES[0]);
   }
   renderPropSvcLines();
+  refreshProposalVisualBlock(l);
   _showPropTab('edit');
   document.getElementById('proposal-overlay').classList.add('open');
   document.body.style.overflow='hidden';
@@ -4873,6 +5187,7 @@ function openProposalEdit(leadId,propId){
   setV('prop-proxpasos',p.proximosPasos);setV('prop-notafinal',p.notaFinal);
   _propSvcLines=JSON.parse(JSON.stringify(p.serviciosIncluidos||[]));
   renderPropSvcLines();
+  refreshProposalVisualBlock(l,!!p.includeVisualPipeline);
   _showPropTab('edit');
   document.getElementById('proposal-overlay').classList.add('open');
   document.body.style.overflow='hidden';
@@ -4976,6 +5291,7 @@ function _buildPropDocHTML(l,p){
     if(p.descuento>0) descStr=formatEuro(p.descuento);
   }
   const svcs=p.serviciosIncluidos||[];
+  const visual=p.includeVisualPipeline&&p.visualPipelineSnapshot?p.visualPipelineSnapshot:null;
   return `<div class="prop-doc">
     <div class="prop-doc-header">
       <div>
@@ -4993,6 +5309,13 @@ function _buildPropDocHTML(l,p){
     ${p.resumenEjecutivo?`<div class="prop-doc-section"><div class="prop-doc-section-title">Resumen ejecutivo</div><div class="prop-doc-text">${_propNlToBr(p.resumenEjecutivo)}</div></div>`:''}
     ${p.problemaDetectado?`<div class="prop-doc-section"><div class="prop-doc-section-title">Diagnóstico y oportunidad</div><div class="prop-doc-text">${_propNlToBr(p.problemaDetectado)}</div></div>`:''}
     ${p.solucionPropuesta?`<div class="prop-doc-section"><div class="prop-doc-section-title">Solución propuesta</div><div class="prop-doc-text">${_propNlToBr(p.solucionPropuesta)}</div></div>`:''}
+    ${visual?`<div class="prop-doc-section"><div class="prop-doc-section-title">Estado del activo visual</div><div class="prop-doc-text">
+      <strong>${safeHtml(visual.assetTypeLabel||'Activo visual')}</strong> · ${safeHtml(visual.statusLabel||'En preparación')}<br>
+      Material: ${safeHtml(visual.materialLabel||'—')} · QA: ${safeHtml(visual.qaLabel||'—')} · QR: ${safeHtml(visual.qrLabel||'—')} · Aprobación: ${safeHtml(visual.approvalLabel||'—')}
+      ${visual.dueDate?'<br>Fecha objetivo: '+safeHtml(visual.dueDate):''}
+      ${visual.outputUrl?'<br>Enlace previsto/publicado: '+safeHtml(visual.outputUrl):''}
+      ${visual.nextAction?'<br>Próximo paso: '+safeHtml(visual.nextAction):''}
+    </div></div>`:''}
     ${svcs.length?`<div class="prop-doc-section"><div class="prop-doc-section-title">Servicios incluidos</div>
       <table class="prop-doc-table"><thead><tr><th>Servicio</th><th style="text-align:right">Precio</th></tr></thead><tbody>
       ${svcs.map(li=>'<tr><td>'+safeHtml(li.nombre)+'</td><td style="text-align:right;font-weight:600">'+safeHtml(li.precio||'—')+'</td></tr>').join('')}
@@ -5029,6 +5352,8 @@ function renderProposalPreview(){
     condiciones:gv('prop-condiciones'),caducidad:gv('prop-caducidad'),formaPago:gv('prop-formapago'),
     proximosPasos:gv('prop-proxpasos'),notaFinal:gv('prop-notafinal'),
     serviciosIncluidos:JSON.parse(JSON.stringify(_propSvcLines)),
+    includeVisualPipeline:!!document.getElementById('prop-include-visual')?.checked,
+    visualPipelineSnapshot:document.getElementById('prop-include-visual')?.checked?_visualPipelineProposalSnapshot(l):null,
     precio:0,total:0,iva:0,descuento:0
   };
   const existing=_propCurrentId?(l._propuestas||[]).find(x=>x.id===_propCurrentId):null;
@@ -5081,6 +5406,8 @@ function saveProposal(){
   const titulo=gv('prop-titulo')||'Propuesta comercial';
   const msgs=generateProposalMessages()||{};
   const old=_propCurrentId?(l._propuestas||[]).find(x=>x.id===_propCurrentId):null;
+  const includeVisualPipeline=!!document.getElementById('prop-include-visual')?.checked;
+  const visualPipelineSnapshot=includeVisualPipeline?_visualPipelineProposalSnapshot(l):null;
   // Inherit financial data from linked quote if available
   let precio=old?old.precio||0:0,total=old?old.total||0:0,iva=old?old.iva||0:0,descuento=old?old.descuento||0:0;
   const prop={
@@ -5095,6 +5422,7 @@ function saveProposal(){
     entregables:gv('prop-entregables'),bonus:gv('prop-bonus'),
     condiciones:gv('prop-condiciones'),caducidad:gv('prop-caducidad'),
     formaPago:gv('prop-formapago'),proximosPasos:gv('prop-proxpasos'),notaFinal:gv('prop-notafinal'),
+    includeVisualPipeline,visualPipelineSnapshot,
     precio,total,iva,descuento,
     mensajesGenerados:{wa:msgs.wa||'',emailAs:msgs.emailAs||'',email:msgs.email||''},
     historialSeguimiento:old?old.historialSeguimiento||[]:[]
@@ -5102,6 +5430,11 @@ function saveProposal(){
   if(!l._propuestas) l._propuestas=[];
   if(_propCurrentId){const idx=l._propuestas.findIndex(x=>x.id===_propCurrentId);if(idx>=0)l._propuestas[idx]=prop;else l._propuestas.push(prop);}
   else l._propuestas.push(prop);
+  if(includeVisualPipeline){
+    const vp=ensureVisualPipeline(l);
+    vp.linkedProposalId=prop.id;
+    vp.updatedAt=new Date().toISOString();
+  }
   if(!l._actividad) l._actividad=[];
   l._actividad.push({tipo:'propuesta',texto:(_propCurrentId?'Propuesta actualizada: ':'Propuesta creada: ')+titulo+' · '+estado,fecha:fechaAct});
   if(estado==='enviada'&&(l.estado==='Sin contactar'||l.estado==='Contactado')){
@@ -5175,12 +5508,14 @@ function createProposalFromQuote(leadId,quoteId){
   // Pre-load financial data from quote
   _propLeadId=leadId;_propCurrentId=null;_propSvcLines=[];
   const tpl=PROPOSAL_TEMPLATES.find(t=>t.lineaNegocio===q.lineaNegocio)||PROPOSAL_TEMPLATES[4];
+  prefillVisualPipelineFromQuote(l,q);
   _fillFromQuote(l,q,tpl);
   renderPropSvcLines();
   // Save a draft proposal with financial data linked before opening editor
   const now=new Date();
   const draftId='p-'+Date.now();
   const sub=txt=>(txt||'').replace(/\{empresa\}/g,l.empresa).replace(/\{nombre\}/g,'');
+  const includeVisualPipeline=_hasVisualPipelineForProposal(l);
   const draft={
     id:draftId,quoteId,
     fechaCreacion:now.toISOString().split('T')[0],fechaActualizacion:now.toISOString().split('T')[0],
@@ -5192,11 +5527,17 @@ function createProposalFromQuote(leadId,quoteId){
     entregables:tpl.entregables,bonus:(q.lineas||[]).filter(li=>li.esBonus).map(li=>li.nombre).join(', '),
     condiciones:tpl.condiciones,caducidad:q.caducidad||'',formaPago:q.formaPago||'100% al aceptar',
     proximosPasos:tpl.proximosPasos,notaFinal:tpl.notaFinal,
+    includeVisualPipeline,visualPipelineSnapshot:includeVisualPipeline?_visualPipelineProposalSnapshot(l):null,
     precio:q.baseImponible||0,total:q.total||0,iva:q.iva||0,descuento:q.descuento||0,
     mensajesGenerados:{},historialSeguimiento:[]
   };
   if(!l._propuestas)l._propuestas=[];
   l._propuestas.push(draft);
+  if(includeVisualPipeline){
+    const vp=ensureVisualPipeline(l);
+    vp.linkedProposalId=draftId;
+    vp.updatedAt=new Date().toISOString();
+  }
   _propCurrentId=draftId;
   saveState();
   openProposalEdit(leadId,draftId);
