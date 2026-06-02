@@ -3611,7 +3611,7 @@ function renderServiciosView(){
 
 function renderPacksView(){
   const el=document.getElementById('cat-content');if(!el) return;
-  el.innerHTML=`<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px">`+PACKS_CATALOG.map(p=>{
+  el.innerHTML=`<div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap"><button class="nuevo-lead-btn" onclick="crearPackCatalogo()">+ Nuevo pack</button></div><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px">`+PACKS_CATALOG.map(p=>{
     const svcNames=p.serviciosIncluidos.map(sId=>{const s=SERVICES_CATALOG.find(x=>x.id===sId);return s?s.nombre:sId;});
     return `<div class="pack-card">
       <div class="pack-card-head">
@@ -3623,9 +3623,108 @@ function renderPacksView(){
       ${p.bonus?'<div style="font-size:11px;color:var(--green);margin-bottom:5px">🎁 '+safeHtml(p.bonus)+'</div>':''}
       ${p.descuentoPack>0?'<div style="font-size:11px;color:var(--gold);margin-bottom:5px">🏷 Dto. pack: '+p.descuentoPack+'%</div>':''}
       <div style="font-size:11px;color:var(--accent2);margin-bottom:4px">🎯 ${safeHtml(p.objetivoComercial)}</div>
-      <div style="font-size:11px;color:var(--text3)">Para: ${safeHtml(p.recomendadoPara)}</div>
+      <div style="font-size:11px;color:var(--text3);margin-bottom:10px">Para: ${safeHtml(p.recomendadoPara)}</div>
+      <div class="service-card-actions">
+        <button class="svc-btn" onclick="editarPackCatalogo('${p.id}')">✎ Editar</button>
+        <button class="svc-btn" onclick="duplicarPackCatalogo('${p.id}')">⧉ Duplicar</button>
+      </div>
     </div>`;
   }).join('')+`</div>`;
+}
+
+function _slugPackCatalogo(txt){
+  return String(txt||'pack').toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+    .replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'') || 'pack';
+}
+
+function _uniquePackId(base){
+  let id=base;
+  let i=2;
+  while(PACKS_CATALOG.some(p=>p.id===id)){
+    id=base+'-'+i;
+    i++;
+  }
+  return id;
+}
+
+function _parseServiciosPack(txt){
+  return String(txt||'')
+    .split(',')
+    .map(x=>x.trim())
+    .filter(Boolean);
+}
+
+function crearPackCatalogo(){
+  const id=_uniquePackId('pack-custom');
+  const nuevo={
+    id,
+    nombre:'Nuevo pack',
+    descripcion:'Describe aquí el objetivo comercial del pack.',
+    lineaNegocio:'Proyecto personalizado',
+    serviciosIncluidos:[],
+    precioOrientativo:0,
+    descuentoPack:0,
+    bonus:'',
+    objetivoComercial:'A definir',
+    recomendadoPara:'A definir',
+    activo:true
+  };
+  PACKS_CATALOG.push(nuevo);
+  guardarCatalogoCustom();
+  renderCatalogo();
+  setTimeout(()=>editarPackCatalogo(id),50);
+}
+
+function duplicarPackCatalogo(packId){
+  const p=PACKS_CATALOG.find(x=>x.id===packId);if(!p) return;
+  const base=_slugPackCatalogo(p.nombre||p.id)+'-copia';
+  const id=_uniquePackId(base);
+  const copia=JSON.parse(JSON.stringify(p));
+  copia.id=id;
+  copia.nombre=(p.nombre||'Pack')+' (copia)';
+  copia.activo=true;
+  PACKS_CATALOG.push(copia);
+  guardarCatalogoCustom();
+  renderCatalogo();
+  setTimeout(()=>editarPackCatalogo(id),50);
+}
+
+function editarPackCatalogo(packId){
+  const p=PACKS_CATALOG.find(x=>x.id===packId);if(!p) return;
+
+  const nombre=prompt('Nombre del pack:',p.nombre||'');
+  if(nombre===null) return;
+  p.nombre=nombre.trim()||p.nombre;
+
+  const descripcion=prompt('Descripción comercial:',p.descripcion||'');
+  if(descripcion!==null) p.descripcion=descripcion.trim();
+
+  const linea=prompt('Línea de negocio:',p.lineaNegocio||'Proyecto personalizado');
+  if(linea!==null) p.lineaNegocio=linea.trim()||p.lineaNegocio;
+
+  const servicios=prompt('IDs de servicios incluidos, separados por coma. Ejemplo: tour360, landing-prop, video-tour',Array.isArray(p.serviciosIncluidos)?p.serviciosIncluidos.join(', '):'');
+  if(servicios!==null) p.serviciosIncluidos=_parseServiciosPack(servicios);
+
+  const precio=prompt('Precio orientativo (€):',p.precioOrientativo||0);
+  if(precio!==null) p.precioOrientativo=parseFloat(precio)||0;
+
+  const dto=prompt('Descuento pack (%):',p.descuentoPack||0);
+  if(dto!==null) p.descuentoPack=parseFloat(dto)||0;
+
+  const bonus=prompt('Bonus incluido:',p.bonus||'');
+  if(bonus!==null) p.bonus=bonus.trim();
+
+  const objetivo=prompt('Objetivo comercial:',p.objetivoComercial||'');
+  if(objetivo!==null) p.objetivoComercial=objetivo.trim();
+
+  const recomendado=prompt('Recomendado para:',p.recomendadoPara||'');
+  if(recomendado!==null) p.recomendadoPara=recomendado.trim();
+
+  p.activo=true;
+  guardarCatalogoCustom();
+  renderCatalogo();
+  if(typeof initQuoteBuilder==='function') initQuoteBuilder();
 }
 
 function _fmtTipoPrecio(tipo,unidad){
