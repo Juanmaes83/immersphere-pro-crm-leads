@@ -720,6 +720,7 @@ nav{background:var(--bg2);border-bottom:1px solid var(--border);padding:0 20px;d
     <button class="nav-tab" data-view="leads">🎯 Leads</button>
     <button class="nav-tab" data-view="journey">🗺 Journey</button>
     <button class="nav-tab" data-view="top10">🔥 Top 10</button>
+    <button class="nav-tab" data-view="agente">🤖 Agente IA</button>
     <button class="nav-tab" data-view="pipeline">🔄 Pipeline</button>
     <button class="nav-tab" data-view="templates">📋 Plantillas</button>
     <button class="nav-tab" data-view="catalogo">💼 Catálogo</button>
@@ -896,6 +897,30 @@ nav{background:var(--bg2);border-bottom:1px solid var(--border);padding:0 20px;d
     <span style="font-size:12px;color:var(--text3)">Ordenados por score + oportunidad</span>
   </div>
   <div class="top10-list" id="top10-list"></div>
+</div>
+
+<!-- AGENTE IA -->
+<div class="view" id="view-agente">
+  <div class="section-header">
+    <div>
+      <h2>Agente Comercial IA</h2>
+      <span style="font-size:12px;color:var(--text3)">Selector diario de leads, mensajes y próximas acciones</span>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <button class="nuevo-lead-btn" onclick="generarTop10AgenteIA()">Generar Top 10 de hoy</button>
+      <button class="nuevo-lead-btn" onclick="copiarAgendaComercialAgente()">Copiar agenda comercial</button>
+    </div>
+  </div>
+  <div class="kpi-grid" style="grid-template-columns:repeat(auto-fit,minmax(160px,1fr));margin-bottom:18px">
+    <div class="kpi teal"><div class="kpi-label">Total leads analizados</div><div class="kpi-value" id="ag-kpi-total">—</div><div class="kpi-sub">Base comercial actual</div></div>
+    <div class="kpi red"><div class="kpi-label">Leads prioritarios A</div><div class="kpi-value" id="ag-kpi-a">—</div><div class="kpi-sub">Alta prioridad</div></div>
+    <div class="kpi blue"><div class="kpi-label">Leads sin contactar</div><div class="kpi-value" id="ag-kpi-sin">—</div><div class="kpi-sub">Apertura comercial</div></div>
+    <div class="kpi gold"><div class="kpi-label">Leads con propuesta</div><div class="kpi-value" id="ag-kpi-prop">—</div><div class="kpi-sub">Seguimiento activo</div></div>
+    <div class="kpi orange"><div class="kpi-label">Acción vencida o pendiente</div><div class="kpi-value" id="ag-kpi-pend">—</div><div class="kpi-sub">Requieren atención</div></div>
+  </div>
+  <div id="agente-top10-table" style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:16px;overflow-x:auto">
+    <div class="empty">Pulsa "Generar Top 10 de hoy" para preparar la agenda comercial asistida.</div>
+  </div>
 </div>
 
 <!-- PIPELINE -->
@@ -2349,6 +2374,211 @@ function renderTop10(){
       </div>
     </div>`;
   }).join('');
+}
+
+// ── Agente Comercial IA ───────────────────────────────────────────────────────
+let agenteTop10Actual=[];
+
+function _agTxt(v){return String(v||'').trim();}
+function _agLower(v){return _agTxt(v).toLowerCase();}
+function _agHasValue(v){
+  const s=_agLower(v);
+  return !!s&&s!=='—'&&s!=='-'&&s!=='no localizado'&&s!=='pendiente'&&s!=='n/a'&&s!=='null';
+}
+function _agHasPhone(v){return _agHasValue(v)&&_agTxt(v).replace(/\D/g,'').length>=9;}
+function _agHasEmail(v){return _agHasValue(v)&&/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(_agTxt(v));}
+function _agHasWeb(v){return _agHasValue(v)&&(_agLower(v).startsWith('http')||_agLower(v).includes('.'));}
+function _agHasContact(l){return _agHasPhone(l.whatsapp)||_agHasPhone(l.telefono)||_agHasEmail(l.email);}
+function _agProxAccion(l){return _agTxt(l._proxAccion||l.proximaAccion||'');}
+function _agProxFecha(l){return _agTxt(l._proxFecha||l.proximaFecha||l.fechaProximaAccion||'');}
+function _agSectorTexto(l){return _agLower([l.sector,l.subsector,l.empresa,l.servicio,l.pack,l.gancho,l.dolor].join(' '));}
+function _agTrim(txt,max){
+  const s=_agTxt(txt).replace(/\s+/g,' ');
+  return s.length>max?s.slice(0,max-1).trim()+'…':s;
+}
+
+function canalRecomendadoAgente(l){
+  if(_agHasPhone(l.whatsapp)) return 'WhatsApp';
+  if(_agHasPhone(l.telefono)) return 'Llamada / WhatsApp';
+  if(_agHasEmail(l.email)) return 'Email';
+  return 'Verificar contacto';
+}
+
+function objetivoContactoAgente(l){
+  if(l.estado==='Sin contactar') return 'Abrir conversación y validar interés';
+  if(l.estado==='Contactado') return 'Conseguir respuesta o agendar llamada';
+  if(l.estado==='Propuesta') return 'Hacer seguimiento y cerrar siguiente paso';
+  if(l.estado==='Cerrado') return 'Pedir feedback, upsell o referido';
+  return 'Revisar manualmente';
+}
+
+function valorPotencialSugeridoAgente(l){
+  const t=_agSectorTexto(l);
+  if(t.includes('promotora')&&(t.includes('grande')||Number(l.score)>=90||l.prioridad==='A')) return 1500;
+  if(t.includes('inmobiliaria')&&(t.includes('premium')||Number(l.score)>=85||l.prioridad==='A')) return 900;
+  if(t.includes('inmobiliaria')) return 450;
+  if(['arquitectura','interiorismo','reformas'].some(s=>t.includes(s))) return 650;
+  return 350;
+}
+
+function probabilidadSugeridaAgente(l){
+  if(l.estado==='Propuesta') return 50;
+  if(l.estado==='Contactado') return 30;
+  if(l.estado==='Sin contactar'&&l.prioridad==='A') return 20;
+  if(l.estado==='Sin contactar') return 10;
+  return 10;
+}
+
+function proximaAccionAgente(l){
+  const actual=_agProxAccion(l);
+  if(actual) return actual;
+  if(l.estado==='Propuesta') return 'Seguimiento de propuesta y confirmar siguiente paso';
+  if(l.estado==='Contactado') return 'Enviar recordatorio breve y pedir llamada';
+  if(l.estado==='Cerrado') return 'Solicitar feedback y detectar upsell o referido';
+  if(!_agHasContact(l)) return 'Verificar datos de contacto antes de escribir';
+  return 'Primer contacto personalizado';
+}
+
+function motivoSeleccionAgente(l,puntos){
+  const motivos=[];
+  if(l.prioridad==='A') motivos.push('prioridad A');
+  else if(l.prioridad==='B') motivos.push('prioridad B');
+  if(Number(l.score)>85) motivos.push('score alto');
+  else if(Number(l.score)>=70) motivos.push('score sólido');
+  if(l.estado==='Propuesta') motivos.push('propuesta activa');
+  else if(l.estado==='Contactado') motivos.push('lead contactado');
+  else if(l.estado==='Sin contactar') motivos.push('pendiente de apertura');
+  if(_agProxFecha(l)&&(isVencida(_agProxFecha(l))||isHoy(_agProxFecha(l)))) motivos.push('acción vencida/hoy');
+  if(_agHasContact(l)) motivos.push('contacto localizado');
+  if(_agHasValue(l.dolor)||_agHasValue(l.gancho)) motivos.push('dolor o gancho claro');
+  return _agTrim((motivos.length?motivos.join(', '):'revisión comercial')+' · '+puntos+' pts',140);
+}
+
+function scoreAgenteLead(l){
+  let puntos=0;
+  if(l.prioridad==='A') puntos+=30;
+  if(l.prioridad==='B') puntos+=15;
+  const sc=Number(l.score)||0;
+  if(sc>85) puntos+=25;
+  else if(sc>=70&&sc<=84) puntos+=15;
+  if(l.estado==='Propuesta') puntos+=35;
+  if(l.estado==='Contactado') puntos+=25;
+  if(l.estado==='Sin contactar') puntos+=10;
+  if(_agProxAccion(l)) puntos+=10;
+  if(_agProxFecha(l)&&(isVencida(_agProxFecha(l))||isHoy(_agProxFecha(l)))) puntos+=20;
+  if(_agHasPhone(l.telefono)||_agHasPhone(l.whatsapp)) puntos+=15;
+  if(_agHasEmail(l.email)) puntos+=10;
+  if(_agHasWeb(l.web)) puntos+=10;
+  if(_agHasValue(l.dolor)||_agHasValue(l.gancho)) puntos+=15;
+  if(_agHasValue(l.pack)||_agHasValue(l._packRec)) puntos+=10;
+  if(['inmobiliaria','promotora','arquitectura','reformas','interiorismo'].some(s=>_agSectorTexto(l).includes(s))) puntos+=10;
+  if(l.estado==='No interesa') puntos-=100;
+  if(!_agHasValue(l.empresa)) puntos-=100;
+  const vacios=['empresa','sector','zona','telefono','whatsapp','email','web'].filter(k=>!_agHasValue(l[k])).length;
+  if(vacios>=5) puntos-=20;
+  return puntos;
+}
+
+function mensajeWhatsAppAgente(l){
+  if(!_agHasContact(l)) return 'Primero hay que verificar un teléfono, WhatsApp o email válido antes de contactar con '+(_agTxt(l.empresa)||'este lead')+'.';
+  const empresa=_agTxt(l.empresa)||'tu empresa';
+  const motivo=_agTrim(l.motivo||l.gancho||l.dolor||'he visto una oportunidad comercial concreta',120);
+  const oportunidad=_agTrim(l.dolor||l.gancho||'podría ser útil reforzar la presentación visual y la captación',120);
+  const propuesta=_agTrim(l.servGancho||l.pack||l.servicio||'preparar una demo visual sencilla',90);
+  const msg='Hola, soy Juanma de Immersphere Pro. He revisado '+empresa+' y me encaja contactar por esto: '+motivo+'. Veo esta oportunidad: '+oportunidad+'. Mi propuesta sería '+propuesta+', sin prometer resultados y como prueba concreta. ¿Te parece si lo valoramos con un caso real?';
+  return _agTrim(msg,650);
+}
+
+function emailAgente(l){
+  const empresa=_agTxt(l.empresa)||'tu empresa';
+  const asunto=_agTrim('Idea visual para '+empresa,90);
+  if(!_agHasContact(l)){
+    return {asunto:'Verificar contacto de '+empresa,cuerpo:'Antes de enviar un email conviene verificar un contacto válido para '+empresa+'. Lead marcado para revisión manual.'};
+  }
+  const oportunidad=_agTrim(l.dolor||l.gancho||l.motivo||'reforzar la presentación visual y el contacto comercial',180);
+  const propuesta=_agTrim(l.servGancho||l.pack||l.servicio||'una demo visual sencilla',120);
+  const cuerpo='Hola,\n\nHe revisado '+empresa+' y veo una oportunidad concreta: '+oportunidad+'.\n\nCreo que podría tener sentido valorar '+propuesta+' como una prueba acotada, sin cambiar vuestro sistema actual ni prometer resultados.\n\n¿Te encaja que lo comentemos con un caso real?';
+  return {asunto,cuerpo};
+}
+
+function _agenteRows(){
+  return leads.map(l=>{
+    const puntos=scoreAgenteLead(l);
+    return {
+      lead:l,
+      agenteScore:puntos,
+      motivo:motivoSeleccionAgente(l,puntos),
+      canal:canalRecomendadoAgente(l),
+      objetivo:objetivoContactoAgente(l),
+      proxima:proximaAccionAgente(l),
+      valor:valorPotencialSugeridoAgente(l),
+      probabilidad:probabilidadSugeridaAgente(l),
+      whatsapp:mensajeWhatsAppAgente(l),
+      email:emailAgente(l)
+    };
+  }).sort((a,b)=>(b.agenteScore-a.agenteScore)||((Number(b.lead.score)||0)-(Number(a.lead.score)||0))||((Number(a.lead.id)||0)-(Number(b.lead.id)||0))).slice(0,10);
+}
+
+function renderAgenteResumen(){
+  const set=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent=v;};
+  set('ag-kpi-total',leads.length||'—');
+  set('ag-kpi-a',leads.filter(l=>l.prioridad==='A').length||'—');
+  set('ag-kpi-sin',leads.filter(l=>!l.estado||l.estado==='Sin contactar').length||'—');
+  set('ag-kpi-prop',leads.filter(l=>l.estado==='Propuesta').length||'—');
+  set('ag-kpi-pend',leads.filter(l=>_agProxAccion(l)||(_agProxFecha(l)&&(isVencida(_agProxFecha(l))||isHoy(_agProxFecha(l))))).length||'—');
+}
+
+function generarTop10AgenteIA(){
+  renderAgenteResumen();
+  agenteTop10Actual=_agenteRows();
+  const el=document.getElementById('agente-top10-table');
+  if(!el) return agenteTop10Actual;
+  if(!agenteTop10Actual.length){el.innerHTML='<div class="empty">No hay leads suficientes para generar recomendaciones.</div>';return agenteTop10Actual;}
+  el.innerHTML=`<table style="width:100%;border-collapse:collapse;min-width:1180px;font-size:12px">
+    <thead><tr>
+      ${['Empresa','Sector','Zona','Estado','Score','Prioridad','Motivo de selección','Canal recomendado','Objetivo del contacto','Próxima acción','Valor potencial sugerido','Probabilidad sugerida'].map(h=>'<th style="text-align:left;color:var(--text3);font-size:10px;text-transform:uppercase;letter-spacing:.04em;padding:9px 8px;border-bottom:1px solid var(--border)">'+h+'</th>').join('')}
+    </tr></thead>
+    <tbody>${agenteTop10Actual.map(r=>{
+      const l=r.lead;
+      return `<tr style="border-bottom:1px solid var(--border)">
+        <td style="padding:10px 8px;color:var(--accent2);font-weight:700;cursor:pointer" onclick="openModal(${l.id})">${safeHtml(l.empresa||'—')}</td>
+        <td style="padding:10px 8px;color:var(--text2)">${safeHtml(l.sector||'—')}</td>
+        <td style="padding:10px 8px;color:var(--text2)">${safeHtml(l.zona||'—')}</td>
+        <td style="padding:10px 8px">${estadoTag(l.estado||'Sin contactar')}</td>
+        <td style="padding:10px 8px;color:var(--accent2);font-weight:800">${safeHtml(String(l.score||0))}</td>
+        <td style="padding:10px 8px">${priTag(l.prioridad||'C')}</td>
+        <td style="padding:10px 8px;color:var(--text2);line-height:1.5">${safeHtml(r.motivo)}</td>
+        <td style="padding:10px 8px;color:var(--text)">${safeHtml(r.canal)}</td>
+        <td style="padding:10px 8px;color:var(--text2);line-height:1.5">${safeHtml(r.objetivo)}</td>
+        <td style="padding:10px 8px;color:var(--text2);line-height:1.5">${safeHtml(r.proxima)}</td>
+        <td style="padding:10px 8px;color:var(--green);font-weight:700">${r.valor.toLocaleString('es-ES')} €</td>
+        <td style="padding:10px 8px;color:var(--gold);font-weight:700">${r.probabilidad}%</td>
+      </tr>`;
+    }).join('')}</tbody>
+  </table>`;
+  return agenteTop10Actual;
+}
+
+function copiarAgendaComercialAgente(){
+  if(!agenteTop10Actual.length) generarTop10AgenteIA();
+  const fecha=new Date().toLocaleDateString('es-ES');
+  const txt='AGENDA COMERCIAL ASISTIDA · '+fecha+'\n\n'+agenteTop10Actual.map((r,i)=>{
+    const l=r.lead;
+    return (i+1)+'. '+(l.empresa||'—')+' · '+(l.sector||'—')+' · '+(l.zona||'—')+'\n'+
+      'Score agente: '+r.agenteScore+' · Prioridad: '+(l.prioridad||'—')+' · Estado: '+(l.estado||'Sin contactar')+'\n'+
+      'Objetivo: '+r.objetivo+'\n'+
+      'Canal recomendado: '+r.canal+'\n'+
+      'Próxima acción: '+r.proxima+'\n'+
+      'Valor/probabilidad sugeridos: '+r.valor+' € · '+r.probabilidad+'%\n'+
+      'WhatsApp sugerido: '+r.whatsapp+'\n'+
+      'Email breve:\nAsunto: '+r.email.asunto+'\n'+r.email.cuerpo;
+  }).join('\n\n---\n\n');
+  const fallback=()=>{
+    const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta);
+    _showToast('✓ Agenda comercial copiada.','var(--green)');
+  };
+  if(navigator.clipboard&&navigator.clipboard.writeText) navigator.clipboard.writeText(txt).then(()=>_showToast('✓ Agenda comercial copiada.','var(--green)')).catch(fallback);
+  else fallback();
 }
 
 // ── Render: Pipeline ──────────────────────────────────────────────────────────
@@ -4947,7 +5177,7 @@ function _propBadge(estado){
   return`<span class="pst ${m[estado]||'pst-borrador'}">${estado||'borrador'}</span>`;
 }
 
-function renderAll(){renderDashboard();renderLeads();renderTop10();renderPipeline();renderJourney();renderCatalogo();renderIntegraciones();}
+function renderAll(){renderDashboard();renderLeads();renderTop10();renderPipeline();renderJourney();renderCatalogo();renderIntegraciones();renderAgenteResumen();}
 
 // ── Events ────────────────────────────────────────────────────────────────────
 document.querySelectorAll('.nav-tab').forEach(tab=>{
@@ -4960,6 +5190,7 @@ document.querySelectorAll('.nav-tab').forEach(tab=>{
     if(tab.dataset.view==='templates') renderTemplates();
     if(tab.dataset.view==='catalogo') renderCatalogo();
     if(tab.dataset.view==='integraciones') renderIntegraciones();
+    if(tab.dataset.view==='agente') renderAgenteResumen();
   });
 });
 document.querySelectorAll('[data-filter]').forEach(btn=>{
