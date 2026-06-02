@@ -909,6 +909,7 @@ nav{background:var(--bg2);border-bottom:1px solid var(--border);padding:0 20px;d
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
       <button class="nuevo-lead-btn" onclick="generarTop10AgenteIA()">Generar Top 10 de hoy</button>
       <button class="nuevo-lead-btn" onclick="copiarAgendaComercialAgente()">Copiar agenda comercial</button>
+      <button class="nuevo-lead-btn" onclick="copiarAgendaVisual()">Copiar agenda visual</button>
     </div>
   </div>
   <div class="kpi-grid" style="grid-template-columns:repeat(auto-fit,minmax(160px,1fr));margin-bottom:18px">
@@ -917,6 +918,31 @@ nav{background:var(--bg2);border-bottom:1px solid var(--border);padding:0 20px;d
     <div class="kpi blue"><div class="kpi-label">Leads sin contactar</div><div class="kpi-value" id="ag-kpi-sin">—</div><div class="kpi-sub">Apertura comercial</div></div>
     <div class="kpi gold"><div class="kpi-label">Leads con propuesta</div><div class="kpi-value" id="ag-kpi-prop">—</div><div class="kpi-sub">Seguimiento activo</div></div>
     <div class="kpi orange"><div class="kpi-label">Acción vencida o pendiente</div><div class="kpi-value" id="ag-kpi-pend">—</div><div class="kpi-sub">Requieren atención</div></div>
+  </div>
+  <div class="section-header" style="margin-top:4px;margin-bottom:10px">
+    <div>
+      <h2 style="font-size:16px">Radar Visual</h2>
+      <span style="font-size:12px;color:var(--text3)">Lectura del Pipeline Visual para priorizar material, QA, demos, publicaciones y bloqueos</span>
+    </div>
+  </div>
+  <div class="kpi-grid" style="grid-template-columns:repeat(auto-fit,minmax(145px,1fr));margin-bottom:18px">
+    <div class="kpi teal"><div class="kpi-label">Pipeline activo</div><div class="kpi-value" id="ag-vis-activo">—</div><div class="kpi-sub">Leads visuales</div></div>
+    <div class="kpi gold"><div class="kpi-label">Material pendiente</div><div class="kpi-value" id="ag-vis-material">—</div><div class="kpi-sub">Pedir material</div></div>
+    <div class="kpi green"><div class="kpi-label">Demo lista</div><div class="kpi-value" id="ag-vis-demo">—</div><div class="kpi-sub">Enviar / revisar</div></div>
+    <div class="kpi blue"><div class="kpi-label">Publicado</div><div class="kpi-value" id="ag-vis-publicado">—</div><div class="kpi-sub">Seguimiento</div></div>
+    <div class="kpi orange"><div class="kpi-label">QA pendiente</div><div class="kpi-value" id="ag-vis-qa">—</div><div class="kpi-sub">Revisar antes de enviar</div></div>
+    <div class="kpi red"><div class="kpi-label">Bloqueados</div><div class="kpi-value" id="ag-vis-bloqueado">—</div><div class="kpi-sub">Desbloquear</div></div>
+    <div class="kpi lime"><div class="kpi-label">Con output URL</div><div class="kpi-value" id="ag-vis-output">—</div><div class="kpi-sub">Activo enlazado</div></div>
+    <div class="kpi purple"><div class="kpi-label">Aprobación pendiente</div><div class="kpi-value" id="ag-vis-aprobacion">—</div><div class="kpi-sub">Cliente debe revisar</div></div>
+  </div>
+  <div class="section-header" style="margin-top:4px;margin-bottom:10px">
+    <div>
+      <h2 style="font-size:16px">Prioridad Visual de Hoy</h2>
+      <span style="font-size:12px;color:var(--text3)">Leads recomendados por estado visual, bloqueo, QA, demo, publicación y próxima acción</span>
+    </div>
+  </div>
+  <div id="agente-visual-table" style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:16px;overflow-x:auto;margin-bottom:18px">
+    <div class="empty">Pulsa "Generar Top 10 de hoy" para preparar también la prioridad visual.</div>
   </div>
   <div id="agente-top10-table" style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:16px;overflow-x:auto">
     <div class="empty">Pulsa "Generar Top 10 de hoy" para preparar la agenda comercial asistida.</div>
@@ -2575,6 +2601,103 @@ function proximaAccionAgente(l){
   return 'Primer contacto personalizado';
 }
 
+function _visualPipelineActivo(vp){
+  return vp&&!_visualPipelineIsEmpty(vp)&&vp.status&&vp.status!=='sin_activo_visual';
+}
+
+function visualPipelineResumenAgente(l){
+  const vp=ensureVisualPipeline(l);
+  if(!_visualPipelineActivo(vp)) return 'Sin pipeline visual';
+  const parts=[
+    _visualPipelineStatusLabel(vp.status),
+    _visualAssetTypeLabel(vp.assetType),
+    'Riesgo '+_visualValueLabel(vp.riskLevel,'risk')
+  ];
+  const next=vp.nextAction||_visualPipelineSuggestNextAction(vp);
+  return _agTrim(parts.join(' · ')+' · '+next,170);
+}
+
+function visualPipelineBadgeAgente(l){
+  const vp=ensureVisualPipeline(l);
+  const cls=_visualPipelineStatusClass(vp.status);
+  const map={ok:'ast-ok',warn:'ast-warn',danger:'ast-danger',info:'ast-info',neutral:'ast-neutral'};
+  return `<span class="ast ${map[cls]||'ast-neutral'}">${safeHtml(_visualPipelineActivo(vp)?_visualPipelineStatusLabel(vp.status):'Sin pipeline visual')}</span>`;
+}
+
+function scoreVisualPipelineAgente(l){
+  const vp=ensureVisualPipeline(l);
+  if(!_visualPipelineActivo(vp)) return 0;
+  let puntos=0;
+  const st=vp.status;
+  if(st==='demo_lista') puntos+=40;
+  if(st==='publicado') puntos+=35;
+  if(st==='material_pendiente') puntos+=25;
+  if(st==='bloqueado') puntos+=30;
+  if(st==='qa_pendiente') puntos+=20;
+  if(st==='en_produccion') puntos+=15;
+  if(st==='material_recibido') puntos+=15;
+  if(vp.riskLevel==='bloqueado') puntos+=30;
+  if(vp.riskLevel==='alto') puntos+=20;
+  if(vp.outputUrl) puntos+=20;
+  if(vp.clientApproval==='pendiente') puntos+=15;
+  if(vp.clientApproval==='cambios_solicitados') puntos+=20;
+  if(vp.dueDate&&(isVencida(vp.dueDate)||isHoy(vp.dueDate))) puntos+=20;
+  if(vp.nextAction) puntos+=10;
+  if(['diagnostico_visual_360','demo_inmersiva_premium','propiedad_3d_premium','showroom_inmersivo_pro','viewer_qa_optimizacion'].includes(vp.assetType)) puntos+=10;
+  if(l.estado==='Cerrado'&&!['publicado','demo_lista'].includes(st)) puntos-=20;
+  return puntos;
+}
+
+function motivoVisualAgente(l){
+  const vp=ensureVisualPipeline(l);
+  if(!_visualPipelineActivo(vp)) return 'Sin pipeline visual activo.';
+  const motivos=[];
+  if(vp.status==='material_pendiente') motivos.push('falta material');
+  if(vp.status==='demo_lista') motivos.push('demo lista para enviar');
+  if(vp.status==='publicado') motivos.push('activo publicado');
+  if(vp.status==='qa_pendiente') motivos.push('QA pendiente');
+  if(vp.status==='bloqueado'||vp.riskLevel==='bloqueado') motivos.push('bloqueo visual');
+  if(vp.outputUrl) motivos.push('output disponible');
+  if(vp.clientApproval==='pendiente') motivos.push('aprobación pendiente');
+  if(vp.dueDate&&(isVencida(vp.dueDate)||isHoy(vp.dueDate))) motivos.push('fecha objetivo vencida/hoy');
+  return _agTrim((motivos.length?motivos.join(', '):'pipeline visual activo')+' · '+scoreVisualPipelineAgente(l)+' pts',140);
+}
+
+function objetivoVisualAgente(l){
+  const vp=ensureVisualPipeline(l);
+  if(!_visualPipelineActivo(vp)) return 'Definir si este lead necesita activo visual.';
+  if(vp.status==='material_pendiente') return 'Pedir material visual y confirmar objetivo del activo.';
+  if(vp.status==='material_recibido') return 'Revisar material y decidir alcance visual.';
+  if(vp.status==='en_revision') return 'Cerrar revisión y desbloquear producción.';
+  if(vp.status==='en_produccion') return 'Confirmar plazo y siguiente entregable.';
+  if(vp.status==='qa_pendiente') return 'Validar QA antes de enviar al cliente.';
+  if(vp.status==='demo_lista') return 'Enviar demo y pedir revisión del cliente.';
+  if(vp.status==='publicado') return 'Activar uso comercial, QR, web y seguimiento.';
+  if(vp.status==='conectado_crm') return 'Revisar seguimiento, upsell o referido.';
+  if(vp.status==='bloqueado') return 'Resolver el bloqueo con una decisión concreta.';
+  return _visualPipelineSuggestNextAction(vp);
+}
+
+function mensajeVisualWhatsAppAgente(l){
+  const vp=ensureVisualPipeline(l);
+  const nombre=(l.responsable&&!String(l.responsable).includes('No'))?l.responsable:'equipo de '+(l.empresa||'la empresa');
+  const activo=_visualAssetTypeLabel(vp.assetType).toLowerCase();
+  if(!_visualPipelineActivo(vp)) return `Hola ${nombre}, soy Juanma de Immersphere Pro.\n\nVeo una oportunidad para preparar un activo visual sencillo para ${l.empresa}. La idea sería revisar material disponible, detectar el mejor caso de uso y proponer un siguiente paso realista.\n\n¿Tiene sentido que lo valoremos con un ejemplo concreto?`;
+  if(vp.status==='material_pendiente') return `Hola ${nombre}, soy Juanma de Immersphere Pro.\n\nPara avanzar con ${activo} necesito que me paséis el material visual disponible: fotos, vídeo, tour existente, enlace, dirección o acceso, y el objetivo comercial del activo.\n\nCon eso reviso viabilidad y os digo el siguiente paso sin producir nada innecesario.`;
+  if(vp.status==='demo_lista') return `Hola ${nombre}, soy Juanma de Immersphere Pro.\n\nYa tengo lista la demo/activo visual para ${l.empresa}.${vp.outputUrl?'\n\nEnlace: '+vp.outputUrl:''}\n\n¿La revisamos juntos y decidimos si la usamos para propuesta, QR, web o seguimiento comercial?`;
+  if(vp.status==='publicado') return `Hola ${nombre}, soy Juanma de Immersphere Pro.\n\nEl activo visual de ${l.empresa} ya está publicado.${vp.outputUrl?'\n\nEnlace: '+vp.outputUrl:''}\n\nEl siguiente paso sería activarlo comercialmente: compartirlo por WhatsApp, usar QR, incluirlo en web y hacer seguimiento de los contactos.`;
+  if(vp.status==='qa_pendiente') return `Hola ${nombre}, soy Juanma de Immersphere Pro.\n\nAntes de enviar el activo visual quiero cerrar la revisión: móvil, carga, claridad de navegación, CTA y aprobación. Así evitamos enseñar algo que todavía necesita ajustes.\n\nTe aviso cuando esté listo para revisión final.`;
+  if(vp.status==='bloqueado'||vp.riskLevel==='bloqueado') return `Hola ${nombre}, soy Juanma de Immersphere Pro.\n\nEl activo visual está bloqueado y necesito una decisión concreta para avanzar: material pendiente, acceso, alcance o aprobación.\n\nSi lo prefieres, puedo proponerte una alternativa más simple para desbloquearlo esta semana.`;
+  return `Hola ${nombre}, soy Juanma de Immersphere Pro.\n\nEl activo visual de ${l.empresa} está en estado: ${_visualPipelineStatusLabel(vp.status)}. Siguiente paso recomendado: ${vp.nextAction||_visualPipelineSuggestNextAction(vp)}.\n\n¿Avanzamos con ese paso?`;
+}
+
+function emailVisualAgente(l){
+  const vp=ensureVisualPipeline(l);
+  const empresa=l.empresa||'tu empresa';
+  const asunto=_visualPipelineActivo(vp)?'Siguiente paso visual para '+empresa:'Oportunidad visual para '+empresa;
+  return{asunto,cuerpo:mensajeVisualWhatsAppAgente(l).replace(/^Hola [^,]+, soy Juanma de Immersphere Pro\.\n\n/,'Hola,\n\n')+'\n\nSaludos,\nJuanma\nImmersphere Pro'};
+}
+
 function motivoSeleccionAgente(l,puntos){
   const motivos=[];
   if(l.prioridad==='A') motivos.push('prioridad A');
@@ -2587,6 +2710,8 @@ function motivoSeleccionAgente(l,puntos){
   if(_agProxFecha(l)&&(isVencida(_agProxFecha(l))||isHoy(_agProxFecha(l)))) motivos.push('acción vencida/hoy');
   if(_agHasContact(l)) motivos.push('contacto localizado');
   if(_agHasValue(l.dolor)||_agHasValue(l.gancho)) motivos.push('dolor o gancho claro');
+  const vis=scoreVisualPipelineAgente(l);
+  if(vis>0) motivos.push('pipeline visual '+vis+' pts');
   return _agTrim((motivos.length?motivos.join(', '):'revisión comercial')+' · '+puntos+' pts',140);
 }
 
@@ -2608,6 +2733,7 @@ function scoreAgenteLead(l){
   if(_agHasValue(l.dolor)||_agHasValue(l.gancho)) puntos+=15;
   if(_agHasValue(l.pack)||_agHasValue(l._packRec)) puntos+=10;
   if(['inmobiliaria','promotora','arquitectura','reformas','interiorismo'].some(s=>_agSectorTexto(l).includes(s))) puntos+=10;
+  puntos+=scoreVisualPipelineAgente(l);
   if(l.estado==='No interesa') puntos-=100;
   if(!_agHasValue(l.empresa)) puntos-=100;
   const vacios=['empresa','sector','zona','telefono','whatsapp','email','web'].filter(k=>!_agHasValue(l[k])).length;
@@ -2655,6 +2781,69 @@ function _agenteRows(){
   }).sort((a,b)=>(b.agenteScore-a.agenteScore)||((Number(b.lead.score)||0)-(Number(a.lead.score)||0))||((Number(a.lead.id)||0)-(Number(b.lead.id)||0))).slice(0,10);
 }
 
+function _agenteVisualRows(){
+  return leads.map(l=>{
+    const vp=ensureVisualPipeline(l);
+    const score=scoreVisualPipelineAgente(l);
+    return{
+      lead:l,
+      vp,
+      visualScore:score,
+      motivo:motivoVisualAgente(l),
+      objetivo:objetivoVisualAgente(l),
+      mensaje:mensajeVisualWhatsAppAgente(l),
+      email:emailVisualAgente(l)
+    };
+  }).filter(r=>r.visualScore>0&&_visualPipelineActivo(r.vp))
+    .sort((a,b)=>(b.visualScore-a.visualScore)||((Number(b.lead.score)||0)-(Number(a.lead.score)||0))||((Number(a.lead.id)||0)-(Number(b.lead.id)||0)))
+    .slice(0,10);
+}
+
+function renderRadarVisualAgente(){
+  const set=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent=v;};
+  const visual=leads.map(l=>({l,vp:ensureVisualPipeline(l)}));
+  const activos=visual.filter(x=>_visualPipelineActivo(x.vp));
+  set('ag-vis-activo',activos.length||'—');
+  set('ag-vis-material',activos.filter(x=>x.vp.status==='material_pendiente'||x.vp.materialStatus==='pendiente').length||'—');
+  set('ag-vis-demo',activos.filter(x=>x.vp.status==='demo_lista').length||'—');
+  set('ag-vis-publicado',activos.filter(x=>x.vp.status==='publicado'||x.vp.status==='conectado_crm').length||'—');
+  set('ag-vis-qa',activos.filter(x=>x.vp.status==='qa_pendiente'||x.vp.qaStatus==='pendiente').length||'—');
+  set('ag-vis-bloqueado',activos.filter(x=>x.vp.status==='bloqueado'||x.vp.riskLevel==='bloqueado').length||'—');
+  set('ag-vis-output',activos.filter(x=>!!x.vp.outputUrl).length||'—');
+  set('ag-vis-aprobacion',activos.filter(x=>x.vp.clientApproval==='pendiente'||x.vp.clientApproval==='cambios_solicitados').length||'—');
+}
+
+function renderPrioridadVisualAgente(rows){
+  const el=document.getElementById('agente-visual-table');
+  if(!el) return;
+  const data=rows||_agenteVisualRows();
+  if(!data.length){el.innerHTML='<div class="empty">No hay Pipeline Visual activo todavía. Crea uno desde una ficha o guarda un presupuesto con pack inmersivo.</div>';return;}
+  el.innerHTML=`<table style="width:100%;border-collapse:collapse;min-width:1180px;font-size:12px">
+    <thead><tr>
+      ${['Empresa','Estado visual','Tipo activo','Riesgo','Próxima acción visual','Objetivo recomendado','Mensaje sugerido','Acción'].map(h=>'<th style="text-align:left;color:var(--text3);font-size:10px;text-transform:uppercase;letter-spacing:.04em;padding:9px 8px;border-bottom:1px solid var(--border)">'+h+'</th>').join('')}
+    </tr></thead>
+    <tbody>${data.map(r=>{
+      const l=r.lead,vp=r.vp;
+      return `<tr style="border-bottom:1px solid var(--border)">
+        <td style="padding:10px 8px;color:var(--accent2);font-weight:700;cursor:pointer" onclick="openModal(${l.id})">${safeHtml(l.empresa||'—')}</td>
+        <td style="padding:10px 8px">${visualPipelineBadgeAgente(l)}<div style="font-size:10px;color:var(--text3);margin-top:3px">${r.visualScore} pts</div></td>
+        <td style="padding:10px 8px;color:var(--text2)">${safeHtml(_visualAssetTypeLabel(vp.assetType))}</td>
+        <td style="padding:10px 8px;color:var(--text2)">${safeHtml(_visualValueLabel(vp.riskLevel,'risk'))}</td>
+        <td style="padding:10px 8px;color:var(--text2);line-height:1.5">${safeHtml(vp.nextAction||_visualPipelineSuggestNextAction(vp))}</td>
+        <td style="padding:10px 8px;color:var(--text2);line-height:1.5">${safeHtml(r.objetivo)}</td>
+        <td style="padding:10px 8px;color:var(--text2);line-height:1.5;max-width:320px">${safeHtml(_agTrim(r.mensaje,260))}</td>
+        <td style="padding:10px 8px;min-width:190px">
+          <div style="display:flex;gap:5px;flex-wrap:wrap">
+            <button class="quote-hub-btn" onclick="copiarMensajeVisualAgente(${l.id})">Copiar mensaje visual</button>
+            <button class="quote-hub-btn" onclick="openModal(${l.id})">Abrir lead</button>
+            ${vp.outputUrl?`<a class="quote-hub-btn" href="${safeHtml(vp.outputUrl)}" target="_blank">Abrir output</a>`:''}
+          </div>
+        </td>
+      </tr>`;
+    }).join('')}</tbody>
+  </table>`;
+}
+
 function renderAgenteResumen(){
   const set=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent=v;};
   set('ag-kpi-total',leads.length||'—');
@@ -2662,17 +2851,19 @@ function renderAgenteResumen(){
   set('ag-kpi-sin',leads.filter(l=>!l.estado||l.estado==='Sin contactar').length||'—');
   set('ag-kpi-prop',leads.filter(l=>l.estado==='Propuesta').length||'—');
   set('ag-kpi-pend',leads.filter(l=>_agProxAccion(l)||(_agProxFecha(l)&&(isVencida(_agProxFecha(l))||isHoy(_agProxFecha(l))))).length||'—');
+  renderRadarVisualAgente();
 }
 
 function generarTop10AgenteIA(){
   renderAgenteResumen();
   agenteTop10Actual=_agenteRows();
+  renderPrioridadVisualAgente(_agenteVisualRows());
   const el=document.getElementById('agente-top10-table');
   if(!el) return agenteTop10Actual;
   if(!agenteTop10Actual.length){el.innerHTML='<div class="empty">No hay leads suficientes para generar recomendaciones.</div>';return agenteTop10Actual;}
-  el.innerHTML=`<table style="width:100%;border-collapse:collapse;min-width:1180px;font-size:12px">
+  el.innerHTML=`<table style="width:100%;border-collapse:collapse;min-width:1380px;font-size:12px">
     <thead><tr>
-      ${['Empresa','Sector','Zona','Estado','Score','Prioridad','Motivo de selección','Canal recomendado','Objetivo del contacto','Próxima acción','Valor potencial sugerido','Probabilidad sugerida'].map(h=>'<th style="text-align:left;color:var(--text3);font-size:10px;text-transform:uppercase;letter-spacing:.04em;padding:9px 8px;border-bottom:1px solid var(--border)">'+h+'</th>').join('')}
+      ${['Empresa','Sector','Zona','Estado','Score','Prioridad','Pipeline Visual','Motivo de selección','Canal recomendado','Objetivo del contacto','Próxima acción','Valor potencial sugerido','Probabilidad sugerida'].map(h=>'<th style="text-align:left;color:var(--text3);font-size:10px;text-transform:uppercase;letter-spacing:.04em;padding:9px 8px;border-bottom:1px solid var(--border)">'+h+'</th>').join('')}
     </tr></thead>
     <tbody>${agenteTop10Actual.map(r=>{
       const l=r.lead;
@@ -2683,6 +2874,7 @@ function generarTop10AgenteIA(){
         <td style="padding:10px 8px">${estadoTag(l.estado||'Sin contactar')}</td>
         <td style="padding:10px 8px;color:var(--accent2);font-weight:800">${safeHtml(String(l.score||0))}</td>
         <td style="padding:10px 8px">${priTag(l.prioridad||'C')}</td>
+        <td style="padding:10px 8px;color:var(--text2);line-height:1.5;min-width:190px">${visualPipelineBadgeAgente(l)}<div style="margin-top:4px;font-size:11px;color:var(--text3)">${safeHtml(visualPipelineResumenAgente(l))}</div></td>
         <td style="padding:10px 8px;color:var(--text2);line-height:1.5">${safeHtml(r.motivo)}</td>
         <td style="padding:10px 8px;color:var(--text)">${safeHtml(r.canal)}</td>
         <td style="padding:10px 8px;color:var(--text2);line-height:1.5">${safeHtml(r.objetivo)}</td>
@@ -2715,6 +2907,28 @@ function copiarAgendaComercialAgente(){
   };
   if(navigator.clipboard&&navigator.clipboard.writeText) navigator.clipboard.writeText(txt).then(()=>_showToast('✓ Agenda comercial copiada.','var(--green)')).catch(fallback);
   else fallback();
+}
+
+function copiarMensajeVisualAgente(lid){
+  const l=leads.find(x=>x.id===lid);if(!l) return;
+  _copyVisualText(mensajeVisualWhatsAppAgente(l),'✓ Mensaje visual copiado.');
+}
+
+function copiarAgendaVisual(){
+  const rows=_agenteVisualRows();
+  renderRadarVisualAgente();
+  renderPrioridadVisualAgente(rows);
+  const fecha=new Date().toLocaleDateString('es-ES');
+  const txt='AGENDA VISUAL ASISTIDA · '+fecha+'\n\n'+(rows.length?rows.map((r,i)=>{
+    const l=r.lead,vp=r.vp;
+    return (i+1)+'. '+(l.empresa||'—')+' · '+_visualPipelineStatusLabel(vp.status)+' · '+_visualAssetTypeLabel(vp.assetType)+'\n'+
+      'Riesgo: '+_visualValueLabel(vp.riskLevel,'risk')+' · Score visual: '+r.visualScore+'\n'+
+      'Próxima acción: '+(vp.nextAction||_visualPipelineSuggestNextAction(vp))+'\n'+
+      'Objetivo: '+r.objetivo+'\n'+
+      (vp.outputUrl?'Output: '+vp.outputUrl+'\n':'')+
+      'Mensaje sugerido:\n'+r.mensaje;
+  }).join('\n\n---\n\n'):'No hay leads con Pipeline Visual activo todavía.');
+  _copyVisualText(txt,'✓ Agenda visual copiada.');
 }
 
 // ── Render: Pipeline ──────────────────────────────────────────────────────────
