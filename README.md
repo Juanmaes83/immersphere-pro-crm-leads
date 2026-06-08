@@ -47,6 +47,34 @@ App CRM standalone para captación, seguimiento y cierre comercial de leads de *
 - Export CSV
 - Reset demo con doble confirmación
 - Botones WhatsApp, email, llamada, web y Maps
+- Flujo Room Designer / Decor Asset Lab para importar propuestas visuales como leads comerciales
+
+---
+
+## Fase 5B.1 — Propuestas visuales desde Room Designer
+
+El CRM queda preparado para recibir oportunidades comerciales generadas desde **Room Designer / Decor Asset Lab**.
+
+Flujo:
+
+1. Abrir Room Designer desde el CRM.
+2. Crear o revisar una propuesta visual.
+3. Exportar proposal JSON desde Room Designer.
+4. Pegar el JSON en la vista **Propuestas visuales**.
+5. Crear un lead local con estado **Propuesta visual solicitada**.
+
+El lead importado conserva proyecto, cliente, email, telefono, estancia, plantilla, estilo, productos, presupuesto estimado si existe y productos pendientes de valoracion. Se guarda en `localStorage` como lead personalizado y puede gestionarse con el pipeline, ficha de lead, WhatsApp/email y acciones comerciales existentes.
+
+Limitaciones:
+
+- No hay backend.
+- No hay API.
+- No se envian emails ni WhatsApp automaticamente.
+- La importacion es manual mediante JSON pegado.
+- La sincronizacion entre dispositivos queda pendiente para una futura migracion al SaaS principal.
+
+URL Room Designer:
+`https://immersphere-asset-lab.vercel.app/scenes/room-designer/index.html?source=crm`
 
 ---
 

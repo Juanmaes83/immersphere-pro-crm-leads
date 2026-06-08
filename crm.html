@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -92,6 +92,8 @@ nav{background:var(--bg2);border-bottom:1px solid var(--border);padding:0 20px;d
 .est-sin{background:rgba(100,116,139,.1);color:var(--text3);border:1px solid rgba(100,116,139,.2)}
 .est-contactado{background:rgba(59,130,246,.1);color:var(--blue);border:1px solid rgba(59,130,246,.3)}
 .est-propuesta{background:rgba(245,158,11,.1);color:var(--gold);border:1px solid rgba(245,158,11,.3)}
+.est-visual{background:rgba(124,58,237,.12);color:var(--accent2);border:1px solid rgba(124,58,237,.35)}
+.est-demo{background:rgba(59,130,246,.12);color:var(--blue);border:1px solid rgba(59,130,246,.35)}
 .est-cerrado{background:rgba(16,185,129,.1);color:var(--green);border:1px solid rgba(16,185,129,.3)}
 .est-no{background:rgba(239,68,68,.1);color:var(--red);border:1px solid rgba(239,68,68,.3)}
 .card-dolor{font-size:12px;color:var(--text2);line-height:1.5;margin-bottom:8px}
@@ -136,6 +138,10 @@ nav{background:var(--bg2);border-bottom:1px solid var(--border);padding:0 20px;d
 .sbtn-contactado.active{background:rgba(59,130,246,.2)}
 .sbtn-propuesta{border-color:var(--gold);color:var(--gold)}
 .sbtn-propuesta.active{background:rgba(245,158,11,.2)}
+.sbtn-visual{border-color:var(--accent2);color:var(--accent2)}
+.sbtn-visual.active{background:rgba(124,58,237,.2)}
+.sbtn-demo{border-color:var(--blue);color:var(--blue)}
+.sbtn-demo.active{background:rgba(59,130,246,.2)}
 .sbtn-cerrado{border-color:var(--green);color:var(--green)}
 .sbtn-cerrado.active{background:rgba(16,185,129,.2)}
 .sbtn-no{border-color:var(--red);color:var(--red)}
@@ -163,12 +169,14 @@ nav{background:var(--bg2);border-bottom:1px solid var(--border);padding:0 20px;d
 .accion-pill{background:rgba(16,185,129,.1);border:1px solid rgba(16,185,129,.2);color:var(--green);padding:3px 9px;border-radius:6px;font-size:10px;font-weight:700;margin-top:6px;display:inline-block}
 
 /* PIPELINE */
-.pipeline-cols{display:grid;grid-template-columns:repeat(5,1fr);gap:10px}
+.pipeline-cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px}
 .pipeline-col{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden}
 .pipeline-col-head{padding:10px 14px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center}
 .phd-sin{color:var(--text3)}
 .phd-contactado{color:var(--blue)}
 .phd-propuesta{color:var(--gold)}
+.phd-visual{color:var(--accent2)}
+.phd-demo{color:var(--blue)}
 .phd-cerrado{color:var(--green)}
 .phd-no{color:var(--red)}
 .pipeline-items{padding:10px;display:flex;flex-direction:column;gap:7px;min-height:60px}
@@ -227,6 +235,24 @@ nav{background:var(--bg2);border-bottom:1px solid var(--border);padding:0 20px;d
 .btn-tel{background:rgba(16,185,129,.15);color:var(--green);border:1px solid rgba(16,185,129,.3) !important}
 .btn-maps{background:rgba(245,158,11,.15);color:var(--gold);border:1px solid rgba(245,158,11,.3) !important}
 .btn-web{background:rgba(124,58,237,.15);color:var(--accent2);border:1px solid rgba(124,58,237,.3) !important}
+
+/* ROOM DESIGNER PROPOSALS */
+.visual-proposals-grid{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(320px,.85fr);gap:16px;align-items:start}
+.visual-panel{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:16px}
+.visual-panel h3{font-size:15px;margin-bottom:6px}
+.visual-panel p{font-size:12px;color:var(--text2);line-height:1.6}
+.visual-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
+.visual-textarea{width:100%;min-height:260px;background:var(--bg);border:1px solid var(--border);border-radius:10px;color:var(--text);padding:12px;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:12px;line-height:1.5;resize:vertical;outline:none}
+.visual-textarea:focus{border-color:var(--accent)}
+.visual-message{margin-top:10px;font-size:12px;line-height:1.5}
+.visual-message.ok{color:var(--green)}
+.visual-message.err{color:var(--red)}
+.visual-lead-list{display:flex;flex-direction:column;gap:10px;margin-top:12px}
+.visual-lead-card{background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:12px}
+.visual-lead-card h4{font-size:14px;margin-bottom:4px}
+.visual-lead-card p{font-size:12px;color:var(--text2);line-height:1.5;margin-bottom:8px}
+.visual-card-actions{display:flex;gap:6px;flex-wrap:wrap}
+@media(max-width:900px){.visual-proposals-grid{grid-template-columns:1fr}}
 
 /* HOY SECTION */
 .hoy-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px;margin-bottom:20px}
@@ -722,6 +748,7 @@ nav{background:var(--bg2);border-bottom:1px solid var(--border);padding:0 20px;d
     <button class="nav-tab" data-view="top10">🔥 Top 10</button>
     <button class="nav-tab" data-view="agente">🤖 Agente IA</button>
     <button class="nav-tab" data-view="pipeline">🔄 Pipeline</button>
+    <button class="nav-tab" data-view="visual-proposals">🏠 Propuestas visuales</button>
     <button class="nav-tab" data-view="templates">📋 Plantillas</button>
     <button class="nav-tab" data-view="catalogo">💼 Catálogo</button>
     <button class="nav-tab" data-view="integraciones">🔗 Integraciones</button>
@@ -846,6 +873,7 @@ nav{background:var(--bg2);border-bottom:1px solid var(--border);padding:0 20px;d
     <button class="quick-btn" data-rapido="vencida">🔴 Vencidas</button>
     <button class="quick-btn" data-rapido="caliente">🔥 Calientes</button>
     <button class="quick-btn" data-rapido="propuesta">📄 Propuesta</button>
+    <button class="quick-btn" data-rapido="room-designer">Room Designer</button>
     <button class="quick-btn" data-rapido="sin-prox">⚪ Sin próxima acción</button>
   </div>
   <div class="filters">
@@ -871,7 +899,9 @@ nav{background:var(--bg2);border-bottom:1px solid var(--border);padding:0 20px;d
       <button class="filter-btn active" data-filter="estado" data-val="all">Todos</button>
       <button class="filter-btn" data-filter="estado" data-val="Sin contactar">Sin contactar</button>
       <button class="filter-btn" data-filter="estado" data-val="Contactado">Contactado</button>
+      <button class="filter-btn" data-filter="estado" data-val="Propuesta visual solicitada">Visual solicitada</button>
       <button class="filter-btn" data-filter="estado" data-val="Propuesta">Propuesta</button>
+      <button class="filter-btn" data-filter="estado" data-val="Demo agendada">Demo agendada</button>
       <button class="filter-btn" data-filter="estado" data-val="Cerrado">Cerrado</button>
       <button class="filter-btn" data-filter="estado" data-val="No interesa">No interesa</button>
     </div>
@@ -958,9 +988,50 @@ nav{background:var(--bg2);border-bottom:1px solid var(--border);padding:0 20px;d
   <div class="pipeline-cols">
     <div class="pipeline-col"><div class="pipeline-col-head phd-sin"><span>Sin contactar</span><span class="pipeline-count" id="pc-sin">0</span></div><div class="pipeline-items" id="pi-sin"></div></div>
     <div class="pipeline-col"><div class="pipeline-col-head phd-contactado"><span>Contactado</span><span class="pipeline-count" id="pc-contactado">0</span></div><div class="pipeline-items" id="pi-contactado"></div></div>
+    <div class="pipeline-col"><div class="pipeline-col-head phd-visual"><span>Visual solicitada</span><span class="pipeline-count" id="pc-visual">0</span></div><div class="pipeline-items" id="pi-visual"></div></div>
     <div class="pipeline-col"><div class="pipeline-col-head phd-propuesta"><span>Propuesta</span><span class="pipeline-count" id="pc-propuesta">0</span></div><div class="pipeline-items" id="pi-propuesta"></div></div>
+    <div class="pipeline-col"><div class="pipeline-col-head phd-demo"><span>Demo agendada</span><span class="pipeline-count" id="pc-demo">0</span></div><div class="pipeline-items" id="pi-demo"></div></div>
     <div class="pipeline-col"><div class="pipeline-col-head phd-cerrado"><span>Cerrado ✓</span><span class="pipeline-count" id="pc-cerrado">0</span></div><div class="pipeline-items" id="pi-cerrado"></div></div>
     <div class="pipeline-col"><div class="pipeline-col-head phd-no"><span>No interesa</span><span class="pipeline-count" id="pc-no">0</span></div><div class="pipeline-items" id="pi-no"></div></div>
+  </div>
+</div>
+
+<!-- VISUAL PROPOSALS -->
+<div class="view" id="view-visual-proposals">
+  <div class="section-header">
+    <div>
+      <h2>Propuestas visuales</h2>
+      <span style="font-size:12px;color:var(--text3)">Leads generados desde Room Designer / Decor Asset Lab para convertir disenos de estancia en oportunidades comerciales.</span>
+    </div>
+    <a class="nuevo-lead-btn" href="https://immersphere-asset-lab.vercel.app/scenes/room-designer/index.html?source=crm" target="_blank" rel="noopener noreferrer">Abrir Room Designer</a>
+  </div>
+  <div class="kpi-grid" style="grid-template-columns:repeat(auto-fit,minmax(160px,1fr));margin-bottom:18px">
+    <div class="kpi purple"><div class="kpi-label">Propuestas solicitadas</div><div class="kpi-value" id="vp-kpi-solicitadas">0</div><div class="kpi-sub">Desde Room Designer</div></div>
+    <div class="kpi gold"><div class="kpi-label">Propuestas enviadas</div><div class="kpi-value" id="vp-kpi-enviadas">0</div><div class="kpi-sub">Estado Propuesta</div></div>
+    <div class="kpi red"><div class="kpi-label">Pendientes de valoracion</div><div class="kpi-value" id="vp-kpi-pendientes">0</div><div class="kpi-sub">Productos sin precio</div></div>
+    <div class="kpi blue"><div class="kpi-label">Demos privadas</div><div class="kpi-value" id="vp-kpi-demos">0</div><div class="kpi-sub">Seguimiento agendado</div></div>
+  </div>
+  <div class="visual-proposals-grid">
+    <section class="visual-panel">
+      <h3>Importar propuesta JSON</h3>
+      <p>Pega aqui el JSON exportado desde Room Designer. El CRM creara un lead comercial local con estado "Propuesta visual solicitada".</p>
+      <textarea id="visualProposalJson" class="visual-textarea" placeholder='{"projectName":"Dormitorio premium Alicante","products":[...]}'></textarea>
+      <div class="visual-actions">
+        <button class="nuevo-lead-btn" onclick="createRoomDesignerLeadFromJson()">Crear lead desde JSON</button>
+        <button class="nav-action-btn" onclick="clearVisualProposalImport()">Limpiar</button>
+      </div>
+      <div id="visualProposalMessage" class="visual-message" aria-live="polite"></div>
+    </section>
+    <section class="visual-panel">
+      <h3>Flujo comercial</h3>
+      <p><strong>Room Designer</strong> -> propuesta visual -> lead comercial -> seguimiento en CRM.</p>
+      <div class="visual-actions">
+        <a class="contact-btn btn-web" href="https://immersphere-asset-lab.vercel.app/scenes/room-designer/index.html?source=crm" target="_blank" rel="noopener noreferrer">Abrir Room Designer</a>
+        <button class="contact-btn btn-email" onclick="focusVisualProposalImport()">Importar propuesta JSON</button>
+        <button class="contact-btn btn-wa" onclick="createEmptyRoomDesignerLead()">Crear lead Room Designer</button>
+      </div>
+      <div id="visualLeadList" class="visual-lead-list"></div>
+    </section>
   </div>
 </div>
 
@@ -1908,6 +1979,7 @@ function calcTemp(l){
   if(l._temp) return l._temp;
   if(l.estado==='Cerrado') return 'cliente';
   if(l.estado==='No interesa') return 'perdido';
+  if(l.estado==='Propuesta visual solicitada'||l.estado==='Demo agendada') return 'muy-caliente';
   if(l.estado==='Propuesta') return 'muy-caliente';
   if(l.estado==='Contactado') return 'caliente';
   let s=0;
@@ -1943,6 +2015,8 @@ function getNBA(l){
   const e=l.estado||'Sin contactar';
   if(e==='Cerrado') return '🎉 Cliente activo. Planifica onboarding, entrega y primer upsell.';
   if(e==='No interesa') return '💤 Pasar a nurturing mensual. Contactar en 60 días con nueva promo.';
+  if(e==='Propuesta visual solicitada') return 'Contactar y agendar demo privada para revisar estancia, productos y presupuesto estimado.';
+  if(e==='Demo agendada') return 'Preparar demo privada y convertir la propuesta visual en propuesta comercial enviada.';
   if(e==='Propuesta') return '⚡ Propuesta enviada. Llamar en 48h para resolver objeciones y cerrar con fecha límite.';
   if(e==='Contactado'){
     if(l._proxFecha&&!isVencida(l._proxFecha)) return '📅 Próxima acción programada: '+l._proxAccion+'. Ejecutar en fecha.';
@@ -1971,12 +2045,12 @@ function isHoy(f){
 }
 function scoreClass(s){return s>=85?'score-high':s>=70?'score-mid':'score-low';}
 function estadoTag(e){
-  const m={'Sin contactar':'est-sin','Contactado':'est-contactado','Propuesta':'est-propuesta','Cerrado':'est-cerrado','No interesa':'est-no'};
+  const m={'Sin contactar':'est-sin','Contactado':'est-contactado','Propuesta visual solicitada':'est-visual','Propuesta':'est-propuesta','Demo agendada':'est-demo','Cerrado':'est-cerrado','No interesa':'est-no'};
   return '<span class="tag tag-estado '+(m[e]||'est-sin')+'">'+(e||'Sin contactar')+'</span>';
 }
 function priTag(p){return '<span class="tag tag-pri-'+p+'">'+(p==='A'?'🔥':p==='B'?'⚡':'·')+' Pri '+p+'</span>';}
 function statusBtnClass(s){
-  const m={'Sin contactar':'sbtn-sin','Contactado':'sbtn-contactado','Propuesta':'sbtn-propuesta','Cerrado':'sbtn-cerrado','No interesa':'sbtn-no'};
+  const m={'Sin contactar':'sbtn-sin','Contactado':'sbtn-contactado','Propuesta visual solicitada':'sbtn-visual','Propuesta':'sbtn-propuesta','Demo agendada':'sbtn-demo','Cerrado':'sbtn-cerrado','No interesa':'sbtn-no'};
   return m[s]||'sbtn-sin';
 }
 function safeHtml(s){return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
@@ -2487,9 +2561,10 @@ function getFiltered(){
     if(filters.rapido==='sin-prox'&&(l._proxAccion||l._proxFecha)) return false;
     if(filters.rapido==='caliente'&&!['caliente','muy-caliente'].includes(calcTemp(l))) return false;
     if(filters.rapido==='propuesta'&&l.estado!=='Propuesta') return false;
+    if(filters.rapido==='room-designer'&&l.source!=='room-designer'&&l.origen!=='Room Designer / Decor Asset Lab') return false;
     if(filters.search){
       const q=filters.search.toLowerCase();
-      if(!l.empresa.toLowerCase().includes(q)&&!l.sector.toLowerCase().includes(q)&&!l.zona.toLowerCase().includes(q)&&!(l.responsable||'').toLowerCase().includes(q)&&!(l.email||'').toLowerCase().includes(q)) return false;
+      if(!l.empresa.toLowerCase().includes(q)&&!l.sector.toLowerCase().includes(q)&&!l.zona.toLowerCase().includes(q)&&!(l.responsable||'').toLowerCase().includes(q)&&!(l.email||'').toLowerCase().includes(q)&&!(l.projectName||'').toLowerCase().includes(q)&&!(l.serviceType||'').toLowerCase().includes(q)) return false;
     }
     return true;
   });
@@ -2506,7 +2581,7 @@ function renderLeads(){
         <div><div class="card-empresa">${l.empresa}</div><div class="card-sector">${l.sector} · ${l.zona}</div></div>
         <div class="score-circle ${scoreClass(l.score)}">${l.score}</div>
       </div>
-      <div class="card-tags">${priTag(l.prioridad)}${estadoTag(l.estado)}${tempBadge(l)}</div>
+      <div class="card-tags">${priTag(l.prioridad)}${estadoTag(l.estado)}${tempBadge(l)}${l.source==='room-designer'?'<span class="tag est-visual">Room Designer</span>':''}</div>
       <div class="card-dolor">${l.dolor}</div>
       ${(l._proxAccion||l._proxFecha)?'<div class="card-prox"><span>📅</span><span class="prox-text">'+(l._proxAccion||'Próxima acción')+(l._proxFecha?' · <strong>'+formatFecha(l._proxFecha)+'</strong>':'')+'</span>'+(isVencida(l._proxFecha)?'<span class="prox-vencida">VENCIDA</span>':'')+'</div>':''}
       <div class="card-foot"><span>💰 ${l.precio}</span><span style="margin-left:auto">📦 ${l.pack}</span><button class="card-dup-btn" onclick="event.stopPropagation();duplicarLead(${l.id})" title="Duplicar lead">⧉</button></div>
@@ -2933,7 +3008,7 @@ function copiarAgendaVisual(){
 
 // ── Render: Pipeline ──────────────────────────────────────────────────────────
 function renderPipeline(){
-  const cols={'Sin contactar':{id:'sin',ls:[]},'Contactado':{id:'contactado',ls:[]},'Propuesta':{id:'propuesta',ls:[]},'Cerrado':{id:'cerrado',ls:[]},'No interesa':{id:'no',ls:[]}};
+  const cols={'Sin contactar':{id:'sin',ls:[]},'Contactado':{id:'contactado',ls:[]},'Propuesta visual solicitada':{id:'visual',ls:[]},'Propuesta':{id:'propuesta',ls:[]},'Demo agendada':{id:'demo',ls:[]},'Cerrado':{id:'cerrado',ls:[]},'No interesa':{id:'no',ls:[]}};
   leads.forEach(l=>{const e=l.estado||'Sin contactar';if(cols[e])cols[e].ls.push(l);else cols['Sin contactar'].ls.push(l);});
   Object.entries(cols).forEach(([,col])=>{
     document.getElementById('pc-'+col.id).textContent=col.ls.length;
@@ -3235,7 +3310,7 @@ function openModal(id){
     <div class="modal-section">
       <div class="modal-section-title">Estado Comercial</div>
       <div class="status-buttons" id="modal-status-btns">
-        ${['Sin contactar','Contactado','Propuesta','Cerrado','No interesa'].map(s=>'<button class="status-btn '+statusBtnClass(s)+' '+(l.estado===s?'active':'')+'" onclick="setEstado('+l.id+',(this.textContent.trim()))">'+s+'</button>').join('')}
+        ${['Sin contactar','Contactado','Propuesta visual solicitada','Propuesta','Demo agendada','Cerrado','No interesa'].map(s=>'<button class="status-btn '+statusBtnClass(s)+' '+(l.estado===s?'active':'')+'" onclick="setEstado('+l.id+',(this.textContent.trim()))">'+s+'</button>').join('')}
       </div>
       <div style="margin-top:10px;display:flex;gap:8px;align-items:center">
         <span style="font-size:11px;color:var(--text3)">Temperatura manual:</span>
@@ -3313,6 +3388,27 @@ function openModal(id){
         <strong style="color:var(--accent2)">Upsell:</strong> ${l.upsell||'—'}
       </div>
     </div>
+
+    ${l.source==='room-designer'?`
+    <!-- ROOM DESIGNER -->
+    <div class="modal-section">
+      <div class="modal-section-title">Propuesta visual Room Designer</div>
+      <div class="info-grid">
+        <div class="info-item"><label>Proyecto</label><span>${safeHtml(l.projectName||l.empresa)}</span></div>
+        <div class="info-item"><label>Estancia</label><span>${safeHtml(l.roomType||'—')}</span></div>
+        <div class="info-item"><label>Plantilla</label><span>${safeHtml(l.template||'—')}</span></div>
+        <div class="info-item"><label>Estilo</label><span>${safeHtml(l.stylePreset||'—')}</span></div>
+        <div class="info-item"><label>Productos</label><span>${l.productsCount||0}</span></div>
+        <div class="info-item"><label>Pendiente valoracion</label><span>${l.pendingValuationCount||0}</span></div>
+      </div>
+      <div class="contact-actions">
+        <a href="${ROOM_DESIGNER_URL}" target="_blank" rel="noopener noreferrer" class="contact-btn btn-web">Abrir Room Designer</a>
+        <button class="contact-btn btn-wa" onclick="copyRoomDesignerWhatsApp(${l.id})">Preparar WhatsApp</button>
+        <button class="contact-btn btn-email" onclick="copyRoomDesignerEmail(${l.id})">Preparar email</button>
+        <button class="contact-btn btn-maps" onclick="markRoomDesignerProposalSent(${l.id})">Marcar propuesta enviada</button>
+        <button class="contact-btn btn-tel" onclick="markRoomDesignerDemoScheduled(${l.id})">Marcar demo agendada</button>
+      </div>
+    </div>`:''}
 
     <!-- MENSAJES -->
     <div class="modal-section">
@@ -5762,7 +5858,207 @@ function _propBadge(estado){
   return`<span class="pst ${m[estado]||'pst-borrador'}">${estado||'borrador'}</span>`;
 }
 
-function renderAll(){renderDashboard();renderLeads();renderTop10();renderPipeline();renderJourney();renderCatalogo();renderIntegraciones();renderAgenteResumen();}
+const ROOM_DESIGNER_URL='https://immersphere-asset-lab.vercel.app/scenes/room-designer/index.html?source=crm';
+
+function getRoomDesignerLeads(){
+  return leads.filter(l=>l.source==='room-designer'||l.origen==='Room Designer / Decor Asset Lab'||l.serviceType==='Room Designer / Decor Asset Lab');
+}
+
+function renderVisualProposals(){
+  const list=getRoomDesignerLeads();
+  const setText=(id,val)=>{const el=document.getElementById(id);if(el)el.textContent=val;};
+  setText('vp-kpi-solicitadas',list.filter(l=>l.estado==='Propuesta visual solicitada').length);
+  setText('vp-kpi-enviadas',list.filter(l=>l.estado==='Propuesta').length);
+  setText('vp-kpi-pendientes',list.reduce((sum,l)=>sum+(l.pendingValuationCount||0),0));
+  setText('vp-kpi-demos',list.filter(l=>l.estado==='Demo agendada'||(l._proxAccion||'').toLowerCase().includes('demo')).length);
+  const target=document.getElementById('visualLeadList');
+  if(!target) return;
+  if(!list.length){
+    target.innerHTML='<div class="proposal-empty">Todavia no hay leads importados desde Room Designer.</div>';
+    return;
+  }
+  target.innerHTML=list.slice().sort((a,b)=>String(b.createdAt||'').localeCompare(String(a.createdAt||''))).map(l=>`
+    <article class="visual-lead-card">
+      <h4>${safeHtml(l.projectName||l.empresa)}</h4>
+      <p>${safeHtml(l.responsable||'Cliente pendiente')} · ${safeHtml(l.roomType||l.template||'Estancia sin definir')} · ${l.productsCount||0} producto(s)<br>
+      Estado: ${safeHtml(l.estado||'Propuesta visual solicitada')} · Pendiente valoracion: ${l.pendingValuationCount||0}</p>
+      <div class="visual-card-actions">
+        <button class="contact-btn btn-web" onclick="openModal(${l.id})">Abrir lead</button>
+        <button class="contact-btn btn-wa" onclick="copyRoomDesignerWhatsApp(${l.id})">WhatsApp</button>
+        <button class="contact-btn btn-email" onclick="copyRoomDesignerEmail(${l.id})">Email</button>
+        <button class="contact-btn btn-maps" onclick="markRoomDesignerProposalSent(${l.id})">Propuesta enviada</button>
+        <button class="contact-btn btn-tel" onclick="markRoomDesignerDemoScheduled(${l.id})">Demo agendada</button>
+      </div>
+    </article>
+  `).join('');
+}
+
+function focusVisualProposalImport(){
+  const area=document.getElementById('visualProposalJson');
+  if(area){area.focus();area.scrollIntoView({behavior:'smooth',block:'center'});}
+}
+
+function clearVisualProposalImport(){
+  const area=document.getElementById('visualProposalJson');
+  const msg=document.getElementById('visualProposalMessage');
+  if(area) area.value='';
+  if(msg){msg.textContent='';msg.className='visual-message';}
+}
+
+function showVisualProposalMessage(text,ok){
+  const msg=document.getElementById('visualProposalMessage');
+  if(!msg) return;
+  msg.textContent=text;
+  msg.className='visual-message '+(ok?'ok':'err');
+}
+
+function createRoomDesignerLeadFromJson(){
+  const area=document.getElementById('visualProposalJson');
+  const raw=(area?.value||'').trim();
+  if(!raw){showVisualProposalMessage('JSON vacio.',false);return;}
+  let data;
+  try{data=JSON.parse(raw);}catch(e){showVisualProposalMessage('JSON invalido.',false);return;}
+  const products=Array.isArray(data.products)?data.products:[];
+  if(!data.projectName||!products.length){
+    showVisualProposalMessage('Faltan datos minimos, revisa projectName o products.',false);
+    return;
+  }
+  const lead=createRoomDesignerLead(data);
+  leads.push(lead);
+  saveState();
+  renderAll();
+  showVisualProposalMessage('Propuesta importada correctamente. Lead creado: '+lead.empresa,true);
+  if(area) area.value='';
+}
+
+function createEmptyRoomDesignerLead(){
+  const now=new Date().toISOString();
+  const lead=createRoomDesignerLead({
+    source:'room-designer',
+    projectName:'Propuesta visual pendiente',
+    clientName:'Cliente pendiente',
+    products:[],
+    pendingValuationCount:0,
+    createdAt:now
+  },true);
+  leads.push(lead);
+  saveState();
+  renderAll();
+  _showToast('Lead Room Designer creado.','var(--green)');
+}
+
+function createRoomDesignerLead(data,allowEmptyProducts=false){
+  const now=new Date();
+  const products=Array.isArray(data.products)?data.products:[];
+  const clientName=data.clientName||data.client||data.customerName||'Cliente pendiente';
+  const projectName=data.projectName||'Propuesta visual Room Designer';
+  const pending=Number.isFinite(Number(data.pendingValuationCount))?Number(data.pendingValuationCount):products.filter(p=>!p.price&&!p.total).length;
+  const estimated=Number.isFinite(Number(data.estimatedBudget))?Number(data.estimatedBudget):null;
+  const roomType=data.roomType||data.room||data.template||'room-designer';
+  const createdAt=data.createdAt||now.toISOString();
+  const id=_nextCustomId--;
+  const waMsg='Hola, he visto tu propuesta visual de '+projectName+'. Podemos revisarla contigo y preparar una demo privada con opciones de estancia, productos y presupuesto estimado.';
+  const emailSubject='Propuesta visual Immersphere — '+projectName;
+  const emailBody='Hola '+clientName+',\n\nHemos recibido tu propuesta visual generada desde Room Designer. El siguiente paso es revisar la estancia, los productos seleccionados y preparar una demo privada con propuesta comercial.\n\nSaludos,\nImmersphere';
+  return {
+    id,
+    leadId:'rd-'+createdAt.replace(/[-:T.Z]/g,'').slice(0,14),
+    _custom:true,
+    source:'room-designer',
+    origen:'Room Designer / Decor Asset Lab',
+    serviceType:'Room Designer / Decor Asset Lab',
+    estado:'Propuesta visual solicitada',
+    prioridad:'A',
+    empresa:projectName,
+    responsable:clientName,
+    cargo:'Lead visual',
+    telefono:data.phone||'',
+    whatsapp:data.phone||'',
+    email:data.email||'',
+    web:ROOM_DESIGNER_URL,
+    sector:'Room Designer / Decor Asset Lab',
+    zona:data.roomType||data.template||'Propuesta visual',
+    direccion:'',
+    score:88,
+    scoreNecesidad:9,
+    scoreCapacidad:7,
+    scoreContacto:data.email||data.phone?8:5,
+    scoreInversion:estimated?8:6,
+    scoreUrgencia:8,
+    dolor:'Quiere convertir un diseno de estancia en una propuesta comercial accionable.',
+    motivo:'Lead generado desde proposal JSON de Room Designer / Decor Asset Lab.',
+    senales:products.length+' producto(s) seleccionados · '+pending+' pendiente(s) de valoracion',
+    canal:data.phone?'WhatsApp':'Email',
+    gancho:'Revisar la propuesta visual y agendar demo privada con opciones, productos y presupuesto estimado.',
+    pack:'Premium Property Experience',
+    precio:estimated?formatEuro(estimated):'Pendiente de valoracion',
+    servGancho:'Room Designer / Decor Asset Lab',
+    dificultad:'Media',
+    entrega:'Demo privada',
+    demo:'Room Designer',
+    upsell:'Produccion visual, staging, web/campana y seguimiento comercial.',
+    whatsapp1:waMsg,
+    emailAsunto:emailSubject,
+    emailCuerpo:emailBody,
+    projectName,
+    clientName,
+    roomType,
+    template:data.template||'',
+    stylePreset:data.stylePreset||'',
+    productsCount:products.length,
+    products,
+    estimatedBudget:estimated,
+    pendingValuationCount:pending,
+    nextAction:'Contactar y agendar demo privada',
+    notes:'Lead generado desde proposal JSON de Room Designer',
+    createdAt,
+    updatedAt:now.toISOString(),
+    _proxAccion:'Contactar y agendar demo privada',
+    _proxFecha:now.toISOString().split('T')[0],
+    _valorPotencial:estimated||0,
+    _probabilidad:65,
+    _actividad:[{tipo:'sistema',texto:'Lead generado desde propuesta visual Room Designer.',fecha:now.toLocaleDateString('es-ES')+' '+now.toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'})}],
+    _roomDesignerProposal:{...data,products:allowEmptyProducts?products:products}
+  };
+}
+
+function copyRoomDesignerWhatsApp(id){
+  const l=leads.find(x=>x.id===id);if(!l) return;
+  const txt=l.whatsapp1||('Hola, he visto tu propuesta visual de '+(l.projectName||l.empresa)+'. Podemos revisarla contigo y preparar una demo privada.');
+  navigator.clipboard.writeText(txt).catch(()=>{const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta);});
+  _showToast('WhatsApp Room Designer copiado.','var(--green)');
+}
+
+function copyRoomDesignerEmail(id){
+  const l=leads.find(x=>x.id===id);if(!l) return;
+  const txt='Asunto: '+(l.emailAsunto||('Propuesta visual Immersphere — '+(l.projectName||l.empresa)))+'\n\n'+(l.emailCuerpo||'Hemos recibido tu propuesta visual generada desde Room Designer.');
+  navigator.clipboard.writeText(txt).catch(()=>{const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta);});
+  _showToast('Email Room Designer copiado.','var(--blue)');
+}
+
+function markRoomDesignerProposalSent(id){
+  const l=leads.find(x=>x.id===id);if(!l) return;
+  l.estado='Propuesta';
+  l._fechaEstado=new Date().toISOString().split('T')[0];
+  l.updatedAt=new Date().toISOString();
+  if(!l._actividad) l._actividad=[];
+  l._actividad.push({tipo:'propuesta',texto:'Marcado como propuesta enviada desde flujo Room Designer.',fecha:new Date().toLocaleDateString('es-ES')});
+  saveState();renderAll();_showToast('Lead marcado como propuesta enviada.','var(--gold)');
+}
+
+function markRoomDesignerDemoScheduled(id){
+  const l=leads.find(x=>x.id===id);if(!l) return;
+  l.estado='Demo agendada';
+  l._fechaEstado=new Date().toISOString().split('T')[0];
+  l._proxAccion='Realizar demo privada Room Designer';
+  const d=new Date();d.setDate(d.getDate()+1);l._proxFecha=d.toISOString().split('T')[0];
+  l.updatedAt=new Date().toISOString();
+  if(!l._actividad) l._actividad=[];
+  l._actividad.push({tipo:'reunion',texto:'Demo privada Room Designer agendada.',fecha:new Date().toLocaleDateString('es-ES')});
+  saveState();renderAll();_showToast('Demo privada agendada.','var(--blue)');
+}
+
+function renderAll(){renderDashboard();renderLeads();renderTop10();renderPipeline();renderJourney();renderCatalogo();renderIntegraciones();renderAgenteResumen();renderVisualProposals();}
 
 // ── Events ────────────────────────────────────────────────────────────────────
 document.querySelectorAll('.nav-tab').forEach(tab=>{
@@ -5776,6 +6072,7 @@ document.querySelectorAll('.nav-tab').forEach(tab=>{
     if(tab.dataset.view==='catalogo') renderCatalogo();
     if(tab.dataset.view==='integraciones') renderIntegraciones();
     if(tab.dataset.view==='agente') renderAgenteResumen();
+    if(tab.dataset.view==='visual-proposals') renderVisualProposals();
   });
 });
 document.querySelectorAll('[data-filter]').forEach(btn=>{

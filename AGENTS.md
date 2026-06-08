@@ -23,6 +23,7 @@ El CRM incluye:
 - Integraciones
 - Presupuestos
 - Propuestas
+- Propuestas visuales desde Room Designer / Decor Asset Lab
 - Gestión administrativa
 - Seguimiento / fidelización
 - Import / Export JSON
@@ -96,6 +97,17 @@ El importador debe:
 - sobrevivir a recarga.
 
 No volver al patrón antiguo que solo recorría leads existentes.
+
+## Room Designer / Decor Asset Lab
+
+El flujo Room Designer es manual y sin backend:
+- abrir Room Designer desde el CRM;
+- exportar proposal JSON;
+- pegar JSON en la vista `Propuestas visuales`;
+- crear lead personalizado en `localStorage`;
+- gestionarlo con estado `Propuesta visual solicitada`.
+
+No automatizar envíos ni crear APIs en esta fase. Los leads visuales deben conservar compatibilidad con pipeline, ficha de lead, WhatsApp/email preparados y export/import general del CRM.
 
 ## Agente Comercial IA
 
