@@ -748,6 +748,8 @@ nav{background:var(--bg2);border-bottom:1px solid var(--border);padding:0 20px;d
     <button class="nav-tab" data-view="top10">🔥 Top 10</button>
     <button class="nav-tab" data-view="agente">🤖 Agente IA</button>
     <button class="nav-tab" data-view="pipeline">🔄 Pipeline</button>
+    <button class="nav-tab" data-view="buscador">🔎 Buscador</button>
+    <button class="nav-tab" data-view="importar">⬆ Importar</button>
     <button class="nav-tab" data-view="visual-proposals">🏠 Propuestas visuales</button>
     <button class="nav-tab" data-view="templates">📋 Plantillas</button>
     <button class="nav-tab" data-view="catalogo">💼 Catálogo</button>
@@ -838,6 +840,24 @@ nav{background:var(--bg2);border-bottom:1px solid var(--border);padding:0 20px;d
 
   <div id="dash-alertas" style="margin-bottom:20px"></div>
 
+  <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);margin-bottom:8px">New Business Engine</div>
+  <div class="kpi-grid" style="grid-template-columns:repeat(auto-fit,minmax(160px,1fr));margin-bottom:20px">
+    <div class="kpi teal"><div class="kpi-label">📥 Importados</div><div class="kpi-value" id="kpi-importados">—</div><div class="kpi-sub">Google Maps / CSV</div></div>
+    <div class="kpi green"><div class="kpi-label">Prioridad A</div><div class="kpi-value" id="kpi-pri-a">—</div><div class="kpi-sub">Ataque comercial</div></div>
+    <div class="kpi blue"><div class="kpi-label">Score medio</div><div class="kpi-value" id="kpi-score-medio">—</div><div class="kpi-sub">Calidad base</div></div>
+    <div class="kpi gold"><div class="kpi-label">Vertical líder</div><div class="kpi-value" id="kpi-vertical-top">—</div><div class="kpi-sub">Mayor volumen</div></div>
+  </div>
+
+  <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);margin-bottom:8px">Buscador de oportunidades</div>
+  <div class="kpi-grid" style="grid-template-columns:repeat(auto-fit,minmax(160px,1fr));margin-bottom:20px">
+    <div class="kpi blue"><div class="kpi-label">Pendientes</div><div class="kpi-value" id="kpi-search-pend">—</div><div class="kpi-sub">Queries por ejecutar</div></div>
+    <div class="kpi gold"><div class="kpi-label">Ejecutadas</div><div class="kpi-value" id="kpi-search-exec">—</div><div class="kpi-sub">Listas para importar</div></div>
+    <div class="kpi green"><div class="kpi-label">Importadas</div><div class="kpi-value" id="kpi-search-import">—</div><div class="kpi-sub">CSV ya cargados</div></div>
+    <div class="kpi teal"><div class="kpi-label">Leads por búsqueda</div><div class="kpi-value" id="kpi-search-leads">—</div><div class="kpi-sub">Con searchPlanId</div></div>
+    <div class="kpi green"><div class="kpi-label">Top lead nuevo</div><div class="kpi-value" id="kpi-search-top" style="font-size:18px">—</div><div class="kpi-sub">Importado mejor puntuado</div></div>
+    <div class="kpi teal"><div class="kpi-label">Próxima búsqueda</div><div class="kpi-value" id="kpi-search-next" style="font-size:18px">—</div><div class="kpi-sub">Recomendada</div></div>
+  </div>
+
   <div id="dash-hoy" style="margin-bottom:20px"></div>
 
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
@@ -874,6 +894,7 @@ nav{background:var(--bg2);border-bottom:1px solid var(--border);padding:0 20px;d
     <button class="quick-btn" data-rapido="caliente">🔥 Calientes</button>
     <button class="quick-btn" data-rapido="propuesta">📄 Propuesta</button>
     <button class="quick-btn" data-rapido="room-designer">Room Designer</button>
+    <button class="quick-btn" data-rapido="csv-import">CSV importados</button>
     <button class="quick-btn" data-rapido="sin-prox">⚪ Sin próxima acción</button>
   </div>
   <div class="filters">
@@ -906,9 +927,160 @@ nav{background:var(--bg2);border-bottom:1px solid var(--border);padding:0 20px;d
       <button class="filter-btn" data-filter="estado" data-val="No interesa">No interesa</button>
     </div>
     <div class="filter-sep"></div>
+    <select class="search-input" id="vertical-filter" style="max-width:190px">
+      <option value="all">Todos los verticales</option>
+    </select>
+    <div class="filter-sep"></div>
     <input class="search-input" id="search-input" type="text" placeholder="🔍 Buscar...">
   </div>
   <div class="leads-grid" id="leads-grid"></div>
+</div>
+
+<!-- BUSCADOR -->
+<div class="view" id="view-buscador">
+  <div class="section-header">
+    <div>
+      <h2>Buscador de oportunidades</h2>
+      <span style="font-size:12px;color:var(--text3)">Planificador interno de búsquedas B2B · sin scraping en vivo</span>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <button class="nuevo-lead-btn" onclick="saveSearchPlan()">Guardar búsqueda</button>
+      <button class="nav-action-btn" onclick="exportSearchPlansJSON()">Exportar búsquedas</button>
+      <button class="nav-action-btn" onclick="exportPendingSearchPlansJSON()">Exportar pendientes</button>
+      <button class="nav-action-btn" onclick="importSearchPlansJSON()">Restaurar búsquedas</button>
+    </div>
+  </div>
+
+  <div style="background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.25);border-radius:var(--radius);padding:14px;margin-bottom:16px">
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--gold);margin-bottom:6px">Uso responsable</div>
+    <p style="font-size:12px;color:var(--text2);line-height:1.7">Esta herramienta solo planifica búsquedas B2B internas. La búsqueda real se ejecuta localmente desde <strong>/tools/google-maps-scraper</strong>. No ejecuta scraping en vivo en la app pública, no contacta particulares y no automatiza mensajes. Revisa siempre RGPD/LSSI y condiciones de la fuente antes de usar los datos.</p>
+  </div>
+
+  <div style="display:grid;grid-template-columns:minmax(320px,.9fr) minmax(0,1.1fr);gap:16px">
+    <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:18px">
+      <input type="hidden" id="search-id">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div><label style="font-size:11px;color:var(--text3);font-weight:700">Vertical</label><select id="search-vertical" class="search-input" onchange="updateSearchQueryPreview()" style="width:100%;margin-top:5px"></select></div>
+        <div><label style="font-size:11px;color:var(--text3);font-weight:700">Prioridad</label><select id="search-priority" class="search-input" style="width:100%;margin-top:5px"><option>A</option><option selected>B</option><option>C</option></select></div>
+        <div><label style="font-size:11px;color:var(--text3);font-weight:700">Ciudad</label><input id="search-city" class="search-input" oninput="updateSearchQueryPreview()" placeholder="Torrevieja" style="width:100%;margin-top:5px"></div>
+        <div><label style="font-size:11px;color:var(--text3);font-weight:700">Provincia</label><input id="search-province" class="search-input" oninput="updateSearchQueryPreview()" placeholder="Alicante" style="width:100%;margin-top:5px"></div>
+        <div><label style="font-size:11px;color:var(--text3);font-weight:700">Zona o comarca</label><input id="search-area" class="search-input" oninput="updateSearchQueryPreview()" placeholder="Orihuela Costa" style="width:100%;margin-top:5px"></div>
+        <div><label style="font-size:11px;color:var(--text3);font-weight:700">Radio / ámbito</label><input id="search-radius" class="search-input" placeholder="Local / 15 km" style="width:100%;margin-top:5px"></div>
+        <div><label style="font-size:11px;color:var(--text3);font-weight:700">Límite resultados</label><input id="search-limit" class="search-input" type="number" min="1" max="30" value="10" style="width:100%;margin-top:5px"></div>
+        <div><label style="font-size:11px;color:var(--text3);font-weight:700">Fuente sugerida</label><select id="search-source" class="search-input" style="width:100%;margin-top:5px"><option value="google_maps_scraper">Google Maps Scraper</option><option value="manual_research">Investigación manual</option><option value="csv_import">CSV externo</option></select></div>
+      </div>
+      <label style="display:flex;gap:8px;align-items:center;margin-top:10px;font-size:12px;color:var(--text2)">
+        <input type="checkbox" id="search-expand-queries">
+        <span>Ampliar búsqueda con variantes</span>
+      </label>
+      <div style="margin-top:10px"><label style="font-size:11px;color:var(--text3);font-weight:700">Palabras clave</label><input id="search-keywords" class="search-input" oninput="updateSearchQueryPreview()" placeholder="premium, integrales, lujo..." style="width:100%;margin-top:5px"></div>
+      <div style="margin-top:10px"><label style="font-size:11px;color:var(--text3);font-weight:700">Query final editable</label><input id="search-query" class="search-input" oninput="this.dataset.auto='false';renderSearchOutput()" placeholder="inmobiliarias premium Torrevieja" style="width:100%;margin-top:5px"></div>
+      <div style="margin-top:10px"><label style="font-size:11px;color:var(--text3);font-weight:700">Notas</label><textarea id="search-notes" class="notas-area" style="min-height:80px;margin-top:5px" placeholder="Contexto comercial, barrios, exclusiones, objetivo..."></textarea></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
+        <button class="nuevo-lead-btn" onclick="saveSearchPlan()">Guardar búsqueda</button>
+        <button class="contact-btn btn-web" onclick="newSearchPlan()">Nueva</button>
+        <button class="contact-btn btn-email" onclick="copySearchInstruction()">Copiar instrucción</button>
+        <button class="contact-btn btn-wa" onclick="copySearchCommand()">Copiar comando</button>
+        <button class="contact-btn btn-tel" onclick="document.querySelector('[data-view=&quot;importar&quot;]').click()">Ir a Importar</button>
+      </div>
+      <div style="margin-top:14px;background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:12px">
+        <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap">
+          <div>
+            <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text3)">Local Scraper Bridge</div>
+            <div id="scraper-status" style="font-size:12px;color:var(--text2);margin-top:4px">Scraper local no comprobado</div>
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button class="contact-btn btn-web" onclick="checkLocalScraper()">Comprobar scraper</button>
+            <button class="nuevo-lead-btn" onclick="runLocalScraper(false)">Ejecutar búsqueda local</button>
+            <button class="contact-btn btn-email" onclick="runLocalScraper(true)">Dry-run local</button>
+          </div>
+        </div>
+        <div style="font-size:11px;color:var(--text3);margin-top:8px">Si no está activo, arranca: <code>python tools/google-maps-scraper/server.py</code></div>
+        <div style="font-size:11px;color:var(--gold);margin-top:8px">Esta búsqueda se ejecuta localmente en tu ordenador. Revisa los datos antes de contactar. Uso interno B2B. No contactar particulares. No automatizar mensajes.</div>
+      </div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:14px">
+      <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:18px">
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--accent2);margin-bottom:8px">Salida para scraper externo</div>
+        <div id="search-output" style="font-size:12px;color:var(--text2);line-height:1.8"></div>
+      </div>
+      <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:18px">
+        <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;margin-bottom:10px;flex-wrap:wrap">
+          <div style="font-size:13px;font-weight:700">Resultados locales</div>
+          <button class="nuevo-lead-btn" id="local-import-btn" onclick="importLocalScraperResults()" style="display:none">Importar resultados al CRM</button>
+        </div>
+        <div id="local-scraper-result" style="font-size:12px;color:var(--text2);line-height:1.7">
+          Ejecuta una búsqueda local para ver la previsualización aquí.
+        </div>
+      </div>
+      <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:18px">
+        <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;margin-bottom:12px">
+          <div style="font-size:13px;font-weight:700">Búsquedas guardadas</div>
+          <span id="search-count" style="font-size:11px;color:var(--text3)"></span>
+        </div>
+        <div id="search-list" style="display:flex;flex-direction:column;gap:10px"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- IMPORTAR -->
+<div class="view" id="view-importar">
+  <div class="section-header">
+    <div>
+      <h2>Immersphere New Business Engine</h2>
+      <span style="font-size:12px;color:var(--text3)">Importador CSV interno · B2B · scoring comercial</span>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <button class="nuevo-lead-btn" onclick="importarCsvLeads()">Importar CSV</button>
+      <button class="nav-action-btn" onclick="exportarCSV()">Exportar CSV limpio</button>
+      <button class="nav-action-btn" onclick="exportarJSON()">Backup JSON</button>
+      <button class="nav-action-btn" onclick="importarJSON()">Restaurar JSON</button>
+    </div>
+  </div>
+
+  <div style="display:grid;grid-template-columns:minmax(0,1.2fr) minmax(280px,.8fr);gap:16px">
+    <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:18px">
+      <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;margin-bottom:10px;flex-wrap:wrap">
+        <div>
+          <div style="font-size:13px;font-weight:700;color:var(--text)">Importar CSV de leads B2B</div>
+          <div style="font-size:11px;color:var(--text3);margin-top:3px">Pega CSV o carga un archivo exportado desde Google Maps Scraper u otra fuente.</div>
+        </div>
+        <input id="csv-file-input" type="file" accept=".csv,text/csv" onchange="leerArchivoCsvLead(this)" style="font-size:11px;color:var(--text2)">
+      </div>
+      <div style="display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:end;margin-bottom:10px">
+        <div>
+          <label style="font-size:11px;color:var(--text3);font-weight:700">Búsqueda asociada</label>
+          <select id="csv-search-plan" class="search-input" onchange="renderCsvSearchPlanHint();previewCsvLeads()" style="width:100%;margin-top:5px"></select>
+        </div>
+        <button class="contact-btn btn-web" onclick="document.querySelector('[data-view=&quot;buscador&quot;]').click()">Abrir Buscador</button>
+      </div>
+      <div id="csv-search-plan-hint" style="font-size:11px;color:var(--text3);margin-bottom:10px"></div>
+      <textarea id="csv-import-text" class="notas-area" style="min-height:260px;font-family:ui-monospace,Consolas,monospace" placeholder="businessName,category,city,phone,website,googleMapsUrl,rating,reviewCount&#10;Reformas Costa,Empresa de reformas,Torrevieja,+34 600 000 000,https://ejemplo.com,https://maps.google.com/...,4.6,58"></textarea>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
+        <button class="nuevo-lead-btn" onclick="previewCsvLeads()">Previsualizar</button>
+        <button class="contact-btn btn-web" onclick="cargarCsvEjemplo()">Cargar ejemplo</button>
+        <button class="contact-btn btn-email" onclick="limpiarCsvImport()">Limpiar</button>
+      </div>
+      <div id="csv-import-result" style="margin-top:12px;font-size:12px;color:var(--text2)"></div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:16px">
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--accent2);margin-bottom:8px">Formato tolerante</div>
+        <p style="font-size:12px;color:var(--text2);line-height:1.7">Acepta columnas como <strong>name</strong>, <strong>business_name</strong>, <strong>title</strong>, <strong>reviews</strong>, <strong>phoneNumber</strong>, <strong>url</strong>, <strong>stars</strong>. El CRM normaliza a un modelo interno único.</p>
+      </div>
+      <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:16px">
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--green);margin-bottom:8px">Deduplicación</div>
+        <p style="font-size:12px;color:var(--text2);line-height:1.7">Clave por Google Maps, web, teléfono o empresa+ciudad. Si existe un lead claro, fusiona campos vacíos y no duplica. Si hay duda, marca posible duplicado.</p>
+      </div>
+      <div style="background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.25);border-radius:var(--radius);padding:16px">
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--gold);margin-bottom:8px">Uso responsable</div>
+        <p style="font-size:12px;color:var(--text2);line-height:1.7">Herramienta interna B2B. No contactar particulares, no automatizar spam, revisar datos antes de contactar, respetar RGPD/LSSI y usar contacto comercial legítimo, manual y de bajo volumen.</p>
+      </div>
+    </div>
+  </div>
 </div>
 
 <!-- JOURNEY -->
@@ -1914,9 +2086,31 @@ TEMPLATES.postventa = [
 
 const STORAGE_KEY = 'immersphere_crm_v2';
 const CUSTOM_KEY  = 'immersphere_crm_custom_v1';
+const SEARCH_KEY  = 'immersphere_search_plans_v1';
 const PROMOS = [{"id":"demo360","label":"Demo 360 piloto","servicio":"Tour 360 piloto","precio":450,"bonus":"QR escaparate gratuito","caducidad":"7 días","objetivo":"Demostrar la experiencia sin compromiso ni cambios en su sistema","cta":"¿Probamos con una propiedad este mes?"},{"id":"tour360qr","label":"Tour 360 + QR escaparate","servicio":"Tour 360 + hotspots + QR","precio":650,"bonus":"Hotspots interactivos y analítica básica","caducidad":"10 días","objetivo":"Diferenciación en escaparate y web propia","cta":"¿Lo aplicamos a vuestra propiedad más cara?"},{"id":"pack360","label":"Pack Inmobiliaria 360","servicio":"Tour 360 + landing + QR + formulario lead","precio":900,"bonus":"Landing page del inmueble incluida","caducidad":"7 días","objetivo":"Pipeline inmobiliario visual completo","cta":"¿Arrancamos con las 3 propiedades que más queréis mover?"},{"id":"packpremium","label":"Pack Propiedad Premium","servicio":"Tour 360 premium + renders 3D","precio":1200,"bonus":"Vídeo social de 60 seg incluido","caducidad":"5 días","objetivo":"Presentación premium de activo de lujo","cta":"¿Qué propiedad premium quieres destacar este mes?"},{"id":"videolandtour","label":"Pack Video + Landing + Tour","servicio":"Vídeo + landing + tour 360","precio":1500,"bonus":"Setup campañas Meta incluido","caducidad":"7 días","objetivo":"Captación activa + conversión en canales propios","cta":"¿Empezamos con la propiedad que más os cuesta vender?"},{"id":"reactivacion","label":"Reactivación propiedades paradas","servicio":"Demo 360 piloto reactivación","precio":350,"bonus":"Consultoría comercial 30 min gratuita","caducidad":"5 días","objetivo":"Dar salida a stock parado de más de 60 días","cta":"¿Qué propiedad lleva más tiempo sin visitas cualificadas?"},{"id":"mensual","label":"Pack mensual inmobiliaria","servicio":"3 propiedades/mes en 360","precio":490,"bonus":"Analítica + informe mensual","caducidad":"Mensual renovable","objetivo":"Visibilidad constante del catálogo de propiedades","cta":"¿Lo activamos este mes?"}];
 let leads = JSON.parse(JSON.stringify(LEADS));
 let _nextCustomId = -1;
+let searchPlans = [];
+let localScraperConnected = false;
+let localScraperLastResults = [];
+let localScraperLastPlanId = '';
+
+const SEARCH_VERTICALS=['Inmobiliarias','Administradores de fincas','Reformas','Arquitectura','Interiorismo','Piscinas','Jardinería','Cerramientos','Energía solar','Constructoras','Promotoras','Turismo/alojamiento','Mantenimiento'];
+const SEARCH_QUERY_BASE={
+  'Inmobiliarias':'inmobiliarias premium',
+  'Administradores de fincas':'administradores de fincas',
+  'Reformas':'empresas de reformas integrales',
+  'Arquitectura':'estudios de arquitectura',
+  'Interiorismo':'estudios de interiorismo',
+  'Piscinas':'empresas de piscinas',
+  'Jardinería':'jardinería premium',
+  'Cerramientos':'empresas de cerramientos',
+  'Energía solar':'instaladores solares',
+  'Constructoras':'constructoras',
+  'Promotoras':'promotoras inmobiliarias',
+  'Turismo/alojamiento':'hoteles resorts alojamientos turísticos',
+  'Mantenimiento':'empresas de mantenimiento de comunidades'
+};
 
 // ── State persistence ─────────────────────────────────────────────────────────
 function loadState(){
@@ -1972,6 +2166,419 @@ function saveState(){
   localStorage.setItem(STORAGE_KEY,JSON.stringify(st));
   const customs=leads.filter(l=>l.id<0);
   localStorage.setItem(CUSTOM_KEY,JSON.stringify(customs));
+}
+
+// ── Prospecting search planner ───────────────────────────────────────────────
+function searchText(v){return String(v||'').trim();}
+function searchSlug(v){return searchText(v).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'_').replace(/^_+|_+$/g,'');}
+function searchToday(){return new Date().toISOString().slice(0,10);}
+function loadSearchPlans(){
+  try{
+    const raw=localStorage.getItem(SEARCH_KEY);
+    searchPlans=raw?JSON.parse(raw):[];
+    if(!Array.isArray(searchPlans)) searchPlans=[];
+  }catch(e){searchPlans=[];}
+}
+function saveSearchPlans(){
+  localStorage.setItem(SEARCH_KEY,JSON.stringify(searchPlans));
+}
+function searchPlanLabel(p){
+  return [p.query,p.city||p.area||p.province].filter(Boolean).join(' · ');
+}
+function buildSearchQuery(vertical,city,area,keywords){
+  const base=SEARCH_QUERY_BASE[vertical]||String(vertical||'empresas b2b').toLowerCase();
+  const loc=searchText(area)||searchText(city);
+  return [base,searchText(keywords),loc].filter(Boolean).join(' ').replace(/\s+/g,' ').trim();
+}
+function suggestedSearchCsvName(p){
+  return [searchSlug(p.vertical||'busqueda'),searchSlug(p.city||p.area||p.province||'zona'),searchToday()].filter(Boolean).join('_')+'.csv';
+}
+function getSearchInstruction(p){
+  return 'Ejecuta esta query en Google-Maps-Scrapper y exporta el CSV. Luego impórtalo en la pestaña Importar seleccionando esta búsqueda como origen.';
+}
+function getSearchScraperCommand(p){
+  const q=(v)=>'"'+String(v||'').replace(/"/g,'\\"')+'"';
+  const limit=Math.min(Number(p.limit)||5,30);
+  return 'python tools/google-maps-scraper/run.py --query '+q(p.query)+' --vertical '+q(p.vertical)+' --city '+q(p.city||p.area)+' --province '+q(p.province)+' --limit '+limit+' --dry-run';
+}
+function getSearchServerCommand(){
+  return 'python tools/google-maps-scraper/server.py';
+}
+function getSearchForm(){
+  const g=id=>document.getElementById(id);
+  return {
+    id:searchText(g('search-id')?.value),
+    vertical:searchText(g('search-vertical')?.value),
+    city:searchText(g('search-city')?.value),
+    province:searchText(g('search-province')?.value),
+    area:searchText(g('search-area')?.value),
+    keywords:searchText(g('search-keywords')?.value),
+    radius:searchText(g('search-radius')?.value),
+    limit:Math.min(30,Math.max(1,Number(g('search-limit')?.value||5))),
+    source:searchText(g('search-source')?.value)||'google_maps_scraper',
+    priority:searchText(g('search-priority')?.value)||'B',
+    query:searchText(g('search-query')?.value),
+    notes:searchText(g('search-notes')?.value),
+    expandQueries:!!g('search-expand-queries')?.checked
+  };
+}
+function setSearchForm(p){
+  const set=(id,v)=>{const el=document.getElementById(id);if(el)el.value=v||'';};
+  set('search-id',p?.id||'');
+  set('search-vertical',p?.vertical||'Inmobiliarias');
+  set('search-city',p?.city||'');
+  set('search-province',p?.province||'');
+  set('search-area',p?.area||'');
+  set('search-keywords',p?.keywords||'');
+  set('search-radius',p?.radius||'Local / 15 km');
+  set('search-limit',p?.limit||10);
+  set('search-source',p?.source||'google_maps_scraper');
+  set('search-priority',p?.priority||'B');
+  set('search-query',p?.query||'');
+  set('search-notes',p?.notes||'');
+  const eq=document.getElementById('search-expand-queries');
+  if(eq) eq.checked=!!(p?.expandQueries||p?.expand_queries);
+  const q=document.getElementById('search-query');
+  if(q) q.dataset.auto=p?.query?'false':'true';
+  updateSearchQueryPreview();
+}
+function updateSearchQueryPreview(){
+  const f=getSearchForm();
+  const q=document.getElementById('search-query');
+  if(q&&(!q.value.trim()||q.dataset.auto==='true')){
+    q.value=buildSearchQuery(f.vertical,f.city,f.area,f.keywords);
+    q.dataset.auto='true';
+  }
+  renderSearchOutput();
+}
+function renderSearchOutput(){
+  const out=document.getElementById('search-output');
+  if(!out) return;
+  const f=getSearchForm();
+  const plan={...f,query:f.query||buildSearchQuery(f.vertical,f.city,f.area,f.keywords)};
+  out.innerHTML=`
+    <div><strong style="color:var(--text)">Query:</strong><br><span style="color:var(--accent2);font-weight:700">${safeHtml(plan.query||'—')}</span></div>
+    <div style="margin-top:8px"><strong style="color:var(--text)">Vertical:</strong> ${safeHtml(plan.vertical||'—')} · <strong style="color:var(--text)">Zona:</strong> ${safeHtml(plan.area||plan.city||plan.province||'—')}</div>
+    <div><strong style="color:var(--text)">Límite recomendado:</strong> ${safeHtml(plan.limit||10)} resultados · <strong style="color:var(--text)">Variantes:</strong> ${plan.expandQueries?'sí':'no'}</div>
+    <div><strong style="color:var(--text)">CSV esperado:</strong> <code>${safeHtml(suggestedSearchCsvName(plan))}</code></div>
+    <div><strong style="color:var(--text)">Comando dry-run:</strong><br><code>${safeHtml(getSearchScraperCommand(plan))}</code></div>
+    <div style="margin-top:8px;background:var(--bg3);border-radius:8px;padding:10px">${safeHtml(getSearchInstruction(plan))}</div>
+  `;
+}
+function populateSearchVerticals(){
+  const sel=document.getElementById('search-vertical');
+  if(!sel) return;
+  const current=sel.value||'Inmobiliarias';
+  sel.innerHTML=SEARCH_VERTICALS.map(v=>'<option value="'+safeHtml(v)+'">'+safeHtml(v)+'</option>').join('');
+  sel.value=SEARCH_VERTICALS.includes(current)?current:'Inmobiliarias';
+}
+function newSearchPlan(){setSearchForm({vertical:'Inmobiliarias',limit:10,source:'google_maps_scraper',priority:'B',radius:'Local / 15 km'});}
+function saveSearchPlan(){
+  const f=getSearchForm();
+  if(!f.query) f.query=buildSearchQuery(f.vertical,f.city,f.area,f.keywords);
+  if(!f.query){alert('Añade ciudad/zona o una query antes de guardar.');return;}
+  const now=new Date().toISOString();
+  const existing=f.id?searchPlans.find(p=>p.id===f.id):null;
+  if(existing){
+    Object.assign(existing,f,{updatedAt:now});
+  }else{
+    searchPlans.unshift({...f,id:'search_'+Date.now(),status:'Pendiente',importedCount:0,createdAt:now,updatedAt:now});
+  }
+  saveSearchPlans();renderSearchPlanner();renderCsvSearchPlanOptions();renderDashboard();
+  _showToast('✓ Búsqueda guardada.','var(--green)');
+}
+function editSearchPlan(id){
+  const p=searchPlans.find(x=>x.id===id);if(!p)return;
+  setSearchForm(p);
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+function deleteSearchPlan(id){
+  if(!confirm('¿Eliminar esta búsqueda guardada?')) return;
+  searchPlans=searchPlans.filter(p=>p.id!==id);
+  saveSearchPlans();renderSearchPlanner();renderCsvSearchPlanOptions();renderDashboard();
+}
+function setSearchPlanStatus(id,status){
+  const p=searchPlans.find(x=>x.id===id);if(!p)return;
+  p.status=status;p.updatedAt=new Date().toISOString();
+  saveSearchPlans();renderSearchPlanner();renderCsvSearchPlanOptions();renderDashboard();
+}
+function renderSearchPlanner(){
+  populateSearchVerticals();
+  if(!document.getElementById('search-query')?.value) newSearchPlan();
+  renderSearchOutput();
+  const list=document.getElementById('search-list');
+  const count=document.getElementById('search-count');
+  if(count) count.textContent=searchPlans.length+' guardadas';
+  if(!list) return;
+  if(!searchPlans.length){list.innerHTML='<div class="empty">Sin búsquedas guardadas todavía</div>';return;}
+  list.innerHTML=searchPlans.map(p=>`
+    <div style="background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:12px">
+      <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start">
+        <div style="min-width:0">
+          <div style="font-size:13px;font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis">${safeHtml(p.query)}</div>
+          <div style="font-size:11px;color:var(--text3);margin-top:4px">${safeHtml(p.vertical)} · ${safeHtml(p.area||p.city||p.province||'Sin zona')} · ${safeHtml(p.limit||10)} resultados · ${p.expandQueries?'variantes activas · ':''}CSV: ${safeHtml(suggestedSearchCsvName(p))}</div>
+        </div>
+        <div style="display:flex;gap:5px;flex-wrap:wrap;justify-content:flex-end">${priTag(p.priority||'B')}<span class="tag est-${p.status==='Importada'?'cerrado':p.status==='Ejecutada'?'propuesta':p.status==='Descartada'?'no':'contactado'}">${safeHtml(p.status||'Pendiente')}</span></div>
+      </div>
+      <div style="font-size:12px;color:var(--text2);margin-top:8px;line-height:1.6">${safeHtml(getSearchInstruction(p))}</div>
+      ${p.importedCount?'<div style="font-size:11px;color:var(--green);margin-top:6px">'+p.importedCount+' leads importados desde esta búsqueda</div>':''}
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px">
+        <button class="contact-btn btn-web" onclick="editSearchPlan('${p.id}')">Editar</button>
+        <button class="contact-btn btn-email" onclick="copySearchQueryById('${p.id}')">Copiar query</button>
+        <button class="contact-btn btn-email" onclick="copySearchCommandById('${p.id}')">Copiar comando</button>
+        <button class="contact-btn btn-web" onclick="document.querySelector('[data-view=&quot;importar&quot;]').click()">Ir a Importar</button>
+        <button class="contact-btn btn-email" onclick="setSearchPlanStatus('${p.id}','Ejecutada')">Ejecutada</button>
+        <button class="contact-btn btn-wa" onclick="setSearchPlanStatus('${p.id}','Importada')">Importada</button>
+        <button class="contact-btn btn-tel" onclick="setSearchPlanStatus('${p.id}','Descartada')">Descartar</button>
+        <button class="edit-delete-btn" onclick="deleteSearchPlan('${p.id}')">Eliminar</button>
+      </div>
+    </div>
+  `).join('');
+}
+function renderCsvSearchPlanOptions(){
+  const sel=document.getElementById('csv-search-plan');
+  if(!sel) return;
+  const current=sel.value;
+  sel.innerHTML='<option value="">— Sin búsqueda asociada —</option>'+searchPlans.map(p=>'<option value="'+safeHtml(p.id)+'">'+safeHtml(searchPlanLabel(p))+'</option>').join('');
+  sel.value=searchPlans.some(p=>p.id===current)?current:'';
+  renderCsvSearchPlanHint();
+}
+function selectedImportSearchPlan(){
+  const id=document.getElementById('csv-search-plan')?.value||'';
+  return searchPlans.find(p=>p.id===id)||null;
+}
+function renderCsvSearchPlanHint(){
+  const hint=document.getElementById('csv-search-plan-hint');
+  if(!hint) return;
+  const p=selectedImportSearchPlan();
+  hint.innerHTML=p?'Heredará contexto: '+safeHtml(p.vertical)+' · '+safeHtml(p.area||p.city||p.province||'sin zona')+' · source='+safeHtml(p.source||'google_maps_scraper'):'Sin asociación: se usará solo el CSV.';
+}
+function applySearchContextToNormalized(n,plan){
+  if(!plan) return n;
+  const out={...n};
+  if(!out.vertical||out.vertical==='Otros B2B visuales') out.vertical=plan.vertical||out.vertical;
+  if(!out.city) out.city=plan.city||plan.area||'';
+  if(!out.province) out.province=plan.province||'';
+  if(!out.searchQuery) out.searchQuery=plan.query||'';
+  out.source=(out.source&&out.source!=='csv_import')?out.source:(plan.source||'google_maps_scraper');
+  out.searchPlanId=plan.id;
+  out.searchPlanLabel=searchPlanLabel(plan);
+  return out;
+}
+function completeSearchPlanImport(plan,count){
+  if(!plan) return;
+  plan.status='Importada';
+  plan.importedCount=(Number(plan.importedCount)||0)+count;
+  plan.updatedAt=new Date().toISOString();
+  saveSearchPlans();renderSearchPlanner();renderCsvSearchPlanOptions();
+}
+function exportSearchPlansJSON(){
+  const payload=JSON.stringify({version:'1.0',fecha:searchToday(),busquedas:searchPlans},null,2);
+  const a=document.createElement('a');
+  a.href='data:application/json;charset=utf-8,'+encodeURIComponent(payload);
+  a.download='immersphere-busquedas-'+searchToday()+'.json';
+  a.click();
+}
+function exportPendingSearchPlansJSON(){
+  const pending=searchPlans.filter(p=>(p.status||'Pendiente')==='Pendiente');
+  const payload=JSON.stringify({version:'1.0',fecha:searchToday(),busquedas:pending},null,2);
+  const a=document.createElement('a');
+  a.href='data:application/json;charset=utf-8,'+encodeURIComponent(payload);
+  a.download='immersphere-busquedas-pendientes-'+searchToday()+'.json';
+  a.click();
+}
+function importSearchPlansJSON(){
+  const input=document.createElement('input');input.type='file';input.accept='.json';
+  input.onchange=e=>{
+    const file=e.target.files[0];if(!file)return;
+    const reader=new FileReader();
+    reader.onload=ev=>{
+      try{
+        const data=JSON.parse(ev.target.result);
+        const incoming=Array.isArray(data)?data:(data.busquedas||data.searchPlans||[]);
+        if(!Array.isArray(incoming)) throw new Error('Formato de búsquedas no válido.');
+        let added=0,updated=0;
+        incoming.forEach(p=>{
+          if(!p.query) return;
+          const id=p.id||('search_'+Date.now()+'_'+added);
+          const existing=searchPlans.find(x=>x.id===id);
+          if(existing){Object.assign(existing,p,{id,updatedAt:new Date().toISOString()});updated++;}
+          else{searchPlans.push({...p,id,status:p.status||'Pendiente',createdAt:p.createdAt||new Date().toISOString(),updatedAt:new Date().toISOString()});added++;}
+        });
+        saveSearchPlans();renderSearchPlanner();renderCsvSearchPlanOptions();renderDashboard();
+        alert('Búsquedas restauradas. Nuevas: '+added+'. Actualizadas: '+updated+'.');
+      }catch(err){alert('Error al restaurar búsquedas: '+err.message);}
+    };
+    reader.readAsText(file);
+  };
+  input.click();
+}
+function copySearchInstruction(){
+  const f=getSearchForm();
+  const p={...f,query:f.query||buildSearchQuery(f.vertical,f.city,f.area,f.keywords)};
+  const txt='Query: '+p.query+'\nCSV esperado: '+suggestedSearchCsvName(p)+'\nInstrucción: '+getSearchInstruction(p);
+  navigator.clipboard.writeText(txt).then(()=>_showToast('✓ Instrucción copiada.','var(--green)')).catch(()=>alert(txt));
+}
+function copySearchCommand(){
+  const f=getSearchForm();
+  const p={...f,query:f.query||buildSearchQuery(f.vertical,f.city,f.area,f.keywords)};
+  const txt=getSearchScraperCommand(p);
+  navigator.clipboard.writeText(txt).then(()=>_showToast('✓ Comando copiado.','var(--green)')).catch(()=>alert(txt));
+}
+function copySearchQueryById(id){
+  const p=searchPlans.find(x=>x.id===id);if(!p)return;
+  navigator.clipboard.writeText(p.query).then(()=>_showToast('✓ Query copiada.','var(--green)')).catch(()=>alert(p.query));
+}
+function copySearchCommandById(id){
+  const p=searchPlans.find(x=>x.id===id);if(!p)return;
+  const txt=getSearchScraperCommand(p);
+  navigator.clipboard.writeText(txt).then(()=>_showToast('✓ Comando copiado.','var(--green)')).catch(()=>alert(txt));
+}
+function isImportedLead(l){return l.source==='csv_import'||l.source==='google_maps_scraper'||!!l.searchPlanId;}
+function scraperApiBase(){return 'http://127.0.0.1:8765';}
+function renderScraperStatus(ok,msg){
+  localScraperConnected=!!ok;
+  const el=document.getElementById('scraper-status');
+  if(!el) return;
+  el.innerHTML=ok
+    ? '<span style="color:var(--green);font-weight:700">Scraper local conectado</span>'+(msg?' · '+safeHtml(msg):'')
+    : '<span style="color:var(--red);font-weight:700">Scraper local no conectado</span> · arranca <code>'+safeHtml(getSearchServerCommand())+'</code>';
+}
+async function checkLocalScraper(){
+  const el=document.getElementById('scraper-status');
+  if(el) el.textContent='Comprobando scraper local...';
+  try{
+    const res=await fetch(scraperApiBase()+'/health',{method:'GET'});
+    const data=await res.json();
+    renderScraperStatus(!!data.ok,data.service||'OK');
+    return !!data.ok;
+  }catch(err){
+    renderScraperStatus(false,String(err&&err.message||err));
+    return false;
+  }
+}
+function currentSearchRunPayload(dryRun){
+  const f=getSearchForm();
+  const existing=f.id?searchPlans.find(p=>p.id===f.id):null;
+  const query=f.query||buildSearchQuery(f.vertical,f.city,f.area,f.keywords);
+  return {
+    query,vertical:f.vertical,city:f.city,province:f.province,area:f.area,
+    limit:Math.min(Number(f.limit)||5,30),source:'google_maps_scraper',
+    searchPlanId:f.id||'',priority:f.priority||'B',expandQueries:!!f.expandQueries,dryRun:!!dryRun,headless:true
+  };
+}
+function normalizeBridgeResult(raw,plan){
+  const n={
+    businessName:nbeText(raw.businessName),
+    vertical:nbeText(raw.vertical)||nbeText(plan&&plan.vertical)||classifyBusinessVertical([raw.category,raw.businessName].join(' ')),
+    category:nbeText(raw.category),
+    address:nbeText(raw.address),
+    city:nbeText(raw.city),
+    province:nbeText(raw.province),
+    phone:nbePhone(raw.phone),
+    website:nbeSafeUrl(raw.website),
+    googleMapsUrl:nbeSafeUrl(raw.googleMapsUrl),
+    rating:nbeNum(raw.rating),
+    reviewCount:Math.round(nbeNum(raw.reviewCount)),
+    openingHours:nbeText(raw.openingHours),
+    searchQuery:nbeText(raw.searchQuery),
+    source:nbeText(raw.source)||'google_maps_scraper',
+    scrapedAt:nbeText(raw.scrapedAt),
+    categoryMatch:raw.categoryMatch===true||raw.categoryMatch==='true',
+    relevanceScore:Math.round(nbeNum(raw.relevanceScore)),
+    relevanceReasons:Array.isArray(raw.relevanceReasons)?raw.relevanceReasons.join(' | '):nbeText(raw.relevanceReasons)
+  };
+  return applySearchContextToNormalized(n,plan);
+}
+function renderLocalScraperResults(payload,plan){
+  const box=document.getElementById('local-scraper-result');
+  const btn=document.getElementById('local-import-btn');
+  if(!box) return;
+  if(!payload||payload.ok===false){
+    if(btn) btn.style.display='none';
+    box.innerHTML='<div style="color:var(--red);font-weight:700">Error del scraper local</div><div>'+safeHtml((payload&&payload.error)||'No se pudo ejecutar.')+'</div><div style="color:var(--text3);margin-top:6px">'+safeHtml((payload&&payload.hint)||'Comprueba que el servidor local esté activo.')+'</div>';
+    return;
+  }
+  if(payload.dryRun){
+    if(btn) btn.style.display='none';
+    box.innerHTML='<div style="color:var(--accent2);font-weight:700">Dry-run local OK</div><div>Query: '+safeHtml(payload.query||'')+'</div><div>Variantes: '+safeHtml((payload.queryVariantsUsed||[]).join(' · ')||'—')+'</div><div>CSV: <code>'+safeHtml(payload.csvPath||'')+'</code></div><div>JSON: <code>'+safeHtml(payload.jsonPath||'')+'</code></div>';
+    return;
+  }
+  const items=(payload.results||[]).map(r=>normalizeBridgeResult(r,plan)).filter(n=>n.businessName);
+  localScraperLastResults=items;
+  localScraperLastPlanId=plan&&plan.id||'';
+  if(btn) btn.style.display=items.length?'inline-flex':'none';
+  if(!items.length){
+    box.innerHTML='<div class="empty">El scraper respondió sin resultados. Puede ser bloqueo, DOM cambiado, query demasiado estrecha o resultados no B2B claros.</div>';
+    return;
+  }
+  const variants=(payload.queryVariantsUsed||[]).join(' · ');
+  const summary='<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin-bottom:10px">'+
+    '<div><strong style="color:var(--green)">'+items.length+'</strong><br><span style="color:var(--text3)">leads encontrados</span></div>'+
+    '<div><strong>'+safeHtml(payload.totalRawFound||0)+'</strong><br><span style="color:var(--text3)">brutos</span></div>'+
+    '<div><strong>'+safeHtml(payload.totalAfterDedupe||items.length)+'</strong><br><span style="color:var(--text3)">tras dedupe</span></div>'+
+    '<div><strong style="color:var(--gold)">'+safeHtml(payload.lowRelevanceCount||0)+'</strong><br><span style="color:var(--text3)">baja relevancia</span></div>'+
+    '</div><div style="font-size:11px;color:var(--text3);margin-bottom:8px">Queries usadas: '+safeHtml(variants||payload.query||'—')+'</div>';
+  const preview=items.slice(0,8).map(n=>{const sc=scoreImportedLead(n);const dup=findExistingLeadForNormalized(n);const rel=n.categoryMatch?'<span class="tag est-cerrado">Alta relevancia</span>':'<span class="tag est-pendiente">Revisar</span>';return `<div style="padding:8px 0;border-bottom:1px solid var(--border)"><strong>${safeHtml(n.businessName)}</strong> · ${safeHtml(n.category||n.vertical)} · ${safeHtml(n.city||n.province||'Sin zona')} <span style="color:var(--accent2);font-weight:700">Score ${sc.score} ${sc.priority}</span> ${rel}${dup?' <span style="color:var(--gold)">posible duplicado</span>':''}<br><span style="color:var(--text3)">Tel: ${safeHtml(n.phone||'—')} · Web: ${safeHtml(n.website||'—')} · Rating: ${safeHtml(n.rating||'—')} · Reviews: ${safeHtml(n.reviewCount||0)} · Relevancia: ${safeHtml(n.relevanceScore||0)}/100</span></div>`;}).join('');
+  box.innerHTML=summary+preview+(items.length>8?'<div style="font-size:11px;color:var(--text3);margin-top:8px">Mostrando 8 primeros.</div>':'')+'<div style="font-size:11px;color:var(--text3);margin-top:8px">CSV: <code>'+safeHtml(payload.csvPath||'')+'</code></div>';
+}
+async function runLocalScraper(dryRun){
+  const connected=localScraperConnected||await checkLocalScraper();
+  if(!connected) return;
+  const box=document.getElementById('local-scraper-result');
+  const planId=document.getElementById('search-id')?.value||'';
+  const plan=planId?searchPlans.find(p=>p.id===planId):null;
+  const payload=currentSearchRunPayload(dryRun);
+  if(!payload.query){alert('Añade una query antes de ejecutar.');return;}
+  if(box) box.innerHTML=dryRun?'Ejecutando dry-run local...':'Ejecutando scraper local. Puede tardar unos segundos...';
+  try{
+    const res=await fetch(scraperApiBase()+'/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+    const data=await res.json();
+    renderLocalScraperResults(data,plan||payload);
+  }catch(err){
+    renderLocalScraperResults({ok:false,error:String(err&&err.message||err),hint:'Si estás en GitHub Pages, el navegador puede bloquear localhost. Prueba con index.html local o localhost.'},plan||payload);
+  }
+}
+function importNormalizedItems(items,plan){
+  let added=0,merged=0,possible=0;
+  items.forEach(n=>{
+    const existing=findExistingLeadForNormalized(n);
+    if(existing){
+      if(!existing.web&&n.website) existing.web=n.website;
+      if(!existing.telefono&&n.phone) existing.telefono=n.phone;
+      if(!existing.whatsapp&&n.phone) existing.whatsapp=n.phone;
+      if(!existing.direccion&&n.address) existing.direccion=n.address;
+      existing.googleMapsUrl=existing.googleMapsUrl||n.googleMapsUrl||'';
+      existing.rating=existing.rating||n.rating||0;
+      existing.reviewCount=existing.reviewCount||n.reviewCount||0;
+      existing.source=existing.source||n.source||'';
+      existing.searchQuery=existing.searchQuery||n.searchQuery||'';
+      existing.searchPlanId=existing.searchPlanId||n.searchPlanId||'';
+      existing.searchPlanLabel=existing.searchPlanLabel||n.searchPlanLabel||'';
+      existing.updatedAt=new Date().toISOString();
+      existing.createdAt=existing.createdAt||existing.updatedAt;
+      existing._possibleDuplicate=false;
+      existing._actividad=existing._actividad||[];
+      existing._actividad.push({tipo:'import',texto:'Datos fusionados desde scraper/CSV.',fecha:new Date().toLocaleString('es-ES')});
+      merged++;
+      return;
+    }
+    const lead=buildLeadFromNormalized(n);
+    const nameCityKey='namecity:'+nbeSlug(n.businessName+' '+n.city);
+    if(leads.some(l=>dedupeKeyForLeadLike({businessName:l.empresa,city:l.zona})===nameCityKey)){lead._possibleDuplicate=true;possible++;}
+    leads.push(lead);added++;
+  });
+  completeSearchPlanImport(plan,added+merged);
+  saveState();renderAll();
+  return {added,merged,possible};
+}
+function importLocalScraperResults(){
+  if(!localScraperLastResults.length){alert('No hay resultados locales para importar.');return;}
+  const plan=localScraperLastPlanId?searchPlans.find(p=>p.id===localScraperLastPlanId):null;
+  const r=importNormalizedItems(localScraperLastResults,plan);
+  const box=document.getElementById('local-scraper-result');
+  if(box) box.innerHTML='<div style="color:var(--green);font-weight:700">Importación completada: '+r.added+' nuevos, '+r.merged+' fusionados, '+r.possible+' posibles duplicados.</div>';
+  const btn=document.getElementById('local-import-btn');if(btn)btn.style.display='none';
 }
 
 // ── Temperature ───────────────────────────────────────────────────────────────
@@ -2288,6 +2895,7 @@ function resetDemo(){
   if(!confirm('Segunda confirmación: ¿Seguro? Esta acción es irreversible.')) return;
   localStorage.removeItem(STORAGE_KEY);
   localStorage.removeItem(CUSTOM_KEY);
+  localStorage.removeItem(SEARCH_KEY);
   localStorage.removeItem(INTEGRATIONS_KEY);
   location.reload();
 }
@@ -2454,6 +3062,27 @@ function renderDashboard(){
     .filter(l=>!['Cerrado','No interesa'].includes(l.estado))
     .reduce((s,l)=>s+((l._valorPotencial||0)*(l._probabilidad||10)/100),0);
   const setKC=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent=v;};
+  const importedLeads=leads.filter(isImportedLead);
+  const verticalCounts={};
+  importedLeads.forEach(l=>{const key=l.sector||'Sin vertical';verticalCounts[key]=(verticalCounts[key]||0)+1;});
+  const topVertical=Object.entries(verticalCounts).sort((a,b)=>b[1]-a[1])[0];
+  const scoreAvg=importedLeads.length?Math.round(importedLeads.reduce((s,l)=>s+(Number(l.score)||0),0)/importedLeads.length):0;
+  setKC('kpi-importados',importedLeads.length||'—');
+  setKC('kpi-pri-a',leads.filter(l=>l.prioridad==='A').length||'—');
+  setKC('kpi-score-medio',scoreAvg||'—');
+  setKC('kpi-vertical-top',topVertical?topVertical[0]:'—');
+  const searchPend=searchPlans.filter(p=>(p.status||'Pendiente')==='Pendiente').length;
+  const searchExec=searchPlans.filter(p=>p.status==='Ejecutada').length;
+  const searchImport=searchPlans.filter(p=>p.status==='Importada').length;
+  const nextSearch=[...searchPlans].filter(p=>!['Importada','Descartada'].includes(p.status)).sort((a,b)=>(a.priority||'C').localeCompare(b.priority||'C'))[0];
+  const searchLinkedLeads=leads.filter(l=>l.searchPlanId).length;
+  const topImported=[...leads].filter(isImportedLead).sort((a,b)=>(Number(b.score)||0)-(Number(a.score)||0))[0];
+  setKC('kpi-search-pend',searchPend||'—');
+  setKC('kpi-search-exec',searchExec||'—');
+  setKC('kpi-search-import',searchImport||'—');
+  setKC('kpi-search-leads',searchLinkedLeads||'—');
+  setKC('kpi-search-top',topImported?topImported.empresa:'—');
+  setKC('kpi-search-next',nextSearch?(nextSearch.vertical+' · '+(nextSearch.area||nextSearch.city||nextSearch.province||'zona')):'—');
   setKC('kpi-conv-resp',tasaRespuesta?tasaRespuesta+'%':'—');
   setKC('kpi-conv-prop',tasaPropuesta?tasaPropuesta+'%':'—');
   setKC('kpi-conv-cierre',tasaCierre?tasaCierre+'%':'—');
@@ -2549,19 +3178,21 @@ function renderDashboard(){
 }
 
 // ── Render: Leads ─────────────────────────────────────────────────────────────
-let filters={prioridad:'all',estado:'all',temp:'all',search:'',rapido:'all'};
+let filters={prioridad:'all',estado:'all',temp:'all',vertical:'all',search:'',rapido:'all'};
 
 function getFiltered(){
   return leads.filter(l=>{
     if(filters.prioridad!=='all'&&l.prioridad!==filters.prioridad) return false;
     if(filters.estado!=='all'&&l.estado!==filters.estado) return false;
     if(filters.temp!=='all'&&calcTemp(l)!==filters.temp) return false;
+    if(filters.vertical!=='all'&&(l.sector||'')!==filters.vertical) return false;
     if(filters.rapido==='hoy'&&!isHoy(l._proxFecha)) return false;
     if(filters.rapido==='vencida'&&!isVencida(l._proxFecha)) return false;
     if(filters.rapido==='sin-prox'&&(l._proxAccion||l._proxFecha)) return false;
     if(filters.rapido==='caliente'&&!['caliente','muy-caliente'].includes(calcTemp(l))) return false;
     if(filters.rapido==='propuesta'&&l.estado!=='Propuesta') return false;
     if(filters.rapido==='room-designer'&&l.source!=='room-designer'&&l.origen!=='Room Designer / Decor Asset Lab') return false;
+    if(filters.rapido==='csv-import'&&!isImportedLead(l)) return false;
     if(filters.search){
       const q=filters.search.toLowerCase();
       if(!l.empresa.toLowerCase().includes(q)&&!l.sector.toLowerCase().includes(q)&&!l.zona.toLowerCase().includes(q)&&!(l.responsable||'').toLowerCase().includes(q)&&!(l.email||'').toLowerCase().includes(q)&&!(l.projectName||'').toLowerCase().includes(q)&&!(l.serviceType||'').toLowerCase().includes(q)) return false;
@@ -2570,7 +3201,18 @@ function getFiltered(){
   });
 }
 
+function renderVerticalFilter(){
+  const sel=document.getElementById('vertical-filter');
+  if(!sel) return;
+  const current=filters.vertical||'all';
+  const values=[...new Set(leads.map(l=>l.sector).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'es'));
+  sel.innerHTML='<option value="all">Todos los verticales</option>'+values.map(v=>'<option value="'+safeHtml(v)+'">'+safeHtml(v)+'</option>').join('');
+  sel.value=values.includes(current)?current:'all';
+  filters.vertical=sel.value;
+}
+
 function renderLeads(){
+  renderVerticalFilter();
   const filtered=getFiltered();
   const grid=document.getElementById('leads-grid');
   document.getElementById('leads-count').textContent=filtered.length+' de '+leads.length;
@@ -2581,8 +3223,9 @@ function renderLeads(){
         <div><div class="card-empresa">${l.empresa}</div><div class="card-sector">${l.sector} · ${l.zona}</div></div>
         <div class="score-circle ${scoreClass(l.score)}">${l.score}</div>
       </div>
-      <div class="card-tags">${priTag(l.prioridad)}${estadoTag(l.estado)}${tempBadge(l)}${l.source==='room-designer'?'<span class="tag est-visual">Room Designer</span>':''}</div>
+      <div class="card-tags">${priTag(l.prioridad)}${estadoTag(l.estado)}${tempBadge(l)}${l.source==='room-designer'?'<span class="tag est-visual">Room Designer</span>':''}${isImportedLead(l)?'<span class="tag est-visual">CSV</span>':''}${l._possibleDuplicate?'<span class="tag est-pendiente">Revisar duplicado</span>':''}</div>
       <div class="card-dolor">${l.dolor}</div>
+      ${isImportedLead(l)?'<div style="font-size:11px;color:var(--text3);display:flex;gap:8px;flex-wrap:wrap;margin-top:8px"><span>⭐ '+safeHtml(l.rating||'—')+'</span><span>💬 '+safeHtml(l.reviewCount||0)+'</span>'+(l.web?'<span>🌐 web</span>':'')+(l.googleMapsUrl?'<span>📍 Maps</span>':'')+'</div>':''}
       ${(l._proxAccion||l._proxFecha)?'<div class="card-prox"><span>📅</span><span class="prox-text">'+(l._proxAccion||'Próxima acción')+(l._proxFecha?' · <strong>'+formatFecha(l._proxFecha)+'</strong>':'')+'</span>'+(isVencida(l._proxFecha)?'<span class="prox-vencida">VENCIDA</span>':'')+'</div>':''}
       <div class="card-foot"><span>💰 ${l.precio}</span><span style="margin-left:auto">📦 ${l.pack}</span><button class="card-dup-btn" onclick="event.stopPropagation();duplicarLead(${l.id})" title="Duplicar lead">⧉</button></div>
     </div>
@@ -3127,6 +3770,220 @@ function copyTplText(i){
   });
 }
 
+// ── New Business Engine: CSV import, normalization, scoring ──────────────────
+const NBE_COLUMN_ALIASES={
+  businessName:['businessname','business_name','business name','empresa','name','nombre','title','company','companyname'],
+  category:['category','categoria','categoría','type','tipo','businesscategory'],
+  vertical:['vertical','sector','industry','industria'],
+  address:['address','direccion','dirección','fulladdress','street'],
+  city:['city','ciudad','locality','localidad','town'],
+  province:['province','provincia','state','region'],
+  phone:['phone','phonenumber','phone_number','telefono','teléfono','tel','mobile','whatsapp'],
+  website:['website','web','url','site','sitio','domain'],
+  googleMapsUrl:['googlemapsurl','google_maps_url','mapsurl','maps_url','googleurl','placeurl','mapa','maps'],
+  rating:['rating','stars','scoregoogle','google_rating','valoracion','valoración'],
+  reviewCount:['reviewcount','review_count','reviews','reviews_count','numreviews','reseñas','resenas','opiniones'],
+  openingHours:['openinghours','opening_hours','hours','horario'],
+  searchQuery:['searchquery','search_query','query','busqueda','búsqueda'],
+  source:['source','fuente','origen'],
+  scrapedAt:['scrapedat','scraped_at','fecha','date']
+};
+const NBE_HIGH_VERTICALS=['Inmobiliarias','Reformas','Arquitectura','Interiorismo','Piscinas','Jardinería','Constructoras','Promotoras','Turismo/alojamiento'];
+const NBE_PRIORITY_ZONES=['torrevieja','orihuela costa','punta prima','campoamor','villamartin','la zenia','rojales','guardamar','alicante','murcia'];
+
+function nbeSlug(v){return String(v||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'').trim();}
+function nbeText(v){return String(v||'').trim();}
+function nbeNum(v){const n=parseFloat(String(v||'').replace(',','.').replace(/[^\d.]/g,''));return Number.isFinite(n)?n:0;}
+function nbePhone(v){return nbeText(v).replace(/\s+/g,' ');}
+function nbeHas(v){const s=nbeText(v).toLowerCase();return !!s&&s!=='no localizado'&&s!=='pendiente'&&s!=='n/a'&&s!=='-'&&s!=='—';}
+function nbeSafeUrl(url){
+  const s=nbeText(url);
+  if(!s) return '';
+  if(/^https?:\/\//i.test(s)) return s;
+  if(/^[\w.-]+\.[a-z]{2,}/i.test(s)) return 'https://'+s;
+  return '';
+}
+function nbeCanonicalPhone(phone){return nbePhone(phone).replace(/\D/g,'');}
+function nbeFindColumn(headers,key){
+  const aliases=NBE_COLUMN_ALIASES[key]||[key];
+  const map=headers.map(h=>nbeSlug(h));
+  for(const alias of aliases){
+    const idx=map.indexOf(nbeSlug(alias));
+    if(idx>=0) return idx;
+  }
+  return -1;
+}
+function parseCsvRows(text){
+  const rows=[];let row=[],cell='',q=false;
+  for(let i=0;i<String(text||'').length;i++){
+    const ch=text[i],next=text[i+1];
+    if(ch==='"'&&q&&next==='"'){cell+='"';i++;continue;}
+    if(ch==='"'){q=!q;continue;}
+    if(ch===','&&!q){row.push(cell);cell='';continue;}
+    if((ch==='\n'||ch==='\r')&&!q){
+      if(ch==='\r'&&next==='\n') i++;
+      row.push(cell);cell='';
+      if(row.some(v=>String(v).trim())) rows.push(row);
+      row=[];
+      continue;
+    }
+    cell+=ch;
+  }
+  row.push(cell);
+  if(row.some(v=>String(v).trim())) rows.push(row);
+  return rows;
+}
+function normalizeCsvLead(raw){
+  const h=raw.headers||[],r=raw.row||[];
+  const val=(key)=>{const idx=nbeFindColumn(h,key);return idx>=0?nbeText(r[idx]):'';};
+  const category=val('category');
+  const vertical=classifyBusinessVertical(val('vertical')||category||val('businessName')||val('searchQuery'));
+  return {
+    businessName:val('businessName'),
+    vertical,
+    category,
+    address:val('address'),
+    city:val('city'),
+    province:val('province'),
+    phone:nbePhone(val('phone')),
+    website:nbeSafeUrl(val('website')),
+    googleMapsUrl:nbeSafeUrl(val('googleMapsUrl')),
+    rating:nbeNum(val('rating')),
+    reviewCount:Math.round(nbeNum(val('reviewCount'))),
+    openingHours:val('openingHours'),
+    searchQuery:val('searchQuery'),
+    source:val('source')||'csv_import',
+    scrapedAt:val('scrapedAt')
+  };
+}
+function classifyBusinessVertical(text){
+  const s=String(text||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+  if(/inmobili|real estate|estate agent|property/.test(s)) return 'Inmobiliarias';
+  if(/administrador|fincas|comunidad/.test(s)) return 'Administradores de fincas';
+  if(/reforma|renovation|obra|contractor/.test(s)) return 'Reformas';
+  if(/arquitect|architect/.test(s)) return 'Arquitectura';
+  if(/interior|decor|mueble|home staging/.test(s)) return 'Interiorismo';
+  if(/piscina|pool/.test(s)) return 'Piscinas';
+  if(/jardin|garden|landscap/.test(s)) return 'Jardinería';
+  if(/cerramiento|ventana|pergola|aluminio|cristal/.test(s)) return 'Cerramientos';
+  if(/solar|energia|energía|fotovolta/.test(s)) return 'Energía solar';
+  if(/construct|builder|construccion|construcción/.test(s)) return 'Constructoras';
+  if(/promotor|developer|promocion|promoción/.test(s)) return 'Promotoras';
+  if(/hotel|resort|alojamiento|vacacional|tourist|holiday/.test(s)) return 'Turismo/alojamiento';
+  if(/limpieza|mantenimiento|maintenance/.test(s)) return 'Mantenimiento';
+  return 'Otros B2B visuales';
+}
+function pitchForVertical(vertical,businessName){
+  const name=nbeText(businessName)||'tu empresa';
+  const map={
+    'Inmobiliarias':'Te ayudamos a convertir propiedades en visitas inmersivas con hotspots comerciales, visitas guiadas automáticas y captación de leads dentro del tour.',
+    'Administradores de fincas':'Te ayudamos a presentar incidencias, espacios comunes, reformas y proveedores con recorridos visuales claros y seguimiento comercial.',
+    'Reformas':'Te ayudamos a mostrar antes/después, proyectos terminados y propuestas visuales para captar más clientes.',
+    'Piscinas':'Te ayudamos a vender proyectos visuales antes de construirlos, con renders, tours y formularios de contacto.',
+    'Jardinería':'Te ayudamos a vender proyectos exteriores de alto impacto con recorridos visuales, antes/después y formularios de contacto.',
+    'Arquitectura':'Te ayudamos a presentar espacios, diseños y propuestas de forma inmersiva para acelerar decisiones del cliente.',
+    'Interiorismo':'Te ayudamos a convertir proyectos terminados y showrooms en experiencias visuales que generan consultas cualificadas.',
+    'Cerramientos':'Te ayudamos a explicar soluciones técnicas y acabados con demostraciones visuales claras y reutilizables por WhatsApp/web.',
+    'Energía solar':'Te ayudamos a explicar instalaciones, casos reales y propuestas visuales para generar confianza antes de la visita técnica.',
+    'Constructoras':'Te ayudamos a vender obra nueva, promociones y reformas con tours, QR y activos visuales medibles.',
+    'Promotoras':'Te ayudamos a enseñar promociones antes de la visita física con tours, renders, hotspots y captación de leads.',
+    'Turismo/alojamiento':'Te ayudamos a aumentar confianza en reservas mostrando espacios reales con recorridos inmersivos y CTA directo.',
+    'Mantenimiento':'Te ayudamos a documentar espacios, servicios e incidencias con recorridos visuales claros para comunidades y empresas.'
+  };
+  return (map[vertical]||'Te ayudamos a convertir espacios, trabajos y servicios visuales de '+name+' en experiencias digitales medibles con CTA y captación de leads.');
+}
+function scoreImportedLead(n){
+  let score=0,reasons=[];
+  const text=[n.businessName,n.category,n.vertical,n.searchQuery,n.website].join(' ').toLowerCase();
+  if(nbeCanonicalPhone(n.phone).length>=9){score+=10;reasons.push('tiene teléfono');}
+  if(nbeHas(n.website)){score+=10;reasons.push('tiene web');}
+  if(n.rating>=4.3){score+=10;reasons.push('rating alto');}
+  if(n.reviewCount>=30){score+=10;reasons.push('30+ reseñas');}
+  if(NBE_HIGH_VERTICALS.includes(n.vertical)){score+=20;reasons.push('vertical prioritario');}
+  if(NBE_PRIORITY_ZONES.some(z=>(n.city+' '+n.province+' '+n.address+' '+n.searchQuery).toLowerCase().includes(z))){score+=10;reasons.push('zona prioritaria');}
+  if(/inmobili|reforma|arquitect|interior|piscina|jardin|solar|constructor|promotor|hotel|resort|showroom|mueble|cerramiento/.test(text)){score+=15;reasons.push('categoría encaja con Immersphere');}
+  if(/showroom|villa|premium|reforma|obra|proyecto|hotel|resort|piscina|jardin|inmobili/.test(text)){score+=15;reasons.push('oportunidad visual clara');}
+  if(!nbeHas(n.website)||/(facebook|instagram|maps\.google|business\.site)/.test(n.website.toLowerCase())){score+=10;reasons.push('web pobre o ausente');}
+  if(['Inmobiliarias','Promotoras','Constructoras','Turismo/alojamiento','Arquitectura','Piscinas'].includes(n.vertical)){score+=10;reasons.push('ticket potencial alto');}
+  score=Math.min(100,score);
+  const priority=score>=80?'A':score>=60?'B':'C';
+  return {score,priority,reasons};
+}
+function dedupeKeyForLeadLike(n){
+  if(nbeHas(n.googleMapsUrl)) return 'maps:'+nbeSlug(n.googleMapsUrl);
+  if(nbeHas(n.website)) return 'web:'+nbeSlug(n.website.replace(/^https?:\/\//i,'').replace(/^www\./i,''));
+  const ph=nbeCanonicalPhone(n.phone||n.telefono||n.whatsapp);
+  if(ph.length>=9) return 'phone:'+ph;
+  return 'namecity:'+nbeSlug((n.businessName||n.empresa||'')+' '+(n.city||n.zona||''));
+}
+function findExistingLeadForNormalized(n){
+  const key=dedupeKeyForLeadLike(n);
+  return leads.find(l=>{
+    const nk=dedupeKeyForLeadLike({businessName:l.empresa,city:l.zona,website:l.web,phone:l.telefono||l.whatsapp,googleMapsUrl:l.googleMapsUrl});
+    return nk===key&&key!=='namecity:';
+  })||leads.find(l=>key==='namecity:'+nbeSlug((l.empresa||'')+' '+(l.zona||'')));
+}
+function buildLeadFromNormalized(n){
+  const sc=scoreImportedLead(n);
+  const pitch=pitchForVertical(n.vertical,n.businessName);
+  const scoreNecesidad=Math.min(10,Math.max(5,Math.round(sc.score/10)));
+  const scoreContacto=nbeCanonicalPhone(n.phone).length>=9?8:(nbeHas(n.website)?6:4);
+  const id=--_nextCustomId;
+  const now=new Date().toISOString();
+  return {
+    id,_custom:true,source:n.source||'csv_import',businessName:n.businessName||'Lead B2B importado',vertical:n.vertical,category:n.category||'',city:n.city||'',province:n.province||'',phone:n.phone||'',website:n.website||'',priority:sc.priority,status:'Sin contactar',createdAt:now,updatedAt:now,empresa:n.businessName||'Lead B2B importado',sector:n.vertical,subsector:n.category||n.searchQuery||'',zona:n.city||n.province||'Sin zona',direccion:n.address||'',web:n.website||'',telefono:n.phone||'',whatsapp:n.phone||'',email:'',responsable:'No localizado',cargo:'No localizado',
+    googleMapsUrl:n.googleMapsUrl||'',rating:n.rating||0,reviewCount:n.reviewCount||0,openingHours:n.openingHours||'',searchQuery:n.searchQuery||'',searchPlanId:n.searchPlanId||'',searchPlanLabel:n.searchPlanLabel||'',scrapedAt:n.scrapedAt||'',categoryMatch:n.categoryMatch===true,relevanceScore:n.relevanceScore||0,relevanceReasons:n.relevanceReasons||'',leadScore:sc.score,score:sc.score,prioridad:sc.priority,scoreReasons:sc.reasons,
+    scoreNecesidad,scoreCapacidad:NBE_HIGH_VERTICALS.includes(n.vertical)?8:6,scoreContacto,scoreInversion:['Inmobiliarias','Promotoras','Constructoras','Turismo/alojamiento','Arquitectura'].includes(n.vertical)?8:6,scoreUrgencia:sc.priority==='A'?8:6,
+    estado:'Sin contactar',proximaAccion:'Validar decisor y preparar contacto manual',nextAction:'Validar decisor y preparar contacto manual',recommendedPitch:pitch,recommendedPitchReason:sc.reasons.join(', '),notas:'Importado por CSV. Revisar datos antes de contactar.',
+    servicio:'Diagnóstico visual Immersphere Pro',dolor:'Presencia visual mejorable o oportunidad de mostrar espacios/proyectos con más confianza',motivo:pitch,senales:sc.reasons.join(', '),gancho:pitch,servGancho:'Auditoría visual + demo inmersiva piloto',
+    servPrincipal:'Immersphere Pro: tours 360, hotspots comerciales, guided autopilot, live guided visits, CTA y analítica.',upsell:'SaaS Immersphere Pro + activos visuales por campaña.',pack:'New Business Visual B2B',precio:'Diagnóstico 0€ / piloto 450-1.500 €',dificultad:'Media',entrega:'3-10 días',
+    objecion:'Ya tenemos web, fotos o redes sociales.',respuesta:'Perfecto: Immersphere no sustituye esos canales; los convierte en una experiencia visual medible con CTA y leads.',cierre:'¿Te preparo una auditoría visual rápida con una idea aplicable a vuestro negocio?',canal:n.phone?'WhatsApp + llamada manual':'Email / web manual',
+    whatsapp1:'Hola, soy Juanma de Immersphere Pro. He visto '+(n.businessName||'vuestra empresa')+' y creo que podríais convertir vuestros espacios, proyectos o servicios en una experiencia visual más clara para captar mejores consultas. No envío nada automático: quería validar si tiene sentido prepararos una idea concreta.',
+    emailAsunto:'Idea visual para '+(n.businessName||'tu empresa')+' · Immersphere Pro',
+    emailCuerpo:'Hola,\n\nHe revisado '+(n.businessName||'vuestra empresa')+' y veo una oportunidad: '+pitch+'\n\nLa idea sería empezar con una demo o diagnóstico visual muy concreto, sin cambiar vuestros sistemas actuales.\n\n¿Te encaja que lo revisemos manualmente esta semana?\n\nSaludos,\nJuanma\nImmersphere Pro',
+    followup1:'Te escribo de nuevo solo para cerrar el círculo: la propuesta sería elegir un caso visual concreto y convertirlo en demo medible con CTA.',
+    followup2:'Cierro por ahora para no insistir. Si más adelante queréis mejorar captación visual o presentación de espacios/proyectos, lo retomamos.',
+    cta:'¿Te preparo una auditoría visual rápida?',landing:'https://juanmaes83.github.io/IMMERSPHERE-PRO-INMOBILIARIAS/index.html',instagram:'Pendiente',facebook:'Pendiente',demo:'Demo visual adaptada a '+n.vertical,
+    _fechaEstado:'',_notas:'',_proxAccion:'Validar datos y decisor',_proxFecha:'',_temp:'',_actividad:[{tipo:'import',texto:'Lead importado desde CSV. Score '+sc.score+'/100: '+sc.reasons.join(', '),fecha:new Date().toLocaleString('es-ES')}],_edits:{},_objecionAsignada:'',_cierreAsignado:'',_presupuestos:[],_propuestas:[],_admin:_emptyAdmin(),_valorPotencial:sc.priority==='A'?2500:(sc.priority==='B'?1200:600),_probabilidad:sc.priority==='A'?35:(sc.priority==='B'?22:12),_presupuesto:'',_packRec:'New Business Visual B2B',_ultimoContacto:''
+  };
+}
+function parseCsvImportText(){
+  const text=document.getElementById('csv-import-text')?.value||'';
+  const rows=parseCsvRows(text);
+  if(rows.length<2) return {headers:[],items:[],error:'CSV vacío o sin filas de datos.'};
+  const headers=rows[0].map(h=>nbeText(h));
+  const plan=selectedImportSearchPlan();
+  const items=rows.slice(1).map(row=>applySearchContextToNormalized(normalizeCsvLead({headers,row}),plan)).filter(n=>n.businessName);
+  return {headers,items,error:''};
+}
+function previewCsvLeads(){
+  const res=parseCsvImportText();
+  const target=document.getElementById('csv-import-result');
+  if(res.error){target.innerHTML='<div class="empty">'+safeHtml(res.error)+'</div>';return;}
+  const preview=res.items.slice(0,8).map(n=>{const sc=scoreImportedLead(n);const dup=findExistingLeadForNormalized(n);return `<div style="padding:8px 0;border-bottom:1px solid var(--border)"><strong>${safeHtml(n.businessName)}</strong> · ${safeHtml(n.vertical)} · ${safeHtml(n.city||n.province||'Sin zona')} <span style="color:var(--accent2);font-weight:700">Score ${sc.score} ${sc.priority}</span>${dup?' <span style="color:var(--gold)">posible duplicado</span>':''}<br><span style="color:var(--text3)">${safeHtml(sc.reasons.join(', ')||'sin señales')}</span></div>`;}).join('');
+  target.innerHTML='<div style="font-weight:700;margin-bottom:8px">'+res.items.length+' leads detectados</div>'+preview+(res.items.length>8?'<div style="font-size:11px;color:var(--text3);margin-top:8px">Mostrando 8 primeros.</div>':'');
+}
+function importarCsvLeads(){
+  const res=parseCsvImportText();
+  if(res.error){alert(res.error);return;}
+  const plan=selectedImportSearchPlan();
+  const result=importNormalizedItems(res.items,plan);
+  const target=document.getElementById('csv-import-result');
+  if(target) target.innerHTML='<div style="color:var(--green);font-weight:700">Importación completada: '+result.added+' nuevos, '+result.merged+' fusionados, '+result.possible+' posibles duplicados.</div>';
+  alert('Importación completada: '+result.added+' nuevos, '+result.merged+' fusionados.');
+}
+function leerArchivoCsvLead(input){
+  const file=input.files&&input.files[0];if(!file)return;
+  const reader=new FileReader();
+  reader.onload=e=>{document.getElementById('csv-import-text').value=String(e.target.result||'');previewCsvLeads();};
+  reader.readAsText(file);
+}
+function cargarCsvEjemplo(){
+  document.getElementById('csv-import-text').value='businessName,category,address,city,province,phone,website,googleMapsUrl,rating,reviewCount,searchQuery,source,scrapedAt\nReformas Costa Blanca,Empresa de reformas,Calle Demo 1,Torrevieja,Alicante,+34 600 111 222,https://reformascosta.example,https://maps.google.com/example1,4.7,83,reformas torrevieja,google_maps_scraper,2026-06-15\nPiscinas Premium Levante,Construccion de piscinas,Avenida Demo 2,Orihuela Costa,Alicante,+34 600 333 444,,https://maps.google.com/example2,4.5,41,piscinas orihuela costa,google_maps_scraper,2026-06-15\nHotel Cala Azul,Hotel,Costa Demo 3,Guardamar,Alicante,+34 600 555 666,hotelcalaazul.example,https://maps.google.com/example3,4.2,120,hoteles costa blanca,google_maps_scraper,2026-06-15';
+  previewCsvLeads();
+}
+function limpiarCsvImport(){const el=document.getElementById('csv-import-text');if(el)el.value='';const r=document.getElementById('csv-import-result');if(r)r.innerHTML='';}
+
 // ── Export ────────────────────────────────────────────────────────────────────
 function exportarJSON(){
   const st={};
@@ -3141,7 +3998,7 @@ function exportarJSON(){
     };
   });
   const customs=leads.filter(l=>l.id<0);
-  const payload=JSON.stringify({version:'1.7',fecha:new Date().toISOString().slice(0,10),datos:st,customs,integraciones:integConfig},null,2);
+  const payload=JSON.stringify({version:'1.8',fecha:new Date().toISOString().slice(0,10),datos:st,customs,integraciones:integConfig,busquedas:searchPlans},null,2);
   const a=document.createElement('a');
   a.href='data:application/json;charset=utf-8,'+encodeURIComponent(payload);
   a.download='immersphere-crm-backup-'+new Date().toISOString().slice(0,10)+'.json';
@@ -3246,6 +4103,16 @@ function importarJSON(){
         });
 
         if(data.integraciones&&typeof data.integraciones==='object') Object.assign(integConfig,data.integraciones);
+        if(Array.isArray(data.busquedas||data.searchPlans)){
+          const incoming=data.busquedas||data.searchPlans;
+          incoming.forEach(p=>{
+            if(!p||!p.query) return;
+            const existing=searchPlans.find(x=>x.id===p.id);
+            if(existing) Object.assign(existing,p);
+            else searchPlans.push(p);
+          });
+          saveSearchPlans();
+        }
         saveState();saveIntegrations();
         renderAll();
         alert('Backup restaurado. Actualizados: '+updated+'. Nuevos añadidos: '+added+'. Total CRM: '+leads.length+'.');
@@ -3257,7 +4124,7 @@ function importarJSON(){
 }
 
 function exportarCSV(){
-  const rows=[['ID','Empresa','Sector','Zona','Prioridad','Score','Temperatura','Estado','Valor potencial (€)','Probabilidad (%)','Pipeline ponderado (€)','Pack rec.','Precio orientativo','Próxima acción','Fecha próxima acción','Último contacto','Objeción asignada','Cierre asignado','Último presupuesto estado','Último presupuesto total (€)','Último presupuesto fecha','Último presupuesto caducidad','Última propuesta estado','Última propuesta título','Última propuesta total (€)','Última propuesta fecha','Última propuesta caducidad','Contrato estado','Factura estado','Factura total (€)','Factura fecha cobro','Enviado asesor','Seguimiento estado','Carpeta cliente','Notas']];
+  const rows=[['ID','Empresa','Vertical','Categoría','Zona','Dirección','Teléfono','Web','Google Maps','Rating','Reviews','Source','Search Query','Búsqueda asociada','Category Match','Relevance Score','Relevance Reasons','Creado','Actualizado','Prioridad','Score','Lead Score','Motivos score','Pitch recomendado','Temperatura','Estado','Valor potencial (€)','Probabilidad (%)','Pipeline ponderado (€)','Pack rec.','Precio orientativo','Próxima acción','Fecha próxima acción','Último contacto','Objeción asignada','Cierre asignado','Último presupuesto estado','Último presupuesto total (€)','Último presupuesto fecha','Último presupuesto caducidad','Última propuesta estado','Última propuesta título','Última propuesta total (€)','Última propuesta fecha','Última propuesta caducidad','Contrato estado','Factura estado','Factura total (€)','Factura fecha cobro','Enviado asesor','Seguimiento estado','Carpeta cliente','Notas']];
   leads.forEach(l=>{
     const pp=Math.round((l._valorPotencial||0)*(l._probabilidad||10)/100);
     const pqs=l._presupuestos||[];
@@ -3265,7 +4132,7 @@ function exportarCSV(){
     const pps=l._propuestas||[];
     const lastP=pps.length?pps[pps.length-1]:null;
     const ad=l._admin||_emptyAdmin();
-    rows.push([l.id,l.empresa,l.sector,l.zona,l.prioridad,l.score,getTempCfg(calcTemp(l)).label,l.estado||'Sin contactar',l._valorPotencial||0,l._probabilidad||10,pp,l._packRec||l.pack||'',l.precio,l._proxAccion||'',l._proxFecha||'',l._ultimoContacto||'',l._objecionAsignada||'',l._cierreAsignado||'',lastQ?lastQ.estado:'',lastQ?lastQ.total:'',lastQ?lastQ.fechaActualizacion:'',lastQ?lastQ.caducidad:'',lastP?lastP.estado:'',lastP?lastP.titulo:'',lastP?lastP.total:'',lastP?lastP.fechaActualizacion:'',lastP?lastP.caducidad:'',ad.contrato.estado,ad.factura.estado,ad.factura.total||0,ad.factura.fechaCobro||'',ad.asesoria.estado,ad.seguimiento.estado,ad.carpeta.nombre||'',l._notas||'']);
+    rows.push([l.id,l.empresa,l.sector,l.subsector||'',l.zona,l.direccion||'',l.telefono||l.whatsapp||'',l.web||'',l.googleMapsUrl||'',l.rating||'',l.reviewCount||'',l.source||'',l.searchQuery||'',l.searchPlanLabel||'',l.categoryMatch===true?'true':'false',l.relevanceScore||'',l.relevanceReasons||'',l.createdAt||'',l.updatedAt||'',l.prioridad,l.score,l.leadScore||l.score,(l.scoreReasons||[]).join(' | '),l.recommendedPitch||l.gancho||'',getTempCfg(calcTemp(l)).label,l.estado||'Sin contactar',l._valorPotencial||0,l._probabilidad||10,pp,l._packRec||l.pack||'',l.precio,l._proxAccion||'',l._proxFecha||'',l._ultimoContacto||'',l._objecionAsignada||'',l._cierreAsignado||'',lastQ?lastQ.estado:'',lastQ?lastQ.total:'',lastQ?lastQ.fechaActualizacion:'',lastQ?lastQ.caducidad:'',lastP?lastP.estado:'',lastP?lastP.titulo:'',lastP?lastP.total:'',lastP?lastP.fechaActualizacion:'',lastP?lastP.caducidad:'',ad.contrato.estado,ad.factura.estado,ad.factura.total||0,ad.factura.fechaCobro||'',ad.asesoria.estado,ad.seguimiento.estado,ad.carpeta.nombre||'',l._notas||l.notas||'']);
   });
   const csv=rows.map(r=>r.map(v=>'"'+(String(v||'').replace(/"/g,'""'))+'"').join(',')).join('\n');
   const a=document.createElement('a');
@@ -3293,6 +4160,8 @@ function openModal(id){
   const waUrl=waNum?'https://wa.me/'+waNum+(l.whatsapp1?'?text='+encodeURIComponent(l.whatsapp1):''):'#';
   const mailUrl=l.email?'mailto:'+l.email+(l.emailAsunto?'?subject='+encodeURIComponent(l.emailAsunto)+(l.emailCuerpo?'&body='+encodeURIComponent(l.emailCuerpo):''):''):'#';
   const mapsUrl='https://www.google.com/maps/search/?api=1&query='+encodeURIComponent((l.empresa+' '+(l.direccion||l.zona)).trim());
+  const safeWeb=nbeSafeUrl(l.web);
+  const safeMaps=nbeSafeUrl(l.googleMapsUrl)||mapsUrl;
 
   document.getElementById('m-body').innerHTML=`
     <!-- TEMP + NBA -->
@@ -3330,16 +4199,17 @@ function openModal(id){
         <div class="info-item"><label>Cargo</label><span>${l.cargo||'—'}</span></div>
         <div class="info-item"><label>Teléfono</label><span>${l.telefono||'—'}</span></div>
         <div class="info-item"><label>Email</label><span><a href="mailto:${l.email}">${l.email||'—'}</a></span></div>
-        <div class="info-item"><label>Web</label><span><a href="${l.web}" target="_blank">${(l.web||'—').replace(/https?:\/\//,'')}</a></span></div>
+        <div class="info-item"><label>Web</label><span>${safeWeb?'<a href="'+safeWeb+'" target="_blank" rel="noopener noreferrer">'+safeHtml(safeWeb.replace(/https?:\/\//,''))+'</a>':'—'}</span></div>
         <div class="info-item"><label>Zona</label><span>${l.zona}</span></div>
         <div class="info-item"><label>Dirección</label><span>${l.direccion||'—'}</span></div>
+        ${isImportedLead(l)?'<div class="info-item"><label>Fuente</label><span>'+safeHtml(l.source||'CSV importado')+'</span></div><div class="info-item"><label>Rating / reseñas</label><span>'+safeHtml((l.rating||'—')+' / '+(l.reviewCount||0))+'</span></div><div class="info-item"><label>Búsqueda</label><span>'+safeHtml(l.searchPlanLabel||l.searchQuery||'—')+'</span></div><div class="info-item"><label>Google Maps</label><span>'+(safeMaps?'<a href="'+safeHtml(safeMaps)+'" target="_blank" rel="noopener noreferrer">Abrir ficha</a>':'—')+'</span></div>':''}
       </div>
       <div class="contact-actions">
-        ${waNum?'<a href="'+waUrl+'" target="_blank" class="contact-btn btn-wa">💬 WhatsApp</a>':''}
+        ${waNum?'<a href="'+waUrl+'" target="_blank" rel="noopener noreferrer" class="contact-btn btn-wa">💬 WhatsApp</a>':''}
         ${l.email?'<a href="'+mailUrl+'" class="contact-btn btn-email">📧 Email</a>':''}
         ${l.telefono?'<a href="tel:'+l.telefono+'" class="contact-btn btn-tel">📞 Llamar</a>':''}
-        <a href="${mapsUrl}" target="_blank" class="contact-btn btn-maps">📍 Maps</a>
-        ${l.web?'<a href="'+l.web+'" target="_blank" class="contact-btn btn-web">🌐 Web</a>':''}
+        <a href="${safeMaps}" target="_blank" rel="noopener noreferrer" class="contact-btn btn-maps">📍 Maps</a>
+        ${safeWeb?'<a href="'+safeWeb+'" target="_blank" rel="noopener noreferrer" class="contact-btn btn-web">🌐 Web</a>':''}
       </div>
     </div>
 
@@ -6058,7 +6928,7 @@ function markRoomDesignerDemoScheduled(id){
   saveState();renderAll();_showToast('Demo privada agendada.','var(--blue)');
 }
 
-function renderAll(){renderDashboard();renderLeads();renderTop10();renderPipeline();renderJourney();renderCatalogo();renderIntegraciones();renderAgenteResumen();renderVisualProposals();}
+function renderAll(){renderDashboard();renderLeads();renderTop10();renderPipeline();renderJourney();renderCatalogo();renderIntegraciones();renderAgenteResumen();renderVisualProposals();renderSearchPlanner();renderCsvSearchPlanOptions();}
 
 // ── Events ────────────────────────────────────────────────────────────────────
 document.querySelectorAll('.nav-tab').forEach(tab=>{
@@ -6073,6 +6943,8 @@ document.querySelectorAll('.nav-tab').forEach(tab=>{
     if(tab.dataset.view==='integraciones') renderIntegraciones();
     if(tab.dataset.view==='agente') renderAgenteResumen();
     if(tab.dataset.view==='visual-proposals') renderVisualProposals();
+    if(tab.dataset.view==='buscador') renderSearchPlanner();
+    if(tab.dataset.view==='importar') renderCsvSearchPlanOptions();
   });
 });
 document.querySelectorAll('[data-filter]').forEach(btn=>{
@@ -6085,6 +6957,7 @@ document.querySelectorAll('[data-filter]').forEach(btn=>{
   });
 });
 document.getElementById('search-input').addEventListener('input',e=>{filters.search=e.target.value;renderLeads();});
+document.getElementById('vertical-filter').addEventListener('change',e=>{filters.vertical=e.target.value;renderLeads();});
 document.querySelectorAll('.tpl-tab').forEach(t=>{
   t.addEventListener('click',()=>{activeTplTab=t.dataset.tab;activeTplTemp='all';tplSearch='';const si=document.getElementById('tpl-search');if(si)si.value='';renderTemplates();});
 });
@@ -6124,6 +6997,7 @@ if(promoChips) promoChips.innerHTML=PROMOS.map(p=>'<button class="promo-chip" da
 // ── Init ──────────────────────────────────────────────────────────────────────
 loadState();
 loadIntegrations();
+loadSearchPlans();
 renderAll();
 
 </script>

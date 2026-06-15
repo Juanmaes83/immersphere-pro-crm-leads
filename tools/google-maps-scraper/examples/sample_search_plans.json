@@ -1,0 +1,18 @@
+{
+  "version": "1.0",
+  "fecha": "2026-06-15",
+  "busquedas": [
+    {
+      "id": "search_demo_admin_fincas",
+      "query": "administradores de fincas torrevieja",
+      "vertical": "Administradores de fincas",
+      "city": "Torrevieja",
+      "province": "Alicante",
+      "area": "",
+      "limit": 80,
+      "source": "google_maps_scraper",
+      "priority": "B",
+      "status": "Pendiente"
+    }
+  ]
+}

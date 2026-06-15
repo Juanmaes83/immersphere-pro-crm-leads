@@ -45,6 +45,10 @@ App CRM standalone para captación, seguimiento y cierre comercial de leads de *
 - Export JSON
 - Import JSON
 - Export CSV
+- Import CSV para New Business Engine
+- Buscador de oportunidades para planificar queries B2B
+- Scoring B2B por vertical, zona, contacto, web, rating y oportunidad visual
+- Deduplicacion local por web, Google Maps, telefono y nombre/zona
 - Reset demo con doble confirmación
 - Botones WhatsApp, email, llamada, web y Maps
 - Flujo Room Designer / Decor Asset Lab para importar propuestas visuales como leads comerciales
@@ -75,6 +79,54 @@ Limitaciones:
 
 URL Room Designer:
 `https://immersphere-asset-lab.vercel.app/scenes/room-designer/index.html?source=crm`
+
+---
+
+## New Business Engine MVP
+
+La vista **Importar** permite pegar o cargar CSV de leads B2B preparados externamente. El CRM normaliza columnas frecuentes de Google Maps/CSV, clasifica verticales, calcula prioridad comercial, propone un pitch manual y guarda los leads importados en `localStorage` sin modificar los 50 leads base.
+
+No hace scraping, no envia WhatsApp/email automaticamente y no sustituye la validacion manual del decisor. Antes de importaciones grandes se recomienda exportar backup JSON.
+
+Guia operativa: `docs/import-google-maps-csv.md`
+
+La vista **Buscador** permite preparar queries B2B para usar despues con el repo externo Google-Maps-Scrapper. Guarda busquedas en `localStorage`, genera nombre CSV sugerido e instrucciones genericas, y permite asociar una busqueda al importar el CSV para heredar vertical, zona, source y query.
+
+Guia del buscador: `docs/search-planner.md`
+
+### Scraper local controlado
+
+El repo incluye una herramienta local en `tools/google-maps-scraper`. No se ejecuta en GitHub Pages y no añade scraping al navegador del CRM.
+
+Dry-run:
+
+```bash
+python tools/google-maps-scraper/run.py --query "administradores de fincas torrevieja" --vertical "Administradores de fincas" --city "Torrevieja" --province "Alicante" --limit 5 --dry-run
+```
+
+Ejecucion real local, bajo volumen y con confirmacion:
+
+```bash
+python tools/google-maps-scraper/run.py --query "administradores de fincas torrevieja" --vertical "Administradores de fincas" --city "Torrevieja" --province "Alicante" --limit 5 --yes
+```
+
+El CSV/JSON generado queda en `tools/google-maps-scraper/outputs/` y puede importarse desde la pestaña **Importar**.
+
+Para mejorar cobertura, el Buscador incluye **Ampliar busqueda con variantes**. En inmobiliarias prueba combinaciones como `inmobiliaria`, `agencia inmobiliaria`, `real estate`, `estate agents`, `luxury real estate`, `inmobiliaria lujo` y `propiedades` + ciudad. El scraper deduplica y marca baja relevancia sin borrar resultados.
+
+Servidor local para usarlo desde el CRM abierto en local:
+
+```bash
+python tools/google-maps-scraper/server.py
+```
+
+Luego en la pestaña **Buscador**: `Comprobar scraper` → `Ejecutar búsqueda local` → `Importar resultados al CRM`.
+
+### Roadmap futuro
+
+- Fase 3 — Website Opportunity Audit: detectar web antigua, no responsive, sin HTTPS, sin CTA, sin WhatsApp, sin formularios claros, sin tour virtual, baja velocidad y mala estructura comercial.
+- Fase 4 — Pitch & Proposal Generator: crear problema detectado, oportunidad, propuesta Immersphere, mensaje sugerido y siguiente accion.
+- Fase 5 — Outreach Assistant: preparar email, LinkedIn, llamada y WhatsApp manual con revision humana obligatoria, sin envio automatico.
 
 ---
 

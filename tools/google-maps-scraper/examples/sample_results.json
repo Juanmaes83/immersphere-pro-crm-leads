@@ -1,0 +1,22 @@
+[
+  {
+    "businessName": "Administraciones Costa Demo",
+    "category": "Administradores de fincas",
+    "vertical": "Administradores de fincas",
+    "address": "Calle Demo 1",
+    "city": "Torrevieja",
+    "province": "Alicante",
+    "phone": "+34 600 000 001",
+    "website": "https://example.com",
+    "googleMapsUrl": "https://www.google.com/maps/place/demo",
+    "rating": 4.5,
+    "reviewCount": 42,
+    "openingHours": "Lunes a viernes",
+    "searchQuery": "administradores de fincas torrevieja",
+    "source": "google_maps_scraper",
+    "scrapedAt": "2026-06-15T00:00:00",
+    "categoryMatch": true,
+    "relevanceScore": 85,
+    "relevanceReasons": "tiene web | tiene teléfono"
+  }
+]

@@ -4,3 +4,8 @@
 Thumbs.db
 node_modules/
 dist/
+.venv/
+__pycache__/
+*.pyc
+tools/google-maps-scraper/outputs/*
+!tools/google-maps-scraper/outputs/.gitkeep
