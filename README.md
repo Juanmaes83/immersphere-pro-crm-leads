@@ -134,6 +134,12 @@ El bridge local expone `POST /audit-website` para auditar de forma controlada la
 
 La ficha guarda el resultado en `websiteAudit` y lo muestra dentro del modal existente. No se hacen screenshots, Lighthouse, crawling profundo, login, formularios ni contacto automatico.
 
+### Fase 3.1 - Auditoria multipagina por vertical
+
+La auditoria normaliza la URL recibida y siempre revisa la home/base del dominio. Si la URL original era interna y segura, tambien la incluye. Despues selecciona paginas clave del mismo dominio: contacto, portfolio/proyectos, servicios/showroom/catalogo y, solo para inmobiliarias, propiedades/inmuebles.
+
+El limite es de 4 URLs unicas por lead. La auditoria adapta etiquetas, senales, scoring y recomendacion por vertical: inmobiliarias, interiorismo, arquitectura, construccion, hospitality y generico. Interiorismo usa etiquetas como `Portfolio / Proyectos` y `Showroom / Catalogo`, no `Propiedades`.
+
 ### Roadmap futuro
 
 - Fase 3 — Website Opportunity Audit: detectar web antigua, no responsive, sin HTTPS, sin CTA, sin WhatsApp, sin formularios claros, sin tour virtual, baja velocidad y mala estructura comercial.

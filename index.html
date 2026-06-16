@@ -2607,12 +2607,80 @@ function auditStatusLabel(a){
   if(a.status==='skipped') return 'Sin web';
   return 'Pendiente';
 }
+function defaultAuditLabels(profile){
+  const map={
+    real_estate:{primaryAssetLabel:'Propiedades',portfolioLabel:'Tour/360',conversionLabel:'Visita / Contacto',catalogLabel:'Captación',experienceLabel:'Vídeo'},
+    interior_design:{primaryAssetLabel:'Portfolio / Proyectos',portfolioLabel:'Showroom / Catálogo',conversionLabel:'Cita / Presupuesto',catalogLabel:'Tour showroom',experienceLabel:'Vídeo'},
+    architecture:{primaryAssetLabel:'Proyectos',portfolioLabel:'Renders / Visuales',conversionLabel:'Consulta',catalogLabel:'Servicios',experienceLabel:'Visualización 3D/360'},
+    construction:{primaryAssetLabel:'Antes/después',portfolioLabel:'Obras realizadas',conversionLabel:'Presupuesto',catalogLabel:'Servicios',experienceLabel:'Confianza visual'},
+    hospitality:{primaryAssetLabel:'Reservas',portfolioLabel:'Espacios / Habitaciones',conversionLabel:'Menú / Servicios',catalogLabel:'Tour ambiente',experienceLabel:'Experiencia'},
+    generic:{primaryAssetLabel:'Portfolio / Casos',portfolioLabel:'Servicios',conversionLabel:'CTA',catalogLabel:'Contacto',experienceLabel:'Experiencia visual'}
+  };
+  return map[profile]||map.generic;
+}
+function normalizeWebsiteAudit(a,lead){
+  const raw=a||{};
+  const signals=raw.signals||{};
+  const profile=raw.verticalProfile||((lead&&/inmobili|real estate|property/i.test([lead.sector,lead.subsector,lead.empresa].join(' ')))?'real_estate':'generic');
+  return {
+    auditVersion:raw.auditVersion||'3.0',
+    status:raw.status||'pending',
+    auditedAt:raw.auditedAt||'',
+    inputUrl:raw.inputUrl||raw.website||lead?.web||'',
+    baseUrl:raw.baseUrl||raw.website||lead?.web||'',
+    website:raw.website||lead?.web||'',
+    finalUrl:raw.finalUrl||raw.website||lead?.web||'',
+    reachable:raw.reachable===true,
+    httpStatus:raw.httpStatus||0,
+    usesHttps:raw.usesHttps===true,
+    loadTimeMs:raw.loadTimeMs||0,
+    title:raw.title||'',
+    metaDescription:raw.metaDescription||'',
+    language:raw.language||'',
+    htmlSize:raw.htmlSize||0,
+    pagesAudited:raw.pagesAudited||((raw.auditedUrls||[]).length||0),
+    auditedUrls:raw.auditedUrls||[],
+    pageTypesAudited:raw.pageTypesAudited||[],
+    pages:raw.pages||[],
+    verticalProfile:profile,
+    labels:{...defaultAuditLabels(profile),...(raw.labels||{})},
+    signals:{
+      hasTitle:raw.hasTitle===true||signals.hasTitle===true,
+      hasMetaDescription:raw.hasMetaDescription===true||signals.hasMetaDescription===true,
+      hasViewport:raw.hasViewport===true||signals.hasViewport===true,
+      hasPhone:raw.hasPhone===true||signals.hasPhone===true,
+      hasEmail:raw.hasEmail===true||signals.hasEmail===true,
+      hasWhatsapp:raw.hasWhatsapp===true||signals.hasWhatsapp===true,
+      hasContactForm:raw.hasContactForm===true||signals.hasContactForm===true,
+      hasClearCTA:raw.hasClearCTA===true||signals.hasClearCTA===true,
+      hasPropertyListings:raw.hasPropertyListings===true||signals.hasPropertyListings===true,
+      hasVirtualTourSignals:raw.hasVirtualTourSignals===true||signals.hasVirtualTourSignals===true,
+      hasVideoSignals:raw.hasVideoSignals===true||signals.hasVideoSignals===true,
+      hasSocialLinks:raw.hasSocialLinks===true||signals.hasSocialLinks===true,
+      hasGenericPortalSignals:signals.hasGenericPortalSignals===true,
+      hasPremiumSignals:signals.hasPremiumSignals===true
+    },
+    verticalSignals:raw.verticalSignals||{},
+    evidence:raw.evidence||{},
+    technologySignals:raw.technologySignals||[],
+    weaknesses:raw.weaknesses||[],
+    opportunities:raw.opportunities||[],
+    websiteOpportunityScore:raw.websiteOpportunityScore||0,
+    recommendedService:raw.recommendedService||'',
+    recommendedNextAction:raw.recommendedNextAction||'',
+    confidence:raw.confidence||'media',
+    error:raw.error||''
+  };
+}
 function websiteAuditFromResponse(data,lead){
   const audit=data&&data.audit||{};
   const signals=audit.signals||{};
-  return {
+  return normalizeWebsiteAudit({
+    auditVersion:audit.auditVersion||'3.1',
     status:data&&data.ok?'success':'failed',
     auditedAt:data&&data.auditedAt||new Date().toISOString(),
+    inputUrl:audit.inputUrl||data&&data.website||lead.web||'',
+    baseUrl:audit.baseUrl||'',
     website:data&&data.website||lead.web||'',
     finalUrl:data&&data.finalUrl||'',
     reachable:audit.reachable===true,
@@ -2625,6 +2693,10 @@ function websiteAuditFromResponse(data,lead){
     htmlSize:audit.htmlSize||0,
     pagesAudited:audit.pagesAudited||0,
     auditedUrls:audit.auditedUrls||[],
+    pageTypesAudited:audit.pageTypesAudited||[],
+    pages:audit.pages||[],
+    verticalProfile:audit.verticalProfile||'generic',
+    labels:audit.labels||{},
     signals:{
       hasTitle:audit.hasTitle===true||signals.hasTitle===true,
       hasMetaDescription:audit.hasMetaDescription===true||signals.hasMetaDescription===true,
@@ -2641,6 +2713,8 @@ function websiteAuditFromResponse(data,lead){
       hasGenericPortalSignals:signals.hasGenericPortalSignals===true,
       hasPremiumSignals:signals.hasPremiumSignals===true
     },
+    verticalSignals:audit.verticalSignals||{},
+    evidence:audit.evidence||{},
     technologySignals:audit.technologySignals||[],
     weaknesses:audit.weaknesses||[],
     opportunities:audit.opportunities||[],
@@ -2649,16 +2723,17 @@ function websiteAuditFromResponse(data,lead){
     recommendedNextAction:audit.recommendedNextAction||'',
     confidence:audit.confidence||'media',
     error:audit.error||''
-  };
+  },lead);
 }
 function websiteAuditSkipped(lead){
-  return {
-    status:'skipped',auditedAt:new Date().toISOString(),website:'',finalUrl:'',reachable:false,httpStatus:0,usesHttps:false,loadTimeMs:0,title:'',metaDescription:'',language:'',htmlSize:0,pagesAudited:0,auditedUrls:[],
+  return normalizeWebsiteAudit({
+    auditVersion:'3.1',status:'skipped',auditedAt:new Date().toISOString(),inputUrl:'',baseUrl:'',website:'',finalUrl:'',reachable:false,httpStatus:0,usesHttps:false,loadTimeMs:0,title:'',metaDescription:'',language:'',htmlSize:0,pagesAudited:0,auditedUrls:[],pageTypesAudited:[],pages:[],verticalProfile:'generic',labels:defaultAuditLabels('generic'),
     signals:{hasTitle:false,hasMetaDescription:false,hasViewport:false,hasPhone:false,hasEmail:false,hasWhatsapp:false,hasContactForm:false,hasClearCTA:false,hasPropertyListings:false,hasVirtualTourSignals:false,hasVideoSignals:false,hasSocialLinks:false,hasGenericPortalSignals:false,hasPremiumSignals:false},
-    technologySignals:[],weaknesses:['Sin web detectada.'],opportunities:['Proponer landing/ficha inmersiva básica antes de una campaña.'],websiteOpportunityScore:65,recommendedService:'Landing inmersiva básica + ficha comercial 360',recommendedNextAction:'Validar contacto y preparar propuesta de presencia visual mínima.',confidence:'baja',error:''
-  };
+    verticalSignals:{},evidence:{},technologySignals:[],weaknesses:['Sin web detectada.'],opportunities:['Proponer landing/ficha inmersiva básica antes de una campaña.'],websiteOpportunityScore:65,recommendedService:'Landing inmersiva básica + ficha comercial 360',recommendedNextAction:'Validar contacto y preparar propuesta de presencia visual mínima.',confidence:'baja',error:''
+  },lead);
 }
 function applyWebsiteAuditToLead(lead,audit){
+  audit=normalizeWebsiteAudit(audit,lead);
   lead.websiteAudit=audit;
   if(!nbeHas(lead.auditOpportunity)&&audit.opportunities&&audit.opportunities.length) lead.auditOpportunity=audit.opportunities[0];
   if(!nbeHas(lead.auditPain)&&audit.weaknesses&&audit.weaknesses.length) lead.auditPain=audit.weaknesses[0];
@@ -2690,11 +2765,12 @@ async function auditLeadWebsite(leadId){
   }
 }
 function websiteAuditSummaryText(l){
-  const a=l.websiteAudit||websiteAuditSkipped(l);
+  const a=normalizeWebsiteAudit(l.websiteAudit||websiteAuditSkipped(l),l);
   const s=a.signals||{};
   return 'AUDITORÍA WEB · '+(l.empresa||'Lead')+'\n'+
     'Estado: '+auditStatusLabel(a)+'\n'+
     'Web: '+(a.finalUrl||a.website||l.web||'Sin web')+'\n'+
+    'Home: '+(a.baseUrl||'—')+' · páginas: '+(a.pageTypesAudited||[]).join(', ')+'\n'+
     'Score oportunidad web: '+(a.websiteOpportunityScore||0)+'/100 · confianza '+(a.confidence||'media')+'\n'+
     'HTTPS: '+boolLabel(a.usesHttps)+' · CTA: '+boolLabel(s.hasClearCTA)+' · WhatsApp: '+boolLabel(s.hasWhatsapp)+' · Formulario: '+boolLabel(s.hasContactForm)+' · Tour/360: '+boolLabel(s.hasVirtualTourSignals)+'\n'+
     'Debilidades: '+((a.weaknesses||[]).join(' | ')||'Sin debilidades claras en la muestra')+'\n'+
@@ -2710,21 +2786,34 @@ function copyWebsiteAuditSummary(leadId){
   });
 }
 function websiteAuditCardBadge(l){
-  const a=l.websiteAudit;
+  const a=l.websiteAudit?normalizeWebsiteAudit(l.websiteAudit,l):null;
   if(!a) return '';
   const score=Number(a.websiteOpportunityScore)||0;
-  const alert=!a.signals||!a.signals.hasVirtualTourSignals?' · sin tour 360':'';
+  const labels=a.labels||defaultAuditLabels(a.verticalProfile);
+  const alert=!a.signals||!a.signals.hasVirtualTourSignals?' · '+(a.verticalProfile==='interior_design'?'showroom sin tour':labels.portfolioLabel+' no detectado'):(a.signals.hasClearCTA?'':' · CTA débil');
   const c=a.status==='success'?'est-visual':(a.status==='failed'?'est-pendiente':'est-pendiente');
   return '<span class="tag '+c+'">Web '+score+'/100'+safeHtml(alert)+'</span>';
 }
 function renderWebsiteAudit(l){
   const safeWeb=nbeSafeUrl(l.web||l.website);
-  const a=l.websiteAudit||(safeWeb?{status:'pending',website:safeWeb,signals:{},weaknesses:[],opportunities:[],websiteOpportunityScore:0}:websiteAuditSkipped(l));
+  const a=normalizeWebsiteAudit(l.websiteAudit||(safeWeb?{status:'pending',website:safeWeb,signals:{},weaknesses:[],opportunities:[],websiteOpportunityScore:0}:websiteAuditSkipped(l)),l);
   const s=a.signals||{};
+  const vs=a.verticalSignals||{};
+  const labels=a.labels||defaultAuditLabels(a.verticalProfile);
   const audited=a.auditedAt?new Date(a.auditedAt).toLocaleString('es-ES'):'—';
   const chip=(label,val)=>'<span class="tag '+(val?'est-cerrado':'est-pendiente')+'">'+safeHtml(label)+': '+boolLabel(val)+'</span>';
+  const verticalChipValues=(()=>{
+    if(a.verticalProfile==='real_estate') return [[labels.primaryAssetLabel,s.hasPropertyListings||vs.hasListingsPage],[labels.portfolioLabel,s.hasVirtualTourSignals],[labels.conversionLabel,vs.hasBuyerCTA||s.hasClearCTA],['WhatsApp',s.hasWhatsapp],['Formulario',s.hasContactForm]];
+    if(a.verticalProfile==='interior_design') return [[labels.primaryAssetLabel,vs.hasPortfolio||vs.hasProjectGallery],[labels.portfolioLabel,vs.hasShowroom||vs.hasCatalog],[labels.conversionLabel,vs.hasAppointmentCTA||vs.hasBudgetCTA],[labels.catalogLabel,vs.hasShowroomTour||s.hasVirtualTourSignals],[labels.experienceLabel,s.hasVideoSignals]];
+    if(a.verticalProfile==='architecture') return [[labels.primaryAssetLabel,vs.hasProjects||vs.hasPortfolio],[labels.portfolioLabel,vs.hasRenders],[labels.conversionLabel,vs.hasConsultationCTA],[labels.experienceLabel,vs.has3DVisualization||s.hasVirtualTourSignals],[labels.catalogLabel,vs.hasServices]];
+    if(a.verticalProfile==='construction') return [[labels.primaryAssetLabel,vs.hasBeforeAfter],[labels.portfolioLabel,vs.hasCompletedWorks],[labels.conversionLabel,vs.hasBudgetCTA],[labels.catalogLabel,vs.hasServices],[labels.experienceLabel,vs.hasVisualProof||s.hasVideoSignals]];
+    if(a.verticalProfile==='hospitality') return [[labels.primaryAssetLabel,vs.hasReservationCTA],[labels.portfolioLabel,vs.hasRooms||vs.hasSpaces],[labels.conversionLabel,vs.hasMenu||vs.hasServices],[labels.catalogLabel,s.hasVirtualTourSignals],[labels.experienceLabel,s.hasVideoSignals||vs.hasGallery]];
+    return [[labels.primaryAssetLabel,vs.hasPortfolio],[labels.portfolioLabel,vs.hasServices],[labels.conversionLabel,s.hasClearCTA],[labels.catalogLabel,s.hasContactForm||s.hasPhone||s.hasEmail],[labels.experienceLabel,s.hasVirtualTourSignals||s.hasVideoSignals]];
+  })();
   const weaknesses=(a.weaknesses||[]).length?(a.weaknesses||[]).map(x=>'<li>'+safeHtml(x)+'</li>').join(''):'<li>Sin debilidades claras en la muestra analizada.</li>';
   const opportunities=(a.opportunities||[]).length?(a.opportunities||[]).map(x=>'<li>'+safeHtml(x)+'</li>').join(''):'<li>Revisar manualmente la web y seleccionar oportunidad.</li>';
+  const urls=(a.auditedUrls||[]).slice(0,4).map((u,i)=>'<div style="font-size:11px;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+safeHtml((a.pageTypesAudited||[])[i]||'url')+': '+safeHtml(u)+'</div>').join('');
+  const evidence=Object.entries(a.evidence||{}).slice(0,6).map(([k,v])=>'<div style="font-size:11px;color:var(--text3)"><strong>'+safeHtml(k)+':</strong> '+safeHtml((v||[]).slice(0,2).join(' | '))+'</div>').join('');
   return `
     <div class="modal-section">
       <div class="modal-section-title">Auditoría Web</div>
@@ -2732,20 +2821,24 @@ function renderWebsiteAudit(l){
         <span class="tag ${a.status==='success'?'est-cerrado':(a.status==='failed'?'est-pendiente':'est-visual')}">${auditStatusLabel(a)}</span>
         <span class="tag est-visual">Oportunidad web ${safeHtml(a.websiteOpportunityScore||0)}/100</span>
         <span class="tag est-pendiente">Confianza ${safeHtml(a.confidence||'media')}</span>
+        <span class="tag est-visual">${safeHtml(a.auditVersion||'3.0')}</span>
       </div>
       <div class="info-grid">
         <div class="info-item"><label>Última auditoría</label><span>${safeHtml(audited)}</span></div>
         <div class="info-item"><label>Web auditada</label><span>${a.finalUrl||a.website?'<a href="'+safeHtml(a.finalUrl||a.website)+'" target="_blank" rel="noopener noreferrer">'+safeHtml((a.finalUrl||a.website).replace(/^https?:\/\//,''))+'</a>':'Sin web detectada'}</span></div>
+        <div class="info-item"><label>Home/Base</label><span>${a.baseUrl?'<a href="'+safeHtml(a.baseUrl)+'" target="_blank" rel="noopener noreferrer">'+safeHtml(a.baseUrl.replace(/^https?:\/\//,''))+'</a>':'—'}</span></div>
         <div class="info-item"><label>HTTPS</label><span>${boolLabel(a.usesHttps)}</span></div>
         <div class="info-item"><label>Carga aprox.</label><span>${a.loadTimeMs?safeHtml(a.loadTimeMs)+' ms':'—'}</span></div>
         <div class="info-item"><label>HTTP</label><span>${safeHtml(a.httpStatus||'—')}</span></div>
         <div class="info-item"><label>Páginas revisadas</label><span>${safeHtml(a.pagesAudited||0)}</span></div>
       </div>
+      ${urls?'<div style="background:var(--bg3);border-radius:8px;padding:8px;margin:10px 0">'+urls+'</div>':''}
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin:10px 0">
-        ${chip('CTA',s.hasClearCTA)}${chip('WhatsApp',s.hasWhatsapp)}${chip('Formulario',s.hasContactForm)}${chip('Teléfono',s.hasPhone)}${chip('Email',s.hasEmail)}${chip('Propiedades',s.hasPropertyListings)}${chip('Tour/360',s.hasVirtualTourSignals)}${chip('Vídeo',s.hasVideoSignals)}
+        ${verticalChipValues.map(x=>chip(x[0],x[1])).join('')}${chip('Teléfono',s.hasPhone)}${chip('Email',s.hasEmail)}
       </div>
       ${a.title?'<div style="font-size:12px;color:var(--text2);margin-bottom:6px"><strong>Título:</strong> '+safeHtml(a.title)+'</div>':''}
       ${a.technologySignals&&a.technologySignals.length?'<div style="font-size:12px;color:var(--text3);margin-bottom:8px">Tecnología detectada: '+safeHtml(a.technologySignals.join(', '))+'</div>':''}
+      ${evidence?'<div style="background:var(--bg3);border-radius:8px;padding:8px;margin-bottom:10px">'+evidence+'</div>':''}
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px">
         <div class="objecion-box"><div style="font-size:10px;color:var(--red);font-weight:700;text-transform:uppercase;margin-bottom:5px">Debilidades detectadas</div><ul style="margin:0 0 0 16px;padding:0;font-size:12px;color:var(--text2);line-height:1.6">${weaknesses}</ul></div>
         <div class="objecion-box" style="border-left-color:var(--green)"><div style="font-size:10px;color:var(--green);font-weight:700;text-transform:uppercase;margin-bottom:5px">Oportunidades</div><ul style="margin:0 0 0 16px;padding:0;font-size:12px;color:var(--text2);line-height:1.6">${opportunities}</ul></div>
