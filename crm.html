@@ -2135,6 +2135,10 @@ function loadState(){
         if(r.presupuestos!==undefined) l._presupuestos=r.presupuestos;
         if(r.propuestas!==undefined) l._propuestas=r.propuestas;
         if(r.admin!==undefined) l._admin=r.admin;
+        if(r.websiteAudit!==undefined) l.websiteAudit=r.websiteAudit;
+        if(r.auditOpportunity!==undefined) l.auditOpportunity=r.auditOpportunity;
+        if(r.auditPain!==undefined) l.auditPain=r.auditPain;
+        if(r.auditNextBestAction!==undefined) l.auditNextBestAction=r.auditNextBestAction;
         ensureVisualPipeline(l);
         if(r.edits) { Object.assign(l, r.edits); l._edits=r.edits; }
         if(r.comercial){
@@ -2161,6 +2165,7 @@ function saveState(){
       estado:l.estado,notas:l._notas||'',proxAccion:l._proxAccion||'',proxFecha:l._proxFecha||'',
       temp:l._temp||'',actividad:l._actividad||[],edits:l._edits||{},
       fechaEstado:l._fechaEstado||'',objecionAsignada:l._objecionAsignada||'',cierreAsignado:l._cierreAsignado||'',presupuestos:l._presupuestos||[],propuestas:l._propuestas||[],admin:l._admin||_emptyAdmin(),
+      websiteAudit:l.websiteAudit||null,auditOpportunity:l.auditOpportunity||'',auditPain:l.auditPain||'',auditNextBestAction:l.auditNextBestAction||'',
       comercial:{valorPotencial:l._valorPotencial||0,probabilidad:l._probabilidad||10,presupuesto:l._presupuesto||'',packRec:l._packRec||'',ultimoContacto:l._ultimoContacto||''}
     };
   });
@@ -2591,6 +2596,170 @@ function importLocalScraperResults(){
   const box=document.getElementById('local-scraper-result');
   if(box) box.innerHTML='<div style="color:var(--green);font-weight:700">Importación completada: '+r.added+' nuevos, '+r.merged+' fusionados, '+r.possible+' posibles duplicados.</div>';
   const btn=document.getElementById('local-import-btn');if(btn)btn.style.display='none';
+}
+
+// ── Website Opportunity Audit ────────────────────────────────────────────────
+function boolLabel(v){return v?'Sí':'No';}
+function auditStatusLabel(a){
+  if(!a||!a.status) return 'Pendiente';
+  if(a.status==='success') return 'Auditada';
+  if(a.status==='failed') return 'Fallida';
+  if(a.status==='skipped') return 'Sin web';
+  return 'Pendiente';
+}
+function websiteAuditFromResponse(data,lead){
+  const audit=data&&data.audit||{};
+  const signals=audit.signals||{};
+  return {
+    status:data&&data.ok?'success':'failed',
+    auditedAt:data&&data.auditedAt||new Date().toISOString(),
+    website:data&&data.website||lead.web||'',
+    finalUrl:data&&data.finalUrl||'',
+    reachable:audit.reachable===true,
+    httpStatus:audit.httpStatus||0,
+    usesHttps:audit.usesHttps===true,
+    loadTimeMs:audit.loadTimeMs||0,
+    title:audit.title||'',
+    metaDescription:audit.metaDescription||'',
+    language:audit.language||'',
+    htmlSize:audit.htmlSize||0,
+    pagesAudited:audit.pagesAudited||0,
+    auditedUrls:audit.auditedUrls||[],
+    signals:{
+      hasTitle:audit.hasTitle===true||signals.hasTitle===true,
+      hasMetaDescription:audit.hasMetaDescription===true||signals.hasMetaDescription===true,
+      hasViewport:audit.hasViewport===true||signals.hasViewport===true,
+      hasPhone:audit.hasPhone===true||signals.hasPhone===true,
+      hasEmail:audit.hasEmail===true||signals.hasEmail===true,
+      hasWhatsapp:audit.hasWhatsapp===true||signals.hasWhatsapp===true,
+      hasContactForm:audit.hasContactForm===true||signals.hasContactForm===true,
+      hasClearCTA:audit.hasClearCTA===true||signals.hasClearCTA===true,
+      hasPropertyListings:audit.hasPropertyListings===true||signals.hasPropertyListings===true,
+      hasVirtualTourSignals:audit.hasVirtualTourSignals===true||signals.hasVirtualTourSignals===true,
+      hasVideoSignals:audit.hasVideoSignals===true||signals.hasVideoSignals===true,
+      hasSocialLinks:audit.hasSocialLinks===true||signals.hasSocialLinks===true,
+      hasGenericPortalSignals:signals.hasGenericPortalSignals===true,
+      hasPremiumSignals:signals.hasPremiumSignals===true
+    },
+    technologySignals:audit.technologySignals||[],
+    weaknesses:audit.weaknesses||[],
+    opportunities:audit.opportunities||[],
+    websiteOpportunityScore:audit.websiteOpportunityScore||0,
+    recommendedService:audit.recommendedService||'',
+    recommendedNextAction:audit.recommendedNextAction||'',
+    confidence:audit.confidence||'media',
+    error:audit.error||''
+  };
+}
+function websiteAuditSkipped(lead){
+  return {
+    status:'skipped',auditedAt:new Date().toISOString(),website:'',finalUrl:'',reachable:false,httpStatus:0,usesHttps:false,loadTimeMs:0,title:'',metaDescription:'',language:'',htmlSize:0,pagesAudited:0,auditedUrls:[],
+    signals:{hasTitle:false,hasMetaDescription:false,hasViewport:false,hasPhone:false,hasEmail:false,hasWhatsapp:false,hasContactForm:false,hasClearCTA:false,hasPropertyListings:false,hasVirtualTourSignals:false,hasVideoSignals:false,hasSocialLinks:false,hasGenericPortalSignals:false,hasPremiumSignals:false},
+    technologySignals:[],weaknesses:['Sin web detectada.'],opportunities:['Proponer landing/ficha inmersiva básica antes de una campaña.'],websiteOpportunityScore:65,recommendedService:'Landing inmersiva básica + ficha comercial 360',recommendedNextAction:'Validar contacto y preparar propuesta de presencia visual mínima.',confidence:'baja',error:''
+  };
+}
+function applyWebsiteAuditToLead(lead,audit){
+  lead.websiteAudit=audit;
+  if(!nbeHas(lead.auditOpportunity)&&audit.opportunities&&audit.opportunities.length) lead.auditOpportunity=audit.opportunities[0];
+  if(!nbeHas(lead.auditPain)&&audit.weaknesses&&audit.weaknesses.length) lead.auditPain=audit.weaknesses[0];
+  if(!nbeHas(lead.auditNextBestAction)&&audit.recommendedNextAction) lead.auditNextBestAction=audit.recommendedNextAction;
+  lead._actividad=lead._actividad||[];
+  lead._actividad.push({tipo:'audit',texto:'Auditoría web '+auditStatusLabel(audit)+' · oportunidad '+(audit.websiteOpportunityScore||0)+'/100',fecha:new Date().toLocaleString('es-ES')});
+  lead.updatedAt=new Date().toISOString();
+}
+async function auditLeadWebsite(leadId){
+  const l=leads.find(x=>x.id===leadId);if(!l) return;
+  const web=nbeSafeUrl(l.web||l.website);
+  if(!web){
+    applyWebsiteAuditToLead(l,websiteAuditSkipped(l));
+    saveState();renderAll();setTimeout(()=>openModal(leadId),80);
+    return;
+  }
+  const btn=document.getElementById('audit-web-btn-'+leadId);
+  if(btn){btn.disabled=true;btn.textContent='Auditando...';}
+  try{
+    const res=await fetch(scraperApiBase()+'/audit-website',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({leadId:String(l.id),businessName:l.empresa||l.businessName||'',vertical:l.sector||l.vertical||'',city:l.zona||l.city||'',province:l.province||'',website:web,source:l.source||'manual'})});
+    const data=await res.json();
+    if(!data.ok) throw new Error(data.error||'No se pudo auditar la web.');
+    applyWebsiteAuditToLead(l,websiteAuditFromResponse(data,l));
+    saveState();renderAll();setTimeout(()=>openModal(leadId),80);
+  }catch(err){
+    l.websiteAudit={...(l.websiteAudit||{}),status:'failed',auditedAt:new Date().toISOString(),website:web,error:String(err&&err.message||err),weaknesses:['No se pudo completar la auditoría local.'],opportunities:['Revisar web manualmente antes de contactar.'],websiteOpportunityScore:l.websiteAudit&&l.websiteAudit.websiteOpportunityScore||0,recommendedService:l.websiteAudit&&l.websiteAudit.recommendedService||'',recommendedNextAction:'Revisar disponibilidad de la web o arrancar el bridge local.',confidence:'baja'};
+    saveState();renderAll();setTimeout(()=>openModal(leadId),80);
+    alert('Auditoría web fallida: '+String(err&&err.message||err));
+  }
+}
+function websiteAuditSummaryText(l){
+  const a=l.websiteAudit||websiteAuditSkipped(l);
+  const s=a.signals||{};
+  return 'AUDITORÍA WEB · '+(l.empresa||'Lead')+'\n'+
+    'Estado: '+auditStatusLabel(a)+'\n'+
+    'Web: '+(a.finalUrl||a.website||l.web||'Sin web')+'\n'+
+    'Score oportunidad web: '+(a.websiteOpportunityScore||0)+'/100 · confianza '+(a.confidence||'media')+'\n'+
+    'HTTPS: '+boolLabel(a.usesHttps)+' · CTA: '+boolLabel(s.hasClearCTA)+' · WhatsApp: '+boolLabel(s.hasWhatsapp)+' · Formulario: '+boolLabel(s.hasContactForm)+' · Tour/360: '+boolLabel(s.hasVirtualTourSignals)+'\n'+
+    'Debilidades: '+((a.weaknesses||[]).join(' | ')||'Sin debilidades claras en la muestra')+'\n'+
+    'Oportunidades: '+((a.opportunities||[]).join(' | ')||'Revisar manualmente')+'\n'+
+    'Recomendación: '+(a.recommendedService||'Revisión manual')+'\n'+
+    'Siguiente acción: '+(a.recommendedNextAction||'Revisar web antes de contactar');
+}
+function copyWebsiteAuditSummary(leadId){
+  const l=leads.find(x=>x.id===leadId);if(!l) return;
+  const txt=websiteAuditSummaryText(l);
+  navigator.clipboard.writeText(txt).then(()=>_showToast('✓ Resumen de auditoría copiado.','var(--green)')).catch(()=>{
+    const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta);_showToast('✓ Resumen de auditoría copiado.','var(--green)');
+  });
+}
+function websiteAuditCardBadge(l){
+  const a=l.websiteAudit;
+  if(!a) return '';
+  const score=Number(a.websiteOpportunityScore)||0;
+  const alert=!a.signals||!a.signals.hasVirtualTourSignals?' · sin tour 360':'';
+  const c=a.status==='success'?'est-visual':(a.status==='failed'?'est-pendiente':'est-pendiente');
+  return '<span class="tag '+c+'">Web '+score+'/100'+safeHtml(alert)+'</span>';
+}
+function renderWebsiteAudit(l){
+  const safeWeb=nbeSafeUrl(l.web||l.website);
+  const a=l.websiteAudit||(safeWeb?{status:'pending',website:safeWeb,signals:{},weaknesses:[],opportunities:[],websiteOpportunityScore:0}:websiteAuditSkipped(l));
+  const s=a.signals||{};
+  const audited=a.auditedAt?new Date(a.auditedAt).toLocaleString('es-ES'):'—';
+  const chip=(label,val)=>'<span class="tag '+(val?'est-cerrado':'est-pendiente')+'">'+safeHtml(label)+': '+boolLabel(val)+'</span>';
+  const weaknesses=(a.weaknesses||[]).length?(a.weaknesses||[]).map(x=>'<li>'+safeHtml(x)+'</li>').join(''):'<li>Sin debilidades claras en la muestra analizada.</li>';
+  const opportunities=(a.opportunities||[]).length?(a.opportunities||[]).map(x=>'<li>'+safeHtml(x)+'</li>').join(''):'<li>Revisar manualmente la web y seleccionar oportunidad.</li>';
+  return `
+    <div class="modal-section">
+      <div class="modal-section-title">Auditoría Web</div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
+        <span class="tag ${a.status==='success'?'est-cerrado':(a.status==='failed'?'est-pendiente':'est-visual')}">${auditStatusLabel(a)}</span>
+        <span class="tag est-visual">Oportunidad web ${safeHtml(a.websiteOpportunityScore||0)}/100</span>
+        <span class="tag est-pendiente">Confianza ${safeHtml(a.confidence||'media')}</span>
+      </div>
+      <div class="info-grid">
+        <div class="info-item"><label>Última auditoría</label><span>${safeHtml(audited)}</span></div>
+        <div class="info-item"><label>Web auditada</label><span>${a.finalUrl||a.website?'<a href="'+safeHtml(a.finalUrl||a.website)+'" target="_blank" rel="noopener noreferrer">'+safeHtml((a.finalUrl||a.website).replace(/^https?:\/\//,''))+'</a>':'Sin web detectada'}</span></div>
+        <div class="info-item"><label>HTTPS</label><span>${boolLabel(a.usesHttps)}</span></div>
+        <div class="info-item"><label>Carga aprox.</label><span>${a.loadTimeMs?safeHtml(a.loadTimeMs)+' ms':'—'}</span></div>
+        <div class="info-item"><label>HTTP</label><span>${safeHtml(a.httpStatus||'—')}</span></div>
+        <div class="info-item"><label>Páginas revisadas</label><span>${safeHtml(a.pagesAudited||0)}</span></div>
+      </div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin:10px 0">
+        ${chip('CTA',s.hasClearCTA)}${chip('WhatsApp',s.hasWhatsapp)}${chip('Formulario',s.hasContactForm)}${chip('Teléfono',s.hasPhone)}${chip('Email',s.hasEmail)}${chip('Propiedades',s.hasPropertyListings)}${chip('Tour/360',s.hasVirtualTourSignals)}${chip('Vídeo',s.hasVideoSignals)}
+      </div>
+      ${a.title?'<div style="font-size:12px;color:var(--text2);margin-bottom:6px"><strong>Título:</strong> '+safeHtml(a.title)+'</div>':''}
+      ${a.technologySignals&&a.technologySignals.length?'<div style="font-size:12px;color:var(--text3);margin-bottom:8px">Tecnología detectada: '+safeHtml(a.technologySignals.join(', '))+'</div>':''}
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px">
+        <div class="objecion-box"><div style="font-size:10px;color:var(--red);font-weight:700;text-transform:uppercase;margin-bottom:5px">Debilidades detectadas</div><ul style="margin:0 0 0 16px;padding:0;font-size:12px;color:var(--text2);line-height:1.6">${weaknesses}</ul></div>
+        <div class="objecion-box" style="border-left-color:var(--green)"><div style="font-size:10px;color:var(--green);font-weight:700;text-transform:uppercase;margin-bottom:5px">Oportunidades</div><ul style="margin:0 0 0 16px;padding:0;font-size:12px;color:var(--text2);line-height:1.6">${opportunities}</ul></div>
+      </div>
+      <div style="margin-top:10px;background:var(--bg3);border-radius:8px;padding:10px;font-size:12px;color:var(--text2)">
+        <strong style="color:var(--accent2)">Recomendación:</strong> ${safeHtml(a.recommendedService||'Auditar web antes de proponer.')}<br>
+        <strong style="color:var(--accent2)">Siguiente acción:</strong> ${safeHtml(a.recommendedNextAction||'Revisar web y preparar oportunidad manual.')}
+        ${a.error?'<br><strong style="color:var(--red)">Error:</strong> '+safeHtml(a.error):''}
+      </div>
+      <div class="contact-actions" style="margin-top:10px">
+        <button class="contact-btn btn-web" id="audit-web-btn-${l.id}" onclick="auditLeadWebsite(${l.id})">${a.status==='success'?'Reauditar web':'Auditar web'}</button>
+        <button class="contact-btn btn-email" onclick="copyWebsiteAuditSummary(${l.id})">Copiar resumen de oportunidad</button>
+      </div>
+    </div>`;
 }
 
 // ── Temperature ───────────────────────────────────────────────────────────────
@@ -3235,7 +3404,7 @@ function renderLeads(){
         <div><div class="card-empresa">${l.empresa}</div><div class="card-sector">${l.sector} · ${l.zona}</div></div>
         <div class="score-circle ${scoreClass(l.score)}">${l.score}</div>
       </div>
-      <div class="card-tags">${priTag(l.prioridad)}${estadoTag(l.estado)}${tempBadge(l)}${l.source==='room-designer'?'<span class="tag est-visual">Room Designer</span>':''}${isImportedLead(l)?'<span class="tag est-visual">CSV</span>':''}${l._possibleDuplicate?'<span class="tag est-pendiente">Revisar duplicado</span>':''}</div>
+      <div class="card-tags">${priTag(l.prioridad)}${estadoTag(l.estado)}${tempBadge(l)}${l.source==='room-designer'?'<span class="tag est-visual">Room Designer</span>':''}${isImportedLead(l)?'<span class="tag est-visual">CSV</span>':''}${websiteAuditCardBadge(l)}${l._possibleDuplicate?'<span class="tag est-pendiente">Revisar duplicado</span>':''}</div>
       <div class="card-dolor">${l.dolor}</div>
       ${isImportedLead(l)?'<div style="font-size:11px;color:var(--text3);display:flex;gap:8px;flex-wrap:wrap;margin-top:8px"><span>⭐ '+safeHtml(l.rating||'—')+'</span><span>💬 '+safeHtml(l.reviewCount||0)+'</span>'+(l.web?'<span>🌐 web</span>':'')+(l.googleMapsUrl?'<span>📍 Maps</span>':'')+'</div>':''}
       ${(l._proxAccion||l._proxFecha)?'<div class="card-prox"><span>📅</span><span class="prox-text">'+(l._proxAccion||'Próxima acción')+(l._proxFecha?' · <strong>'+formatFecha(l._proxFecha)+'</strong>':'')+'</span>'+(isVencida(l._proxFecha)?'<span class="prox-vencida">VENCIDA</span>':'')+'</div>':''}
@@ -3440,6 +3609,7 @@ function motivoSeleccionAgente(l,puntos){
   if(_agProxFecha(l)&&(isVencida(_agProxFecha(l))||isHoy(_agProxFecha(l)))) motivos.push('acción vencida/hoy');
   if(_agHasContact(l)) motivos.push('contacto localizado');
   if(_agHasValue(l.dolor)||_agHasValue(l.gancho)) motivos.push('dolor o gancho claro');
+  if(l.websiteAudit&&Number(l.websiteAudit.websiteOpportunityScore)>=70) motivos.push('oportunidad web alta');
   const vis=scoreVisualPipelineAgente(l);
   if(vis>0) motivos.push('pipeline visual '+vis+' pts');
   return _agTrim((motivos.length?motivos.join(', '):'revisión comercial')+' · '+puntos+' pts',140);
@@ -3460,6 +3630,7 @@ function scoreAgenteLead(l){
   if(_agHasPhone(l.telefono)||_agHasPhone(l.whatsapp)) puntos+=15;
   if(_agHasEmail(l.email)) puntos+=10;
   if(_agHasWeb(l.web)) puntos+=10;
+  if(l.websiteAudit&&Number(l.websiteAudit.websiteOpportunityScore)>=70) puntos+=5;
   if(_agHasValue(l.dolor)||_agHasValue(l.gancho)) puntos+=15;
   if(_agHasValue(l.pack)||_agHasValue(l._packRec)) puntos+=10;
   if(['inmobiliaria','promotora','arquitectura','reformas','interiorismo'].some(s=>_agSectorTexto(l).includes(s))) puntos+=10;
@@ -4178,6 +4349,7 @@ function exportarJSON(){
       temp:l._temp||'',actividad:l._actividad||[],edits:l._edits||{},
       fechaEstado:l._fechaEstado||'',objecionAsignada:l._objecionAsignada||'',cierreAsignado:l._cierreAsignado||'',
       presupuestos:l._presupuestos||[],propuestas:l._propuestas||[],admin:l._admin||_emptyAdmin(),
+      websiteAudit:l.websiteAudit||null,auditOpportunity:l.auditOpportunity||'',auditPain:l.auditPain||'',auditNextBestAction:l.auditNextBestAction||'',
       comercial:{valorPotencial:l._valorPotencial||0,probabilidad:l._probabilidad||10,presupuesto:l._presupuesto||'',packRec:l._packRec||'',ultimoContacto:l._ultimoContacto||''}
     };
   });
@@ -4214,6 +4386,10 @@ function importarJSON(){
           if(r.presupuestos!==undefined) l._presupuestos=r.presupuestos;
           if(r.propuestas!==undefined) l._propuestas=r.propuestas;
           if(r.admin!==undefined) l._admin=r.admin;
+          if(r.websiteAudit!==undefined) l.websiteAudit=r.websiteAudit;
+          if(r.auditOpportunity!==undefined) l.auditOpportunity=r.auditOpportunity;
+          if(r.auditPain!==undefined) l.auditPain=r.auditPain;
+          if(r.auditNextBestAction!==undefined) l.auditNextBestAction=r.auditNextBestAction;
           ensureVisualPipeline(l);
           if(r.edits){Object.assign(l,r.edits);l._edits=r.edits;}
           if(r.comercial){
@@ -4396,6 +4572,8 @@ function openModal(id){
         ${safeWeb?'<a href="'+safeWeb+'" target="_blank" rel="noopener noreferrer" class="contact-btn btn-web">🌐 Web</a>':''}
       </div>
     </div>
+
+    ${renderWebsiteAudit(l)}
 
     <!-- INTELIGENCIA -->
     <div class="modal-section">

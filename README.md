@@ -128,6 +128,12 @@ Los leads que entran por CSV o Local Scraper Bridge se crean con el mismo modelo
 
 El boton **Completar fichas importadas** rellena campos vacios o placeholders de leads importados incompletos sin sobrescribir notas, historial, presupuestos, propuestas ni estrategia manual.
 
+### Fase 3 - Website Opportunity Audit
+
+El bridge local expone `POST /audit-website` para auditar de forma controlada la web publica de un lead desde su ficha. La auditoria revisa senales basicas de oportunidad comercial: HTTPS, carga, titulo, meta description, viewport, CTA, WhatsApp, formulario, telefono/email, propiedades, video, tour/360, portales genericos y oportunidades para Immersphere Pro.
+
+La ficha guarda el resultado en `websiteAudit` y lo muestra dentro del modal existente. No se hacen screenshots, Lighthouse, crawling profundo, login, formularios ni contacto automatico.
+
 ### Roadmap futuro
 
 - Fase 3 — Website Opportunity Audit: detectar web antigua, no responsive, sin HTTPS, sin CTA, sin WhatsApp, sin formularios claros, sin tour virtual, baja velocidad y mala estructura comercial.

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from dataclasses import asdict
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -17,6 +18,13 @@ from typing import Any
 from urllib.parse import urlparse
 
 from run import OUTPUTS_DIR, RESPONSIBLE_WARNING, SearchPlan, clamp_limit, generate_query_variants, output_base, scrape_plan, write_outputs
+
+TOOLS_DIR = Path(__file__).resolve().parents[1]
+WEBSITE_AUDIT_DIR = TOOLS_DIR / "website-audit"
+if str(WEBSITE_AUDIT_DIR) not in sys.path:
+    sys.path.insert(0, str(WEBSITE_AUDIT_DIR))
+
+from audit import audit_website
 
 
 HOST = "127.0.0.1"
@@ -123,6 +131,7 @@ class Handler(BaseHTTPRequestHandler):
                     "service": "immersphere-local-google-maps-scraper",
                     "host": HOST,
                     "port": PORT,
+                    "websiteAudit": True,
                 },
             )
             return
@@ -133,12 +142,15 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         path = urlparse(self.path).path
-        if path != "/run":
+        if path not in ("/run", "/audit-website"):
             json_response(self, 404, {"ok": False, "error": "Endpoint no encontrado."})
             return
         try:
             length = int(self.headers.get("Content-Length") or 0)
             payload = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
+            if path == "/audit-website":
+                json_response(self, 200, audit_website(payload))
+                return
             plan = plan_from_payload(payload)
             if not plan.query:
                 raise ValueError("Falta query.")
@@ -176,7 +188,7 @@ class Handler(BaseHTTPRequestHandler):
                 {
                     "ok": False,
                     "error": str(exc),
-                    "hint": "Revisa Playwright, conexion, CAPTCHA/bloqueo o cambios de DOM. No se intenta evadir bloqueos.",
+                    "hint": "Revisa Playwright, conexion, CAPTCHA/bloqueo, URL o cambios de DOM. No se intenta evadir bloqueos.",
                 },
             )
 

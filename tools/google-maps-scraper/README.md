@@ -51,6 +51,7 @@ Endpoints:
 
 - `GET /health`: comprueba si el scraper local esta activo.
 - `POST /run`: ejecuta una busqueda o dry-run y devuelve JSON normalizado.
+- `POST /audit-website`: audita de forma local y controlada la web publica de un lead. Revisa como maximo homepage, una pagina clara de contacto y una pagina clara de propiedades del mismo dominio. No envia formularios, no hace login, no ejecuta Lighthouse y no captura screenshots.
 - `GET /outputs`: lista CSV/JSON generados.
 
 Ejemplo de payload:
