@@ -122,6 +122,12 @@ python tools/google-maps-scraper/server.py
 
 Luego en la pestaña **Buscador**: `Comprobar scraper` → `Ejecutar búsqueda local` → `Importar resultados al CRM`.
 
+### Fase 2D - Paridad de fichas importadas
+
+Los leads que entran por CSV o Local Scraper Bridge se crean con el mismo modelo operativo de ficha que los leads seed: scoring 360, prioridad, temperatura, mensajes, propuesta comercial, notas, presupuestos, propuestas, gestion administrativa, journey documental y pipeline visual.
+
+El boton **Completar fichas importadas** rellena campos vacios o placeholders de leads importados incompletos sin sobrescribir notas, historial, presupuestos, propuestas ni estrategia manual.
+
 ### Roadmap futuro
 
 - Fase 3 — Website Opportunity Audit: detectar web antigua, no responsive, sin HTTPS, sin CTA, sin WhatsApp, sin formularios claros, sin tour virtual, baja velocidad y mala estructura comercial.

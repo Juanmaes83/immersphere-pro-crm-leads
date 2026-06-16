@@ -1034,6 +1034,7 @@ nav{background:var(--bg2);border-bottom:1px solid var(--border);padding:0 20px;d
     </div>
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
       <button class="nuevo-lead-btn" onclick="importarCsvLeads()">Importar CSV</button>
+      <button class="nav-action-btn" onclick="rehidratarLeadsImportados()">Completar fichas importadas</button>
       <button class="nav-action-btn" onclick="exportarCSV()">Exportar CSV limpio</button>
       <button class="nav-action-btn" onclick="exportarJSON()">Backup JSON</button>
       <button class="nav-action-btn" onclick="importarJSON()">Restaurar JSON</button>
@@ -2519,7 +2520,7 @@ function renderLocalScraperResults(payload,plan){
     '<div><strong>'+safeHtml(payload.totalAfterDedupe||items.length)+'</strong><br><span style="color:var(--text3)">tras dedupe</span></div>'+
     '<div><strong style="color:var(--gold)">'+safeHtml(payload.lowRelevanceCount||0)+'</strong><br><span style="color:var(--text3)">baja relevancia</span></div>'+
     '</div><div style="font-size:11px;color:var(--text3);margin-bottom:8px">Queries usadas: '+safeHtml(variants||payload.query||'—')+'</div>';
-  const preview=items.slice(0,8).map(n=>{const sc=scoreImportedLead(n);const dup=findExistingLeadForNormalized(n);const rel=n.categoryMatch?'<span class="tag est-cerrado">Alta relevancia</span>':'<span class="tag est-pendiente">Revisar</span>';return `<div style="padding:8px 0;border-bottom:1px solid var(--border)"><strong>${safeHtml(n.businessName)}</strong> · ${safeHtml(n.category||n.vertical)} · ${safeHtml(n.city||n.province||'Sin zona')} <span style="color:var(--accent2);font-weight:700">Score ${sc.score} ${sc.priority}</span> ${rel}${dup?' <span style="color:var(--gold)">posible duplicado</span>':''}<br><span style="color:var(--text3)">Tel: ${safeHtml(n.phone||'—')} · Web: ${safeHtml(n.website||'—')} · Rating: ${safeHtml(n.rating||'—')} · Reviews: ${safeHtml(n.reviewCount||0)} · Relevancia: ${safeHtml(n.relevanceScore||0)}/100</span></div>`;}).join('');
+  const preview=items.slice(0,8).map(n=>{const sc=scoreImportedLead(n);const st=strategyForImportedLead(n,sc);const dup=findExistingLeadForNormalized(n);const rel=n.categoryMatch?'<span class="tag est-cerrado">Alta relevancia</span>':'<span class="tag est-pendiente">Revisar</span>';return `<div style="padding:8px 0;border-bottom:1px solid var(--border)"><strong>${safeHtml(n.businessName)}</strong> · ${safeHtml(n.category||n.vertical)} · ${safeHtml(n.city||n.province||'Sin zona')} <span style="color:var(--accent2);font-weight:700">Score ${sc.score} ${sc.priority}</span> ${rel}${dup?' <span style="color:var(--gold)">posible duplicado</span>':''}<br><span style="color:var(--text3)">Tel: ${safeHtml(n.phone||'—')} · Web: ${safeHtml(n.website||'—')} · Rating: ${safeHtml(n.rating||'—')} · Reviews: ${safeHtml(n.reviewCount||0)} · Relevancia: ${safeHtml(n.relevanceScore||0)}/100</span><br><span style="color:var(--text2)">Oportunidad: ${safeHtml(st.motivo)}</span><br><span style="color:var(--accent2)">Siguiente acción: ${safeHtml(st.proximaAccion)}</span></div>`;}).join('');
   box.innerHTML=summary+preview+(items.length>8?'<div style="font-size:11px;color:var(--text3);margin-top:8px">Mostrando 8 primeros.</div>':'')+'<div style="font-size:11px;color:var(--text3);margin-top:8px">CSV: <code>'+safeHtml(payload.csvPath||'')+'</code></div>';
 }
 async function runLocalScraper(dryRun){
@@ -2555,6 +2556,10 @@ function importNormalizedItems(items,plan){
       existing.searchQuery=existing.searchQuery||n.searchQuery||'';
       existing.searchPlanId=existing.searchPlanId||n.searchPlanId||'';
       existing.searchPlanLabel=existing.searchPlanLabel||n.searchPlanLabel||'';
+      existing.categoryMatch=existing.categoryMatch===true||n.categoryMatch===true;
+      existing.relevanceScore=existing.relevanceScore||n.relevanceScore||0;
+      existing.relevanceReasons=existing.relevanceReasons||n.relevanceReasons||'';
+      hydrateLeadStrategy(existing,n,{allowPlaceholderUpgrade:isImportedLead(existing)});
       existing.updatedAt=new Date().toISOString();
       existing.createdAt=existing.createdAt||existing.updatedAt;
       existing._possibleDuplicate=false;
@@ -2571,6 +2576,13 @@ function importNormalizedItems(items,plan){
   completeSearchPlanImport(plan,added+merged);
   saveState();renderAll();
   return {added,merged,possible};
+}
+function rehidratarLeadsImportados(){
+  const targets=leads.filter(l=>isImportedLead(l));
+  let changed=0;
+  targets.forEach(l=>{if(hydrateLeadStrategy(l,null,{allowPlaceholderUpgrade:true})) changed++;});
+  if(changed){saveState();renderAll();}
+  alert('Fichas importadas revisadas: '+targets.length+'. Completadas o actualizadas: '+changed+'. No se han sobrescrito notas, historial, presupuestos ni propuestas.');
 }
 function importLocalScraperResults(){
   if(!localScraperLastResults.length){alert('No hay resultados locales para importar.');return;}
@@ -3786,7 +3798,10 @@ const NBE_COLUMN_ALIASES={
   openingHours:['openinghours','opening_hours','hours','horario'],
   searchQuery:['searchquery','search_query','query','busqueda','búsqueda'],
   source:['source','fuente','origen'],
-  scrapedAt:['scrapedat','scraped_at','fecha','date']
+  scrapedAt:['scrapedat','scraped_at','fecha','date'],
+  categoryMatch:['categorymatch','category_match','match','relevante'],
+  relevanceScore:['relevancescore','relevance_score','score_relevancia','relevancia'],
+  relevanceReasons:['relevancereasons','relevance_reasons','motivos_relevancia','razones_relevancia']
 };
 const NBE_HIGH_VERTICALS=['Inmobiliarias','Reformas','Arquitectura','Interiorismo','Piscinas','Jardinería','Constructoras','Promotoras','Turismo/alojamiento'];
 const NBE_PRIORITY_ZONES=['torrevieja','orihuela costa','punta prima','campoamor','villamartin','la zenia','rojales','guardamar','alicante','murcia'];
@@ -3853,7 +3868,10 @@ function normalizeCsvLead(raw){
     openingHours:val('openingHours'),
     searchQuery:val('searchQuery'),
     source:val('source')||'csv_import',
-    scrapedAt:val('scrapedAt')
+    scrapedAt:val('scrapedAt'),
+    categoryMatch:['true','1','si','sí','yes'].includes(val('categoryMatch').toLowerCase()),
+    relevanceScore:Math.round(nbeNum(val('relevanceScore'))),
+    relevanceReasons:val('relevanceReasons')
   };
 }
 function classifyBusinessVertical(text){
@@ -3892,6 +3910,102 @@ function pitchForVertical(vertical,businessName){
   };
   return (map[vertical]||'Te ayudamos a convertir espacios, trabajos y servicios visuales de '+name+' en experiencias digitales medibles con CTA y captación de leads.');
 }
+function isRealEstateImported(n){
+  const s=[n.vertical,n.category,n.businessName,n.searchQuery,n.sector,n.subsector].join(' ').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+  return /inmobili|real estate|estate agent|property|properties|villas|homes|promotor/.test(s);
+}
+function hasPremiumSignal(n){
+  const s=[n.businessName,n.category,n.searchQuery,n.website,n.city,n.province,n.address].join(' ').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+  return /premium|luxury|lujo|villa|villas|homes|property|properties|altea|moraira|javea|marbella|costa blanca/.test(s);
+}
+function safeLeadText(v,fallback){
+  return nbeHas(v)?nbeText(v):fallback;
+}
+function scorePartsForImportedLead(n,sc){
+  const categoryOk=n.categoryMatch===true||isRealEstateImported(n)||NBE_HIGH_VERTICALS.includes(n.vertical);
+  const need=Math.min(10,Math.max(5,Math.round((sc.score+(categoryOk?10:0))/10)));
+  const capacity=Math.min(10,Math.max(5,(NBE_HIGH_VERTICALS.includes(n.vertical)?8:6)+(hasPremiumSignal(n)?1:0)+(n.reviewCount>=50?1:0)));
+  const contact=nbeCanonicalPhone(n.phone).length>=9&&nbeHas(n.website)?9:(nbeCanonicalPhone(n.phone).length>=9?8:(nbeHas(n.website)?6:4));
+  const invest=Math.min(10,Math.max(5,(['Inmobiliarias','Promotoras','Constructoras','Turismo/alojamiento','Arquitectura'].includes(n.vertical)?8:6)+(hasPremiumSignal(n)?1:0)));
+  const urgency=sc.priority==='A'?8:(sc.priority==='B'?7:5);
+  return {scoreNecesidad:need,scoreCapacidad:capacity,scoreContacto:contact,scoreInversion:invest,scoreUrgencia:urgency};
+}
+function importedRealEstateStrategy(n,sc){
+  const name=nbeText(n.businessName)||'esta inmobiliaria';
+  const zone=nbeText(n.city||n.province||n.address)||'su zona';
+  const premium=hasPremiumSignal(n);
+  const hasWeb=nbeHas(n.website);
+  const hasPhone=nbeCanonicalPhone(n.phone).length>=9;
+  const manyReviews=n.reviewCount>=40;
+  const lowRel=n.categoryMatch===false&&n.relevanceScore&&n.relevanceScore<55;
+  const dolor=lowRel?'Encaje pendiente de validación: la categoría no confirma actividad inmobiliaria.':(premium?'Propiedades premium vendidas con una experiencia digital que puede quedarse corta frente al valor del inmueble.':'Demasiada dependencia de fotos estáticas y portales para generar confianza antes de la visita.');
+  const motivo=premium?'Presentación premium de inmueble, tour 360 comercial y captación cualificada para comprador remoto.':'Convertir cada propiedad destacada en una landing comercial con tour, hotspots, CTA y seguimiento.';
+  const gancho=premium?'Si vendéis propiedades premium, la experiencia de presentación debe estar al mismo nivel que el inmueble.':'Vuestro cliente no necesita más fotos: necesita sentir que ya ha visitado la vivienda antes de desplazarse.';
+  const next=lowRel?'Revisar manualmente por baja relevancia antes de contactar.':(hasWeb?'Revisar web y seleccionar una propiedad destacada para preparar demo visual.':'Validar cartera y web antes de preparar contacto manual.');
+  const pack=premium?'Pack Inmobiliaria 360':'Piloto inmueble premium';
+  const precio=premium?'Piloto 450-900 € / pack inicial 900-1.800 € / mensualidad 150-490 €':'Piloto 450-900 € / mensualidad 150-490 €';
+  const canal=hasPhone?'WhatsApp + llamada + email corto':(hasWeb?'Formulario/web + email manual':'Verificar contacto antes de contactar');
+  const reviewLine=manyReviews?' Además, el volumen de reseñas sugiere una marca con tracción local.':'';
+  return {
+    servicio:'Pack propiedad inmersiva 360 + QR escaparate',
+    dolor,
+    motivo,
+    senales:[n.categoryMatch?'Categoría alineada':'Categoría pendiente de validar',hasWeb?'web disponible':'sin web localizada',hasPhone?'teléfono disponible':'sin teléfono localizado',premium?'señal premium/luxury':'encaje inmobiliario',manyReviews?'reseñas suficientes':'reseñas por revisar'].join(', '),
+    gancho,
+    servGancho:premium?'Demo visual de propiedad premium':'Reel de propiedad + tour 360 piloto',
+    servPrincipal:'Pack Propiedad Inmersiva: tour 360, hotspots comerciales, landing, QR, formulario lead y analítica básica.',
+    upsell:'Web Premium inmobiliaria + campañas Meta/Google + SEO/GEO local + visitas guiadas automáticas.',
+    pack,
+    precio,
+    dificultad:'Media',
+    entrega:'3-7 días por propiedad piloto',
+    demo:premium?'Una propiedad premium convertida en visita guiada inmersiva con CTA de comprador cualificado.':'Una vivienda destacada convertida en visita previa navegable desde móvil.',
+    canal,
+    proximaAccion:next,
+    objecion:'Ya tenemos fotos, vídeos o Idealista.',
+    respuesta:'Perfecto: Immersphere no sustituye fotos ni portales; convierte una propiedad en una experiencia propia para WhatsApp, web, QR y campañas.',
+    cierre:'¿Elegimos una propiedad que queráis mover este mes y preparo una demo piloto?',
+    cta:'¿Elegimos una propiedad que queráis mover este mes y preparo una demo piloto?',
+    whatsapp1:'Hola, soy Juanma de Immersphere Pro. He visto '+name+' y creo que una de vuestras propiedades podría venderse mejor si el cliente pudiera recorrerla desde el móvil antes de visitar. '+gancho+' ¿Qué propiedad o proyecto os interesa mover ahora?',
+    emailAsunto:'Idea visual para '+name+': demo inmersiva aplicable a '+zone,
+    emailCuerpo:'Hola,\n\nHe revisado '+name+' y veo una oportunidad clara: '+motivo+'.'+reviewLine+'\n\nPara vuestro caso propondría '+(premium?'una demo visual de propiedad premium':'un reel de propiedad + tour 360 piloto')+'. La idea no es vender tecnología, sino conseguir visitas más cualificadas y acelerar la decisión.\n\n¿Te encaja que preparemos una propuesta piloto de una sola página?\n\nSaludos,\nJuanma\nImmersphere Pro',
+    followup1:'Te escribo de nuevo porque el enfoque puede ser muy sencillo: elegir un único activo de '+name+', montar una demo rápida y medir si ayuda a captar mejores consultas.',
+    followup2:'Cierro por ahora para no insistir. Si más adelante queréis diferenciar una propiedad, promoción o cartera premium con vídeo/360/landing, lo retomamos con una demo muy concreta.'
+  };
+}
+function importedGenericStrategy(n,sc){
+  const pitch=pitchForVertical(n.vertical,n.businessName);
+  const name=nbeText(n.businessName)||'esta empresa';
+  return {
+    servicio:'Diagnóstico visual Immersphere Pro',
+    dolor:'Presencia visual mejorable o oportunidad de mostrar espacios/proyectos con más confianza',
+    motivo:pitch,
+    senales:(sc.reasons||[]).join(', '),
+    gancho:pitch,
+    servGancho:'Auditoría visual + demo inmersiva piloto',
+    servPrincipal:'Immersphere Pro: tours 360, hotspots comerciales, visitas guiadas automáticas, CTA y analítica.',
+    upsell:'SaaS Immersphere Pro + activos visuales por campaña.',
+    pack:'New Business Visual B2B',
+    precio:'Diagnóstico 0€ / piloto 450-1.500 €',
+    dificultad:'Media',
+    entrega:'3-10 días',
+    demo:'Demo visual adaptada a '+(n.vertical||'B2B visual'),
+    canal:n.phone?'WhatsApp + llamada manual':'Email / web manual',
+    proximaAccion:'Validar datos, decisor y caso visual antes de contactar',
+    objecion:'Ya tenemos web, fotos o redes sociales.',
+    respuesta:'Perfecto: Immersphere no sustituye esos canales; los convierte en una experiencia visual medible con CTA y leads.',
+    cierre:'¿Te preparo una auditoría visual rápida con una idea aplicable a vuestro negocio?',
+    cta:'¿Te preparo una auditoría visual rápida?',
+    whatsapp1:'Hola, soy Juanma de Immersphere Pro. He visto '+name+' y creo que podríais convertir vuestros espacios, proyectos o servicios en una experiencia visual más clara para captar mejores consultas. No envío nada automático: quería validar si tiene sentido prepararos una idea concreta.',
+    emailAsunto:'Idea visual para '+name+' · Immersphere Pro',
+    emailCuerpo:'Hola,\n\nHe revisado '+name+' y veo una oportunidad: '+pitch+'\n\nLa idea sería empezar con una demo o diagnóstico visual muy concreto, sin cambiar vuestros sistemas actuales.\n\n¿Te encaja que lo revisemos manualmente esta semana?\n\nSaludos,\nJuanma\nImmersphere Pro',
+    followup1:'Te escribo de nuevo solo para cerrar el círculo: la propuesta sería elegir un caso visual concreto y convertirlo en demo medible con CTA.',
+    followup2:'Cierro por ahora para no insistir. Si más adelante queréis mejorar captación visual o presentación de espacios/proyectos, lo retomamos.'
+  };
+}
+function strategyForImportedLead(n,sc){
+  return isRealEstateImported(n)?importedRealEstateStrategy(n,sc):importedGenericStrategy(n,sc);
+}
 function scoreImportedLead(n){
   let score=0,reasons=[];
   const text=[n.businessName,n.category,n.vertical,n.searchQuery,n.website].join(' ').toLowerCase();
@@ -3905,7 +4019,12 @@ function scoreImportedLead(n){
   if(/showroom|villa|premium|reforma|obra|proyecto|hotel|resort|piscina|jardin|inmobili/.test(text)){score+=15;reasons.push('oportunidad visual clara');}
   if(!nbeHas(n.website)||/(facebook|instagram|maps\.google|business\.site)/.test(n.website.toLowerCase())){score+=10;reasons.push('web pobre o ausente');}
   if(['Inmobiliarias','Promotoras','Constructoras','Turismo/alojamiento','Arquitectura','Piscinas'].includes(n.vertical)){score+=10;reasons.push('ticket potencial alto');}
+  if(n.categoryMatch===true){score+=8;reasons.push('categoría validada por scraper');}
+  if(n.relevanceScore>=80){score+=7;reasons.push('relevancia alta del scraper');}
+  if(hasPremiumSignal(n)){score+=8;reasons.push('señal premium/luxury');}
+  if(n.categoryMatch===false&&n.relevanceScore&&n.relevanceScore<50){score-=25;reasons.push('baja relevancia: categoría no coincide con la vertical buscada');}
   score=Math.min(100,score);
+  score=Math.max(0,score);
   const priority=score>=80?'A':score>=60?'B':'C';
   return {score,priority,reasons};
 }
@@ -3923,29 +4042,94 @@ function findExistingLeadForNormalized(n){
     return nk===key&&key!=='namecity:';
   })||leads.find(l=>key==='namecity:'+nbeSlug((l.empresa||'')+' '+(l.zona||'')));
 }
-function buildLeadFromNormalized(n){
-  const sc=scoreImportedLead(n);
-  const pitch=pitchForVertical(n.vertical,n.businessName);
-  const scoreNecesidad=Math.min(10,Math.max(5,Math.round(sc.score/10)));
-  const scoreContacto=nbeCanonicalPhone(n.phone).length>=9?8:(nbeHas(n.website)?6:4);
-  const id=--_nextCustomId;
-  const now=new Date().toISOString();
+function importedLeadNormalizedFromLead(l){
   return {
-    id,_custom:true,source:n.source||'csv_import',businessName:n.businessName||'Lead B2B importado',vertical:n.vertical,category:n.category||'',city:n.city||'',province:n.province||'',phone:n.phone||'',website:n.website||'',priority:sc.priority,status:'Sin contactar',createdAt:now,updatedAt:now,empresa:n.businessName||'Lead B2B importado',sector:n.vertical,subsector:n.category||n.searchQuery||'',zona:n.city||n.province||'Sin zona',direccion:n.address||'',web:n.website||'',telefono:n.phone||'',whatsapp:n.phone||'',email:'',responsable:'No localizado',cargo:'No localizado',
-    googleMapsUrl:n.googleMapsUrl||'',rating:n.rating||0,reviewCount:n.reviewCount||0,openingHours:n.openingHours||'',searchQuery:n.searchQuery||'',searchPlanId:n.searchPlanId||'',searchPlanLabel:n.searchPlanLabel||'',scrapedAt:n.scrapedAt||'',categoryMatch:n.categoryMatch===true,relevanceScore:n.relevanceScore||0,relevanceReasons:n.relevanceReasons||'',leadScore:sc.score,score:sc.score,prioridad:sc.priority,scoreReasons:sc.reasons,
-    scoreNecesidad,scoreCapacidad:NBE_HIGH_VERTICALS.includes(n.vertical)?8:6,scoreContacto,scoreInversion:['Inmobiliarias','Promotoras','Constructoras','Turismo/alojamiento','Arquitectura'].includes(n.vertical)?8:6,scoreUrgencia:sc.priority==='A'?8:6,
-    estado:'Sin contactar',proximaAccion:'Validar decisor y preparar contacto manual',nextAction:'Validar decisor y preparar contacto manual',recommendedPitch:pitch,recommendedPitchReason:sc.reasons.join(', '),notas:'Importado por CSV. Revisar datos antes de contactar.',
-    servicio:'Diagnóstico visual Immersphere Pro',dolor:'Presencia visual mejorable o oportunidad de mostrar espacios/proyectos con más confianza',motivo:pitch,senales:sc.reasons.join(', '),gancho:pitch,servGancho:'Auditoría visual + demo inmersiva piloto',
-    servPrincipal:'Immersphere Pro: tours 360, hotspots comerciales, guided autopilot, live guided visits, CTA y analítica.',upsell:'SaaS Immersphere Pro + activos visuales por campaña.',pack:'New Business Visual B2B',precio:'Diagnóstico 0€ / piloto 450-1.500 €',dificultad:'Media',entrega:'3-10 días',
-    objecion:'Ya tenemos web, fotos o redes sociales.',respuesta:'Perfecto: Immersphere no sustituye esos canales; los convierte en una experiencia visual medible con CTA y leads.',cierre:'¿Te preparo una auditoría visual rápida con una idea aplicable a vuestro negocio?',canal:n.phone?'WhatsApp + llamada manual':'Email / web manual',
-    whatsapp1:'Hola, soy Juanma de Immersphere Pro. He visto '+(n.businessName||'vuestra empresa')+' y creo que podríais convertir vuestros espacios, proyectos o servicios en una experiencia visual más clara para captar mejores consultas. No envío nada automático: quería validar si tiene sentido prepararos una idea concreta.',
-    emailAsunto:'Idea visual para '+(n.businessName||'tu empresa')+' · Immersphere Pro',
-    emailCuerpo:'Hola,\n\nHe revisado '+(n.businessName||'vuestra empresa')+' y veo una oportunidad: '+pitch+'\n\nLa idea sería empezar con una demo o diagnóstico visual muy concreto, sin cambiar vuestros sistemas actuales.\n\n¿Te encaja que lo revisemos manualmente esta semana?\n\nSaludos,\nJuanma\nImmersphere Pro',
-    followup1:'Te escribo de nuevo solo para cerrar el círculo: la propuesta sería elegir un caso visual concreto y convertirlo en demo medible con CTA.',
-    followup2:'Cierro por ahora para no insistir. Si más adelante queréis mejorar captación visual o presentación de espacios/proyectos, lo retomamos.',
-    cta:'¿Te preparo una auditoría visual rápida?',landing:'https://juanmaes83.github.io/IMMERSPHERE-PRO-INMOBILIARIAS/index.html',instagram:'Pendiente',facebook:'Pendiente',demo:'Demo visual adaptada a '+n.vertical,
-    _fechaEstado:'',_notas:'',_proxAccion:'Validar datos y decisor',_proxFecha:'',_temp:'',_actividad:[{tipo:'import',texto:'Lead importado desde CSV. Score '+sc.score+'/100: '+sc.reasons.join(', '),fecha:new Date().toLocaleString('es-ES')}],_edits:{},_objecionAsignada:'',_cierreAsignado:'',_presupuestos:[],_propuestas:[],_admin:_emptyAdmin(),_valorPotencial:sc.priority==='A'?2500:(sc.priority==='B'?1200:600),_probabilidad:sc.priority==='A'?35:(sc.priority==='B'?22:12),_presupuesto:'',_packRec:'New Business Visual B2B',_ultimoContacto:''
+    businessName:l.businessName||l.empresa,
+    vertical:l.vertical||l.sector||classifyBusinessVertical([l.sector,l.subsector,l.category,l.empresa].join(' ')),
+    category:l.category||l.subsector||'',
+    address:l.address||l.direccion||'',
+    city:l.city||l.zona||'',
+    province:l.province||'',
+    phone:l.phone||l.telefono||l.whatsapp||'',
+    website:l.website||l.web||'',
+    googleMapsUrl:l.googleMapsUrl||'',
+    rating:nbeNum(l.rating),
+    reviewCount:Math.round(nbeNum(l.reviewCount)),
+    openingHours:l.openingHours||'',
+    searchQuery:l.searchQuery||'',
+    source:l.source||'csv_import',
+    searchPlanId:l.searchPlanId||'',
+    searchPlanLabel:l.searchPlanLabel||'',
+    scrapedAt:l.scrapedAt||'',
+    categoryMatch:l.categoryMatch===true,
+    relevanceScore:nbeNum(l.relevanceScore),
+    relevanceReasons:l.relevanceReasons||''
   };
+}
+function _placeholderLeadValue(v){
+  const s=nbeText(v).toLowerCase();
+  return !s||['pendiente','no localizado','sin zona','diagnóstico visual immersphere pro','diagnostico visual immersphere pro','new business visual b2b','presencia visual mejorable o oportunidad de mostrar espacios/proyectos con más confianza','validar decisor y preparar contacto manual','validar datos y decisor'].includes(s);
+}
+function fillLeadFieldIfEmpty(target,key,value,allowPlaceholder){
+  if(value===undefined||value===null) return false;
+  if(Array.isArray(value)&&!value.length) return false;
+  const empty=Array.isArray(target[key])?!target[key].length:_placeholderLeadValue(target[key]);
+  if(empty||(allowPlaceholder&&_placeholderLeadValue(target[key]))){
+    target[key]=Array.isArray(value)?[...value]:value;
+    return true;
+  }
+  return false;
+}
+function createFullLeadFromImportedData(n,context){
+  const sc=scoreImportedLead(n);
+  const strategy=strategyForImportedLead(n,sc);
+  const parts=scorePartsForImportedLead(n,sc);
+  const id=context&&context.id?context.id:--_nextCustomId;
+  const now=new Date().toISOString();
+  const value=sc.priority==='A'?(isRealEstateImported(n)?1800:2500):(sc.priority==='B'?(isRealEstateImported(n)?900:1200):600);
+  const probability=sc.priority==='A'?35:(sc.priority==='B'?22:12);
+  const scoreReasons=[...(sc.reasons||[])];
+  if(n.relevanceReasons) scoreReasons.push(String(n.relevanceReasons));
+  return {
+    id,_custom:true,source:n.source||'csv_import',businessName:n.businessName||'Lead B2B importado',vertical:n.vertical,category:n.category||'',city:n.city||'',province:n.province||'',phone:n.phone||'',website:n.website||'',priority:sc.priority,status:'Sin contactar',createdAt:now,updatedAt:now,empresa:n.businessName||'Lead B2B importado',sector:n.vertical||classifyBusinessVertical([n.category,n.businessName,n.searchQuery].join(' ')),subsector:n.category||n.searchQuery||'',zona:n.city||n.province||'Sin zona',direccion:n.address||'',web:n.website||'',telefono:n.phone||'',whatsapp:n.phone||'',email:'',responsable:'No localizado',cargo:'No localizado',
+    googleMapsUrl:n.googleMapsUrl||'',rating:n.rating||0,reviewCount:n.reviewCount||0,openingHours:n.openingHours||'',searchQuery:n.searchQuery||'',searchPlanId:n.searchPlanId||'',searchPlanLabel:n.searchPlanLabel||'',scrapedAt:n.scrapedAt||'',categoryMatch:n.categoryMatch===true,relevanceScore:n.relevanceScore||0,relevanceReasons:n.relevanceReasons||'',leadScore:sc.score,score:sc.score,prioridad:sc.priority,scoreReasons,
+    ...parts,
+    estado:'Sin contactar',proximaAccion:strategy.proximaAccion,nextAction:strategy.proximaAccion,recommendedPitch:strategy.gancho,recommendedPitchReason:scoreReasons.join(', '),notas:'Importado por '+(n.source||'CSV')+'. Revisar datos antes de contactar.',
+    servicio:strategy.servicio,dolor:strategy.dolor,motivo:strategy.motivo,senales:strategy.senales,gancho:strategy.gancho,servGancho:strategy.servGancho,
+    servPrincipal:strategy.servPrincipal,upsell:strategy.upsell,pack:strategy.pack,precio:strategy.precio,dificultad:strategy.dificultad,entrega:strategy.entrega,
+    objecion:strategy.objecion,respuesta:strategy.respuesta,cierre:strategy.cierre,canal:strategy.canal,
+    whatsapp1:strategy.whatsapp1,emailAsunto:strategy.emailAsunto,emailCuerpo:strategy.emailCuerpo,followup1:strategy.followup1,followup2:strategy.followup2,
+    cta:strategy.cta,landing:'https://juanmaes83.github.io/IMMERSPHERE-PRO-INMOBILIARIAS/index.html',instagram:'Pendiente',facebook:'Pendiente',demo:strategy.demo,
+    _fechaEstado:'',_notas:'',_proxAccion:strategy.proximaAccion,_proxFecha:'',_temp:'',_actividad:[{tipo:'import',texto:'Lead importado desde '+(n.source||'CSV')+'. Score '+sc.score+'/100: '+scoreReasons.join(', '),fecha:new Date().toLocaleString('es-ES')}],_edits:{},_objecionAsignada:'',_cierreAsignado:'',_presupuestos:[],_propuestas:[],_admin:_emptyAdmin(),_valorPotencial:value,_probabilidad:probability,_presupuesto:'',_packRec:strategy.pack,_ultimoContacto:''
+  };
+}
+function buildLeadFromNormalized(n){
+  return createFullLeadFromImportedData(n,{});
+}
+function hydrateLeadStrategy(target,raw,options){
+  if(!target) return false;
+  const n=applySearchContextToNormalized({...importedLeadNormalizedFromLead(target),...(raw||{})},null);
+  const full=createFullLeadFromImportedData(n,{id:target.id});
+  let changed=false;
+  const allow=!!(options&&options.allowPlaceholderUpgrade);
+  ['businessName','vertical','category','city','province','phone','website','priority','status','empresa','sector','subsector','zona','direccion','web','telefono','whatsapp','email','responsable','cargo','googleMapsUrl','rating','reviewCount','openingHours','searchQuery','searchPlanId','searchPlanLabel','scrapedAt','categoryMatch','relevanceScore','relevanceReasons','leadScore','score','prioridad','scoreReasons','scoreNecesidad','scoreCapacidad','scoreContacto','scoreInversion','scoreUrgencia','proximaAccion','nextAction','recommendedPitch','recommendedPitchReason','notas','servicio','dolor','motivo','senales','gancho','servGancho','servPrincipal','upsell','pack','precio','dificultad','entrega','objecion','respuesta','cierre','canal','whatsapp1','emailAsunto','emailCuerpo','followup1','followup2','cta','landing','instagram','facebook','demo'].forEach(k=>{
+    if(fillLeadFieldIfEmpty(target,k,full[k],allow)) changed=true;
+  });
+  if(!Array.isArray(target._presupuestos)){target._presupuestos=[];changed=true;}
+  if(!Array.isArray(target._propuestas)){target._propuestas=[];changed=true;}
+  if(!target._admin){target._admin=_emptyAdmin();changed=true;}
+  ensureVisualPipeline(target);
+  if(!Array.isArray(target._actividad)){target._actividad=[];changed=true;}
+  if(fillLeadFieldIfEmpty(target,'_proxAccion',full._proxAccion,allow)) changed=true;
+  if(!target._edits){target._edits={};changed=true;}
+  if(!target._valorPotencial){target._valorPotencial=full._valorPotencial;changed=true;}
+  if(!target._probabilidad){target._probabilidad=full._probabilidad;changed=true;}
+  if(fillLeadFieldIfEmpty(target,'_packRec',full._packRec,allow)) changed=true;
+  if(changed){
+    target.updatedAt=new Date().toISOString();
+    target._actividad.push({tipo:'sistema',texto:'Ficha importada completada con modelo CRM completo.',fecha:new Date().toLocaleString('es-ES')});
+  }
+  return changed;
 }
 function parseCsvImportText(){
   const text=document.getElementById('csv-import-text')?.value||'';
@@ -3960,7 +4144,7 @@ function previewCsvLeads(){
   const res=parseCsvImportText();
   const target=document.getElementById('csv-import-result');
   if(res.error){target.innerHTML='<div class="empty">'+safeHtml(res.error)+'</div>';return;}
-  const preview=res.items.slice(0,8).map(n=>{const sc=scoreImportedLead(n);const dup=findExistingLeadForNormalized(n);return `<div style="padding:8px 0;border-bottom:1px solid var(--border)"><strong>${safeHtml(n.businessName)}</strong> · ${safeHtml(n.vertical)} · ${safeHtml(n.city||n.province||'Sin zona')} <span style="color:var(--accent2);font-weight:700">Score ${sc.score} ${sc.priority}</span>${dup?' <span style="color:var(--gold)">posible duplicado</span>':''}<br><span style="color:var(--text3)">${safeHtml(sc.reasons.join(', ')||'sin señales')}</span></div>`;}).join('');
+  const preview=res.items.slice(0,8).map(n=>{const sc=scoreImportedLead(n);const st=strategyForImportedLead(n,sc);const dup=findExistingLeadForNormalized(n);return `<div style="padding:8px 0;border-bottom:1px solid var(--border)"><strong>${safeHtml(n.businessName)}</strong> · ${safeHtml(n.vertical)} · ${safeHtml(n.city||n.province||'Sin zona')} <span style="color:var(--accent2);font-weight:700">Score ${sc.score} ${sc.priority}</span>${dup?' <span style="color:var(--gold)">posible duplicado</span>':''}<br><span style="color:var(--text3)">${safeHtml(sc.reasons.join(', ')||'sin señales')}</span><br><span style="color:var(--text2)">Oportunidad: ${safeHtml(st.motivo)}</span><br><span style="color:var(--accent2)">Siguiente acción: ${safeHtml(st.proximaAccion)}</span></div>`;}).join('');
   target.innerHTML='<div style="font-weight:700;margin-bottom:8px">'+res.items.length+' leads detectados</div>'+preview+(res.items.length>8?'<div style="font-size:11px;color:var(--text3);margin-top:8px">Mostrando 8 primeros.</div>':'');
 }
 function importarCsvLeads(){
