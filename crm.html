@@ -735,9 +735,97 @@ nav{background:var(--bg2);border-bottom:1px solid var(--border);padding:0 20px;d
   .of-field.full{grid-column:1}
   .tpl-in-lead-row{grid-template-columns:1fr}
 }
+
+/* ── VISUAL PREVIEW LANDING (Fase 4A.2) ───────────────────────────────── */
+#preview-landing-page{display:none}
+body.preview-mode nav,
+body.preview-mode .view,
+body.preview-mode .modal-overlay,
+body.preview-mode .oferta-overlay,
+body.preview-mode .proposal-overlay{display:none!important}
+body.preview-mode #preview-landing-page{display:block}
+body.preview-mode{background:radial-gradient(circle at 20% -10%,rgba(124,58,237,.18),transparent 45%),radial-gradient(circle at 90% 10%,rgba(245,158,11,.10),transparent 40%),var(--bg)}
+
+.pl-page{min-height:100vh;padding:0 0 60px}
+.pl-back{position:fixed;top:14px;left:14px;z-index:50;background:rgba(17,17,24,.7);border:1px solid var(--border);color:var(--text3);font-size:11px;font-weight:600;padding:6px 12px;border-radius:20px;backdrop-filter:blur(6px);transition:all .2s}
+.pl-back:hover{color:var(--text);border-color:var(--accent)}
+.pl-shell{max-width:920px;margin:0 auto;padding:64px 20px 0}
+.pl-topbar{display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:28px}
+.pl-logo{font-size:13px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;background:linear-gradient(135deg,var(--accent),var(--accent2));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+
+.pl-hero{text-align:center;padding:18px 0 36px}
+.pl-badge{display:inline-flex;align-items:center;gap:6px;background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.35);color:var(--gold);font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;padding:5px 14px;border-radius:20px;margin-bottom:18px}
+.pl-lead-line{font-size:13px;color:var(--text2);margin-bottom:10px}
+.pl-lead-line strong{color:var(--text)}
+.pl-hero-title{font-size:clamp(24px,4vw,38px);font-weight:800;line-height:1.2;margin-bottom:14px;background:linear-gradient(135deg,#fff,#cbd5e1);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.pl-hero-sub{font-size:15px;color:var(--text2);line-height:1.7;max-width:600px;margin:0 auto 26px}
+.pl-hero-ctas{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
+.pl-btn{display:inline-flex;align-items:center;gap:6px;border-radius:10px;padding:12px 22px;font-size:13px;font-weight:700;cursor:pointer;border:1px solid transparent;transition:all .2s}
+.pl-btn-primary{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;box-shadow:0 8px 24px rgba(124,58,237,.35)}
+.pl-btn-primary:hover{filter:brightness(1.08)}
+.pl-btn-secondary{background:var(--bg2);border-color:var(--border);color:var(--text)}
+.pl-btn-secondary:hover{border-color:var(--accent2);color:var(--accent2)}
+
+.pl-section{background:var(--bg2);border:1px solid var(--border);border-radius:16px;padding:26px;margin-bottom:18px}
+.pl-section-label{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--accent2);margin-bottom:12px}
+.pl-section-title{font-size:18px;font-weight:700;color:var(--text);margin-bottom:14px}
+.pl-diagnosis-text{font-size:14px;color:var(--text);line-height:1.8}
+
+.pl-mockup{display:grid;grid-template-columns:1.1fr 1fr;gap:20px;align-items:stretch}
+.pl-mockup-visual{background:linear-gradient(135deg,rgba(124,58,237,.25),rgba(245,158,11,.15));border:1px solid var(--border);border-radius:14px;min-height:180px;display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden}
+.pl-mockup-visual::after{content:'⬡';font-size:64px;color:rgba(255,255,255,.18);position:absolute}
+.pl-mockup-tag{position:absolute;top:10px;left:10px;background:rgba(0,0,0,.45);color:#fff;font-size:10px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding:4px 9px;border-radius:6px}
+.pl-mockup-info{display:flex;flex-direction:column;justify-content:center;gap:10px}
+.pl-mockup-name{font-size:16px;font-weight:700;color:var(--text)}
+.pl-mockup-zone{font-size:12px;color:var(--text3)}
+.pl-mockup-price{font-size:13px;color:var(--gold);font-weight:700}
+.pl-mockup-chips{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0}
+.pl-chip{background:rgba(124,58,237,.15);border:1px solid rgba(124,58,237,.3);color:var(--accent2);font-size:10px;font-weight:600;padding:4px 9px;border-radius:20px}
+.pl-mockup-ctas{display:flex;gap:8px;flex-wrap:wrap;margin-top:4px}
+
+.pl-modules-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px}
+.pl-module-card{background:var(--bg3);border:1px solid var(--border);border-radius:12px;padding:14px}
+.pl-module-title{font-size:13px;font-weight:700;color:var(--text);margin-bottom:5px}
+.pl-module-desc{font-size:11px;color:var(--text2);line-height:1.6;margin-bottom:10px}
+.pl-module-status{display:inline-block;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;padding:3px 8px;border-radius:5px}
+.pl-status-incluido{background:rgba(16,185,129,.15);color:var(--green);border:1px solid rgba(16,185,129,.3)}
+.pl-status-opcional{background:rgba(59,130,246,.15);color:var(--blue);border:1px solid rgba(59,130,246,.3)}
+.pl-status-fase{background:rgba(100,116,139,.15);color:var(--text3);border:1px solid rgba(100,116,139,.3)}
+
+.pl-pack-name{font-size:14px;font-weight:700;color:var(--gold);margin-bottom:10px}
+.pl-pack-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px;list-style:none}
+.pl-pack-list li{font-size:12px;color:var(--text2);background:var(--bg3);border-radius:8px;padding:8px 12px;border:1px solid var(--border)}
+
+.pl-postcard{display:grid;grid-template-columns:1fr auto;gap:20px;align-items:center}
+.pl-postcard-headline{font-size:15px;font-weight:700;color:var(--text);margin-bottom:6px}
+.pl-postcard-sub{font-size:12px;color:var(--text2);line-height:1.6;margin-bottom:10px}
+.pl-postcard-cta{font-size:12px;color:var(--accent2);font-weight:700;margin-bottom:8px}
+.pl-postcard-url{font-size:11px;color:var(--text3);word-break:break-all}
+.pl-qr-box{background:#fff;border-radius:12px;padding:10px;text-align:center}
+.pl-qr-box img{width:130px;height:130px;display:block}
+.pl-qr-label{font-size:9px;color:#0a0a0f;font-weight:700;margin-top:4px;text-transform:uppercase;letter-spacing:.04em}
+
+.pl-cta-final{text-align:center;padding:34px 26px}
+.pl-cta-final-title{font-size:18px;font-weight:700;color:var(--text);margin-bottom:18px}
+
+.pl-disclaimer{text-align:center;font-size:10px;color:var(--text3);line-height:1.7;max-width:560px;margin:0 auto;padding:0 20px}
+
+@media(max-width:760px){
+  .pl-mockup{grid-template-columns:1fr}
+  .pl-postcard{grid-template-columns:1fr}
+  .pl-qr-box{justify-self:start}
+}
+@media(max-width:480px){
+  .pl-shell{padding:54px 14px 0}
+  .pl-section{padding:18px}
+  .pl-hero-ctas{flex-direction:column;align-items:stretch}
+  .pl-btn{justify-content:center}
+}
 </style>
 </head>
 <body>
+
+<div id="preview-landing-page" class="pl-page"></div>
 
 <nav>
   <div class="nav-logo">⬡ IMMERSPHERE</div>
@@ -7621,16 +7709,139 @@ function renderPreviewLanding(l){
 
 function openPreviewLanding(id){
   const l=leads.find(x=>x.id===id);if(!l) return;
-  const body=document.getElementById('preview-landing-body');
-  if(body) body.innerHTML=renderPreviewLanding(l);
-  const overlay=document.getElementById('preview-landing-overlay');
-  if(overlay) overlay.classList.add('open');
-  if(location.hash!=='#preview-'+id) history.replaceState(null,'',location.pathname+location.search+'#preview-'+id);
+  if(!l.previewEngine||!l.previewEngine.previewUrl){_showToast('Genera primero la preview para abrir la landing.','var(--gold)');return;}
+  const url=previewEngineAbsoluteUrl(l.previewEngine.previewUrl);
+  window.open(url,'_blank');
 }
 
 function closePreviewLanding(){
   const overlay=document.getElementById('preview-landing-overlay');
   if(overlay) overlay.classList.remove('open');
+}
+
+// ── VISUAL PREVIEW LANDING (Fase 4A.2) ─────────────────────────────────────
+function previewModuleCards(l,pe){
+  const a=l.websiteAudit?normalizeWebsiteAudit(l.websiteAudit,l):null;
+  const s=(a&&a.signals)||{};
+  const has=(k)=>!!(a&&a.status==='success'&&s[k]);
+  return [
+    {title:'Tour 360',desc:'Recorrido interactivo del inmueble para que el comprador lo explore antes de la visita.',status:has('hasVirtualTourSignals')?'incluido':'opcional'},
+    {title:'QR para escaparate / WhatsApp',desc:'Acceso directo a la preview desde escaparate, folleto o conversación de WhatsApp.',status:'incluido'},
+    {title:'Vídeo corto',desc:'Vídeo breve a partir de fotos del inmueble, listo para redes y portales.',status:has('hasVideoSignals')?'incluido':'opcional'},
+    {title:'Plano básico / floorplan-ready',desc:'Plano simple o estructura preparada para un floorplan más adelante.',status:'opcional'},
+    {title:'Captación de lead',desc:'CTA claro para que el comprador interesado deje sus datos de contacto.',status:has('hasClearCTA')?'incluido':'opcional'},
+    {title:'Visita guiada remota',desc:'Sesión guiada en directo con un agente, mostrando el inmueble a distancia.',status:'fase'}
+  ];
+}
+function previewModuleStatusLabel(st){
+  return st==='incluido'?'Incluido en preview':st==='opcional'?'Opcional':'Fase siguiente';
+}
+
+function renderPreviewLandingPage(l){
+  const pe=l.previewEngine||emptyPreviewEngine();
+  const absoluteUrl=pe.previewUrl?previewEngineAbsoluteUrl(pe.previewUrl):'';
+  const zona=l.zona?safeHtml(l.zona):'';
+  const modules=previewModuleCards(l,pe);
+  return `
+    <a class="pl-back" href="javascript:void(0)" onclick="exitPreviewLandingMode()">← Volver al CRM</a>
+    <div class="pl-shell">
+      <div class="pl-topbar"><span class="pl-logo">⬡ Immersphere Private Preview</span></div>
+
+      <div class="pl-hero">
+        <span class="pl-badge">🔒 Preview privada</span>
+        <div class="pl-lead-line"><strong>${safeHtml(l.empresa||'Inmobiliaria')}</strong>${zona?' · '+zona:''}</div>
+        <h1 class="pl-hero-title">${safeHtml(pe.postcardHeadline||'Tu próxima visita empieza antes de pisar la vivienda.')}</h1>
+        <p class="pl-hero-sub">${safeHtml(pe.postcardSubheadline||'Una preview privada para convertir tus fichas inmobiliarias en experiencias interactivas con tour, vídeo, plano y QR.')}</p>
+        <div class="pl-hero-ctas">
+          <button class="pl-btn pl-btn-primary" onclick="copyPreviewEngineWhatsApp(${l.id})">Solicitar demo</button>
+          ${l.email?'<a href="mailto:'+safeHtml(l.email)+'" class="pl-btn pl-btn-secondary">Responder por email</a>':'<button class="pl-btn pl-btn-secondary" onclick="copyPreviewEngineEmail('+l.id+')">Responder por email</button>'}
+        </div>
+      </div>
+
+      <div class="pl-section">
+        <div class="pl-section-label">Diagnóstico</div>
+        <div class="pl-diagnosis-text">${safeHtml(pe.diagnosis||'Diagnóstico pendiente de generar.')}</div>
+      </div>
+
+      <div class="pl-section">
+        <div class="pl-section-label">Así podría verse una ficha premium</div>
+        <div class="pl-mockup">
+          <div class="pl-mockup-visual"><span class="pl-mockup-tag">Preview conceptual</span></div>
+          <div class="pl-mockup-info">
+            <div class="pl-mockup-name">Vivienda destacada · Inmueble premium</div>
+            <div class="pl-mockup-zone">${zona||'Zona a definir'}</div>
+            <div class="pl-mockup-price">Precio bajo consulta</div>
+            <div class="pl-mockup-chips">
+              <span class="pl-chip">Tour 360</span><span class="pl-chip">Vídeo corto</span><span class="pl-chip">Plano</span><span class="pl-chip">QR</span><span class="pl-chip">Lead CTA</span>
+            </div>
+            <div class="pl-mockup-ctas">
+              <button class="pl-btn pl-btn-secondary" onclick="copyPreviewEngineWhatsApp(${l.id})">Ver tour</button>
+              <button class="pl-btn pl-btn-secondary" onclick="copyPreviewEngineWhatsApp(${l.id})">Solicitar visita</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="pl-section">
+        <div class="pl-section-title">Módulos de valor</div>
+        <div class="pl-modules-grid">
+          ${modules.map(m=>`
+          <div class="pl-module-card">
+            <div class="pl-module-title">${safeHtml(m.title)}</div>
+            <div class="pl-module-desc">${safeHtml(m.desc)}</div>
+            <span class="pl-module-status pl-status-${m.status}">${previewModuleStatusLabel(m.status)}</span>
+          </div>`).join('')}
+        </div>
+      </div>
+
+      <div class="pl-section">
+        <div class="pl-section-label">Pack recomendado</div>
+        <div class="pl-pack-name">${safeHtml(pe.recommendedPack||'Immersphere Real Estate Preview Pack')}</div>
+        <ul class="pl-pack-list">${(pe.packItems||[]).map(i=>'<li>'+safeHtml(i)+'</li>').join('')}</ul>
+      </div>
+
+      <div class="pl-section">
+        <div class="pl-section-label">Postal digital</div>
+        <div class="pl-postcard">
+          <div>
+            <div class="pl-postcard-headline">${safeHtml(pe.postcardHeadline)}</div>
+            <div class="pl-postcard-sub">${safeHtml(pe.postcardSubheadline)}</div>
+            <div class="pl-postcard-cta">${safeHtml(pe.postcardCta)}</div>
+            <div class="pl-postcard-url">${safeHtml(absoluteUrl)}</div>
+          </div>
+          ${pe.qrUrl?'<div class="pl-qr-box"><img src="'+safeHtml(pe.qrUrl)+'" alt="QR preview"><div class="pl-qr-label">Escanea para abrir</div></div>':''}
+        </div>
+      </div>
+
+      <div class="pl-section pl-cta-final">
+        <div class="pl-cta-final-title">¿Quieres ver una demo aplicada a una vivienda real?</div>
+        <div class="pl-hero-ctas">
+          <button class="pl-btn pl-btn-primary" onclick="copyPreviewEngineWhatsApp(${l.id})">Responder por WhatsApp</button>
+          ${l.email?'<a href="mailto:'+safeHtml(l.email)+'" class="pl-btn pl-btn-secondary">Responder por email</a>':'<button class="pl-btn pl-btn-secondary" onclick="copyPreviewEngineEmail('+l.id+')">Responder por email</button>'}
+        </div>
+      </div>
+
+      <div class="pl-disclaimer">Preview conceptual privada. Los materiales finales se producirán con activos autorizados, imágenes aprobadas e información comercial validada.</div>
+    </div>`;
+}
+
+function activatePreviewLandingModeFromHash(){
+  const m=location.hash.match(/^#preview-(-?\d+)(?:-.*)?$/);
+  if(!m) return false;
+  const id=parseInt(m[1],10);
+  const l=leads.find(x=>x.id===id);
+  if(!l||!isRealEstateLead(l)) return false;
+  const container=document.getElementById('preview-landing-page');
+  if(!container) return false;
+  container.innerHTML=renderPreviewLandingPage(l);
+  document.body.classList.add('preview-mode');
+  return true;
+}
+
+function exitPreviewLandingMode(){
+  document.body.classList.remove('preview-mode');
+  history.replaceState(null,'',location.pathname+location.search);
+  renderAll();
 }
 
 function copyPreviewEngineUrl(id){
@@ -7757,6 +7968,8 @@ loadState();
 loadIntegrations();
 loadSearchPlans();
 renderAll();
+activatePreviewLandingModeFromHash();
+window.addEventListener('hashchange',()=>{activatePreviewLandingModeFromHash();});
 
 </script>
 </body>
