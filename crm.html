@@ -4837,6 +4837,7 @@ function openModal(id){
     </div>`:''}
 
     ${renderPreviewEngineBlock(l)}
+    ${renderOutreachAssistantBlock(l)}
 
     <!-- MENSAJES -->
     <div class="modal-section">
@@ -7503,8 +7504,14 @@ function emptyPreviewEngine(){
     postcardHeadline:'',postcardSubheadline:'',postcardCta:'',
     previewUrl:'',qrUrl:'',whatsappMessage:'',emailSubject:'',emailBody:'',
     generatedAt:null,sentAt:null,sentChannel:null,
-    opened:false,openedAt:null,responded:false,respondedAt:null,nextAction:''
+    opened:false,openedAt:null,responded:false,respondedAt:null,nextAction:'',
+    outreach:emptyOutreach()
   };
+}
+
+// ── MANUAL OUTREACH ASSISTANT (Fase 5A) ────────────────────────────────────
+function emptyOutreach(){
+  return {version:'5A',stage:'not_started',recommendedNextAction:'',lastActionAt:null,lastChannel:null,attempts:0,log:[]};
 }
 
 function updateLeadPreviewEngine(leadId,patch){
@@ -7895,6 +7902,162 @@ function resetPreviewEngine(id){
   l.previewEngine=emptyPreviewEngine();
   l.updatedAt=new Date().toISOString();
   saveState();openModal(id);_showToast('Preview Engine reiniciada.','var(--red)');
+}
+
+function computeOutreachRecommendation(l){
+  const pe=l.previewEngine||emptyPreviewEngine();
+  const oc=pe.outreach||emptyOutreach();
+  if(oc.stage==='not_interested') return 'Registrar objeción y programar reactivación futura.';
+  switch(pe.status){
+    case 'responded': return 'Preparar demo o llamada.';
+    case 'opened': return 'Enviar mensaje corto: "¿Queréis que lo apliquemos a una vivienda concreta?"';
+    case 'sent': return 'Enviar Follow-up 1 en 48h.';
+    case 'generated': return 'Enviar WhatsApp inicial o email con la preview privada.';
+    default: return 'Genera primero una preview para activar el asistente de contacto.';
+  }
+}
+
+function buildOutreachMessages(l){
+  const pe=l.previewEngine||emptyPreviewEngine();
+  const absoluteUrl=pe.previewUrl?previewEngineAbsoluteUrl(pe.previewUrl):'';
+  const nombre=l.empresa||'vuestra inmobiliaria';
+  const zonaTxt=l.zona?(' en '+l.zona):'';
+  return {
+    whatsappInitial:pe.whatsappMessage||'',
+    emailInitial:pe.emailSubject?('Asunto: '+pe.emailSubject+'\n\n'+pe.emailBody):'',
+    callScript:'Guion de llamada:\n\n1. Presentación: "Hola, soy de Immersphere Pro, trabajamos con inmobiliarias'+zonaTxt+' para convertir fichas de propiedades en experiencias interactivas (tour, vídeo, plano, QR)."\n2. Gancho: "Hemos preparado una preview privada para '+nombre+', sin compromiso, para que veáis el potencial sobre vuestra presencia actual."\n3. Pregunta abierta: "¿Quién suele decidir este tipo de mejoras en la presentación de los inmuebles?"\n4. Cierre suave: "¿Os parece bien si os envío la preview por WhatsApp o email para que la veáis con calma?"',
+    linkedinMessage:'Hola, trabajamos con inmobiliarias'+zonaTxt+' ayudando a convertir fichas de propiedades en experiencias interactivas (tour 360, vídeo, plano, QR). Preparé una preview privada para '+nombre+' — encantado de compartirla si os interesa echarle un vistazo.',
+    followup1:'Hola de nuevo, os escribo por si tuvisteis ocasión de ver la preview privada que preparamos para '+nombre+'. '+(absoluteUrl?('Aquí la tenéis de nuevo: '+absoluteUrl+'. '):'')+'Cualquier duda, encantado de resolverla.',
+    followup2:'Hola, retomamos el contacto sobre la preview de '+nombre+'. Si ahora no es buen momento, decidme cuándo sería mejor revisarlo y os escribo entonces.',
+    objectionTours:'Entendemos que ya tengáis tours o fotos. La diferencia es que Immersphere convierte cada inmueble en una experiencia propia (tour, vídeo, plano y QR) integrada en vuestra web y materiales, sin depender solo del portal. Os lo enseñamos aplicado a un inmueble real, sin compromiso.',
+    objectionWebsite:'No hace falta cambiar la web. Immersphere se integra como una capa adicional (enlace, QR o widget) sobre lo que ya tenéis, así que no implica rehacer nada.',
+    objectionBudget:'Lo entendemos. Por eso empezamos siempre con una preview conceptual sin coste para validar el interés antes de hablar de presupuesto. Cuando tengáis margen, retomamos la conversación con calma.'
+  };
+}
+
+function outreachStageLabel(stage){
+  const map={not_started:'No iniciado',sent:'Contactado',followup1:'Follow-up 1',followup2:'Follow-up 2',responded:'Respondió',meeting:'Reunión/demo',not_interested:'No interesa'};
+  return map[stage]||'No iniciado';
+}
+
+function registerOutreachAction(leadId,opts){
+  const l=leads.find(x=>x.id===leadId);if(!l) return;
+  const pe=l.previewEngine||emptyPreviewEngine();
+  const oc=pe.outreach||emptyOutreach();
+  const entry={id:'oa_'+Date.now()+'_'+Math.random().toString(36).slice(2,7),at:new Date().toISOString(),type:opts.type,channel:opts.channel||null,label:opts.label,notes:opts.notes||''};
+  const patch={outreach:{...oc,log:[...(oc.log||[]),entry],attempts:(oc.attempts||0)+1,lastActionAt:entry.at,lastChannel:opts.channel||oc.lastChannel||null,stage:opts.stage||oc.stage||'not_started'}};
+  if(opts.previewStatus){
+    patch.status=opts.previewStatus;
+    if(opts.previewStatus==='sent'){patch.sentAt=pe.sentAt||new Date().toISOString();patch.sentChannel=opts.channel||'manual';}
+    if(opts.previewStatus==='responded'){patch.responded=true;patch.respondedAt=new Date().toISOString();}
+  }
+  updateLeadPreviewEngine(leadId,patch);
+  l.previewEngine.outreach.recommendedNextAction=computeOutreachRecommendation(l);
+  if(!l._actividad) l._actividad=[];
+  l._actividad.push({tipo:'sistema',texto:'Outreach: '+opts.label,fecha:new Date().toLocaleDateString('es-ES')});
+  saveState();openModal(leadId);_showToast(opts.label,opts.toastColor||'var(--accent2)');
+}
+
+function outreachCopyMessage(id,key){
+  const l=leads.find(x=>x.id===id);if(!l||!l.previewEngine) return;
+  const msgs=buildOutreachMessages(l);
+  const txt=msgs[key];if(!txt) return;
+  navigator.clipboard.writeText(txt).catch(()=>{const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta);});
+  const labels={whatsappInitial:['copy_whatsapp','whatsapp','WhatsApp inicial copiado'],emailInitial:['copy_email','email','Email inicial copiado'],callScript:['copy_call_script','phone','Guion de llamada copiado'],linkedinMessage:['copy_linkedin','linkedin','Mensaje LinkedIn copiado'],followup1:['copy_followup_1',null,'Follow-up 1 copiado'],followup2:['copy_followup_2',null,'Follow-up 2 copiado'],objectionTours:['copy_objection',null,'Respuesta objeción copiada'],objectionWebsite:['copy_objection',null,'Respuesta objeción copiada'],objectionBudget:['copy_objection',null,'Respuesta objeción copiada']};
+  const meta=labels[key]||['copy_message',null,'Mensaje copiado'];
+  registerOutreachAction(id,{type:meta[0],channel:meta[1],label:meta[2],toastColor:'var(--accent2)'});
+}
+
+function markOutreachWhatsAppSent(id){
+  const l=leads.find(x=>x.id===id);if(!l) return;
+  const pe=l.previewEngine||emptyPreviewEngine();
+  registerOutreachAction(id,{type:'mark_sent',channel:'whatsapp',label:'WhatsApp enviado registrado',stage:'sent',previewStatus:(pe.status==='not_generated'||pe.status==='generated')?'sent':undefined,toastColor:'var(--green)'});
+}
+function markOutreachEmailSent(id){
+  const l=leads.find(x=>x.id===id);if(!l) return;
+  const pe=l.previewEngine||emptyPreviewEngine();
+  registerOutreachAction(id,{type:'mark_sent',channel:'email',label:'Email enviado registrado',stage:'sent',previewStatus:(pe.status==='not_generated'||pe.status==='generated')?'sent':undefined,toastColor:'var(--green)'});
+}
+function markOutreachCallDone(id){
+  const l=leads.find(x=>x.id===id);if(!l) return;
+  const pe=l.previewEngine||emptyPreviewEngine();
+  registerOutreachAction(id,{type:'mark_sent',channel:'phone',label:'Llamada realizada registrada',stage:'sent',previewStatus:(pe.status==='not_generated'||pe.status==='generated')?'sent':undefined,toastColor:'var(--blue)'});
+}
+function markOutreachFollowup1(id){
+  registerOutreachAction(id,{type:'mark_followup_1',channel:null,label:'Follow-up 1 registrado',stage:'followup1',toastColor:'var(--gold)'});
+}
+function markOutreachFollowup2(id){
+  registerOutreachAction(id,{type:'mark_followup_2',channel:null,label:'Follow-up 2 registrado',stage:'followup2',toastColor:'var(--gold)'});
+}
+function markOutreachPositiveResponse(id){
+  registerOutreachAction(id,{type:'mark_positive_response',channel:null,label:'Respuesta positiva registrada',stage:'responded',previewStatus:'responded',toastColor:'var(--green)'});
+}
+function markOutreachMeeting(id){
+  registerOutreachAction(id,{type:'mark_meeting',channel:null,label:'Reunión/demo registrada',stage:'meeting',previewStatus:'responded',toastColor:'var(--green)'});
+}
+function markOutreachNotInterested(id){
+  registerOutreachAction(id,{type:'mark_not_interested',channel:null,label:'No interesa registrado',stage:'not_interested',toastColor:'var(--red)'});
+}
+
+function renderOutreachAssistantBlock(l){
+  if(!isRealEstateLead(l)) return '';
+  const pe=l.previewEngine||emptyPreviewEngine();
+  if(!pe.status||pe.status==='not_generated'){
+    return `<div class="modal-section">
+      <div class="modal-section-title">OUTREACH ASSISTANT</div>
+      <div style="font-size:12px;color:var(--text3)">Genera primero una preview para activar el asistente de contacto.</div>
+    </div>`;
+  }
+  const oc=pe.outreach||emptyOutreach();
+  const rec=computeOutreachRecommendation(l);
+  const msgs=buildOutreachMessages(l);
+  const msgList=[
+    {key:'whatsappInitial',label:'WhatsApp inicial'},
+    {key:'emailInitial',label:'Email inicial'},
+    {key:'callScript',label:'Guion de llamada'},
+    {key:'linkedinMessage',label:'LinkedIn / mensaje corto'},
+    {key:'followup1',label:'Follow-up 1'},
+    {key:'followup2',label:'Follow-up 2'},
+    {key:'objectionTours',label:'Objeción: "ya tenemos tours"'},
+    {key:'objectionWebsite',label:'Objeción: "no queremos cambiar la web"'},
+    {key:'objectionBudget',label:'Objeción: "ahora no tenemos presupuesto"'}
+  ];
+  const log=(oc.log||[]).slice(-6).reverse();
+  return `
+    <div class="modal-section">
+      <div class="modal-section-title">OUTREACH ASSISTANT</div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
+        <span class="tag est-visual">${safeHtml(outreachStageLabel(oc.stage))}</span>
+        <span class="tag est-sin">Intentos: ${oc.attempts||0}</span>
+        ${oc.lastActionAt?'<span class="tag est-propuesta">Última acción '+safeHtml(new Date(oc.lastActionAt).toLocaleString('es-ES'))+'</span>':''}
+      </div>
+      <div class="nba-box" style="margin-bottom:12px">
+        <div class="nba-label">Siguiente acción recomendada</div>
+        <div class="nba-text">${safeHtml(rec)}</div>
+      </div>
+      <div style="display:grid;gap:8px;margin-bottom:12px">
+        ${msgList.map(m=>msgs[m.key]?`
+        <div style="background:var(--bg3);border-radius:8px;padding:10px 12px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+          <span style="font-size:12px;color:var(--text2);font-weight:600">${safeHtml(m.label)}</span>
+          <button class="contact-btn btn-web" style="flex-shrink:0" onclick="outreachCopyMessage(${l.id},'${m.key}')">Copiar</button>
+        </div>`:'').join('')}
+      </div>
+      <div class="contact-actions">
+        <button class="contact-btn btn-wa" onclick="markOutreachWhatsAppSent(${l.id})">Registrar WhatsApp enviado</button>
+        <button class="contact-btn btn-email" onclick="markOutreachEmailSent(${l.id})">Registrar email enviado</button>
+        <button class="contact-btn btn-tel" onclick="markOutreachCallDone(${l.id})">Registrar llamada realizada</button>
+        <button class="contact-btn btn-web" onclick="markOutreachFollowup1(${l.id})">Registrar follow-up 1</button>
+        <button class="contact-btn btn-web" onclick="markOutreachFollowup2(${l.id})">Registrar follow-up 2</button>
+        <button class="contact-btn btn-maps" onclick="markOutreachPositiveResponse(${l.id})">Registrar respuesta positiva</button>
+        <button class="contact-btn btn-tel" onclick="markOutreachMeeting(${l.id})">Registrar reunión/demo</button>
+        <button class="contact-btn btn-email" onclick="markOutreachNotInterested(${l.id})">Registrar no interesa</button>
+      </div>
+      ${log.length?`
+      <div style="margin-top:12px">
+        <div style="font-size:10px;color:var(--text3);font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Timeline outreach</div>
+        ${log.map(e=>'<div style="font-size:11px;color:var(--text2);padding:4px 0;border-bottom:1px solid var(--border)">'+safeHtml(new Date(e.at).toLocaleString('es-ES'))+' · '+safeHtml(e.label)+'</div>').join('')}
+      </div>`:''}
+    </div>`;
 }
 
 function renderAll(){renderDashboard();renderLeads();renderTop10();renderPipeline();renderJourney();renderCatalogo();renderIntegraciones();renderAgenteResumen();renderVisualProposals();renderSearchPlanner();renderCsvSearchPlanOptions();}

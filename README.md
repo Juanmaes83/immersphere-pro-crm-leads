@@ -69,6 +69,14 @@ Para leads con perfil inmobiliario, la ficha completa incluye un bloque **IMMERS
 
 Esta fase es intencionadamente manual: sin envío automático, sin postal física, sin generación de vídeo IA/3D y sin integración real con Immersphere Pro SaaS todavía. Ese alcance llega en fases posteriores (4A.2 en adelante).
 
+### Fase 4A.2 — Landing privada visual
+
+La landing privada (`#preview-{leadId}-{slug}`) ya no se renderiza como un modal interno: es una vista de pantalla completa que oculta el CRM (nav, vistas, modales) y muestra una experiencia de cliente con hero, diagnóstico, mockup de ficha premium, módulos de valor, pack recomendado, postal digital con QR y CTA final de contacto manual. El bloque interno **IMMERSPHERE PREVIEW ENGINE** sigue funcionando igual; "Abrir landing privada" abre esta vista en una pestaña nueva y "Copiar enlace" copia la URL que activa este modo al abrirse.
+
+### Fase 5A — Outreach Assistant manual
+
+Cada lead inmobiliario con preview generada incluye un bloque **OUTREACH ASSISTANT** con mensajes manuales listos para copiar (WhatsApp inicial, email inicial, guion de llamada, LinkedIn, follow-up 1 y 2, y respuestas a 3 objeciones habituales), botones para registrar manualmente acciones de contacto (enviado, llamada, follow-up, respuesta positiva, reunión, no interesa) y una recomendación de siguiente acción calculada a partir del estado de la preview. Todo el registro queda en `lead.previewEngine.outreach` y persiste junto al resto de la ficha. Sin envío automático.
+
 ---
 
 ## Fase 5B.1 — Propuestas visuales desde Room Designer
@@ -160,7 +168,7 @@ El limite es de 4 URLs unicas por lead. La auditoria adapta etiquetas, senales, 
 
 - Fase 3 — Website Opportunity Audit: detectar web antigua, no responsive, sin HTTPS, sin CTA, sin WhatsApp, sin formularios claros, sin tour virtual, baja velocidad y mala estructura comercial.
 - Fase 4 — Pitch & Proposal Generator: crear problema detectado, oportunidad, propuesta Immersphere, mensaje sugerido y siguiente accion.
-- Fase 5 — Outreach Assistant: preparar email, LinkedIn, llamada y WhatsApp manual con revision humana obligatoria, sin envio automatico.
+- Fase 5B — Follow-up Engine avanzado y Conversion Intelligence (ver `docs/IMMERSPHERE_PREVIEW_ENGINE_STRATEGY.md`).
 
 ---
 
