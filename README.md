@@ -55,6 +55,22 @@ App CRM standalone para captación, seguimiento y cierre comercial de leads de *
 
 ---
 
+## Strategic Roadmap — Immersphere Preview Engine
+
+El CRM no solo almacena leads: convierte leads auditados en previews comerciales privadas. Este motor se llama **Immersphere Preview Engine** y es un único motor modular, no un producto separado por vertical: cambia la plantilla de salida según el sector del lead.
+
+La primera implementación es para **inmobiliarias** (Fase 4A.1). Una vez validada, el mismo motor podrá servir a hoteles, restaurantes, interiorismo, reformas, empresas de toldos/outdoor y administradores de fincas cambiando solo la plantilla de vertical.
+
+Documento estratégico completo: [Immersphere Preview Engine Strategy](docs/IMMERSPHERE_PREVIEW_ENGINE_STRATEGY.md)
+
+### Fase 4A.1 — Immersphere Preview Engine MVP para inmobiliarias
+
+Para leads con perfil inmobiliario, la ficha completa incluye un bloque **IMMERSPHERE PREVIEW ENGINE** que genera, a partir de los datos del lead y de la auditoría web (si existe): un diagnóstico de oportunidad, un pack recomendado, una postal digital, una landing privada local, un QR y mensajes de WhatsApp/email listos para copiar. El estado se controla manualmente (generado/enviado/abierto/respondido) y persiste en `localStorage` junto al resto de la ficha.
+
+Esta fase es intencionadamente manual: sin envío automático, sin postal física, sin generación de vídeo IA/3D y sin integración real con Immersphere Pro SaaS todavía. Ese alcance llega en fases posteriores (4A.2 en adelante).
+
+---
+
 ## Fase 5B.1 — Propuestas visuales desde Room Designer
 
 El CRM queda preparado para recibir oportunidades comerciales generadas desde **Room Designer / Decor Asset Lab**.

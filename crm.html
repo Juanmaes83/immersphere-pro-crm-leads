@@ -1334,6 +1334,17 @@ nav{background:var(--bg2);border-bottom:1px solid var(--border);padding:0 20px;d
   </div>
 </div>
 
+<!-- PREVIEW ENGINE LANDING OVERLAY -->
+<div class="oferta-overlay" id="preview-landing-overlay">
+  <div class="oferta-modal">
+    <div class="oferta-header">
+      <h3 style="font-size:17px;font-weight:700">IMMERSPHERE PREVIEW ENGINE — Landing privada</h3>
+      <button class="modal-close" onclick="closePreviewLanding()">✕</button>
+    </div>
+    <div class="oferta-body" id="preview-landing-body"></div>
+  </div>
+</div>
+
 <!-- QUOTE BUILDER OVERLAY -->
 <div class="quote-overlay" id="quote-overlay">
   <div class="quote-modal">
@@ -2139,6 +2150,7 @@ function loadState(){
         if(r.auditOpportunity!==undefined) l.auditOpportunity=r.auditOpportunity;
         if(r.auditPain!==undefined) l.auditPain=r.auditPain;
         if(r.auditNextBestAction!==undefined) l.auditNextBestAction=r.auditNextBestAction;
+        if(r.previewEngine!==undefined) l.previewEngine=r.previewEngine;
         ensureVisualPipeline(l);
         if(r.edits) { Object.assign(l, r.edits); l._edits=r.edits; }
         if(r.comercial){
@@ -2165,7 +2177,7 @@ function saveState(){
       estado:l.estado,notas:l._notas||'',proxAccion:l._proxAccion||'',proxFecha:l._proxFecha||'',
       temp:l._temp||'',actividad:l._actividad||[],edits:l._edits||{},
       fechaEstado:l._fechaEstado||'',objecionAsignada:l._objecionAsignada||'',cierreAsignado:l._cierreAsignado||'',presupuestos:l._presupuestos||[],propuestas:l._propuestas||[],admin:l._admin||_emptyAdmin(),
-      websiteAudit:l.websiteAudit||null,auditOpportunity:l.auditOpportunity||'',auditPain:l.auditPain||'',auditNextBestAction:l.auditNextBestAction||'',
+      websiteAudit:l.websiteAudit||null,auditOpportunity:l.auditOpportunity||'',auditPain:l.auditPain||'',auditNextBestAction:l.auditNextBestAction||'',previewEngine:l.previewEngine||null,
       comercial:{valorPotencial:l._valorPotencial||0,probabilidad:l._probabilidad||10,presupuesto:l._presupuesto||'',packRec:l._packRec||'',ultimoContacto:l._ultimoContacto||''}
     };
   });
@@ -4442,7 +4454,7 @@ function exportarJSON(){
       temp:l._temp||'',actividad:l._actividad||[],edits:l._edits||{},
       fechaEstado:l._fechaEstado||'',objecionAsignada:l._objecionAsignada||'',cierreAsignado:l._cierreAsignado||'',
       presupuestos:l._presupuestos||[],propuestas:l._propuestas||[],admin:l._admin||_emptyAdmin(),
-      websiteAudit:l.websiteAudit||null,auditOpportunity:l.auditOpportunity||'',auditPain:l.auditPain||'',auditNextBestAction:l.auditNextBestAction||'',
+      websiteAudit:l.websiteAudit||null,auditOpportunity:l.auditOpportunity||'',auditPain:l.auditPain||'',auditNextBestAction:l.auditNextBestAction||'',previewEngine:l.previewEngine||null,
       comercial:{valorPotencial:l._valorPotencial||0,probabilidad:l._probabilidad||10,presupuesto:l._presupuesto||'',packRec:l._packRec||'',ultimoContacto:l._ultimoContacto||''}
     };
   });
@@ -4483,6 +4495,7 @@ function importarJSON(){
           if(r.auditOpportunity!==undefined) l.auditOpportunity=r.auditOpportunity;
           if(r.auditPain!==undefined) l.auditPain=r.auditPain;
           if(r.auditNextBestAction!==undefined) l.auditNextBestAction=r.auditNextBestAction;
+          if(r.previewEngine!==undefined) l.previewEngine=r.previewEngine;
           ensureVisualPipeline(l);
           if(r.edits){Object.assign(l,r.edits);l._edits=r.edits;}
           if(r.comercial){
@@ -4734,6 +4747,8 @@ function openModal(id){
         <button class="contact-btn btn-tel" onclick="markRoomDesignerDemoScheduled(${l.id})">Marcar demo agendada</button>
       </div>
     </div>`:''}
+
+    ${renderPreviewEngineBlock(l)}
 
     <!-- MENSAJES -->
     <div class="modal-section">
@@ -7383,6 +7398,294 @@ function markRoomDesignerDemoScheduled(id){
   saveState();renderAll();_showToast('Demo privada agendada.','var(--blue)');
 }
 
+// ── IMMERSPHERE PREVIEW ENGINE (Fase 4A.1 — Real Estate MVP) ──────────────────
+const PREVIEW_ENGINE_VERSION='4A.1';
+
+function isRealEstateLead(l){
+  if(!l) return false;
+  if(l.websiteAudit&&l.websiteAudit.verticalProfile) return l.websiteAudit.verticalProfile==='real_estate';
+  const s=[l.sector,l.subsector,l.empresa,l.zona].join(' ').toLowerCase();
+  return /inmobili|real estate|estate agent|propert|villas|promotor/.test(s);
+}
+
+function emptyPreviewEngine(){
+  return {
+    version:PREVIEW_ENGINE_VERSION,vertical:'real_estate',status:'not_generated',
+    diagnosis:'',recommendedPack:'',packItems:[],
+    postcardHeadline:'',postcardSubheadline:'',postcardCta:'',
+    previewUrl:'',qrUrl:'',whatsappMessage:'',emailSubject:'',emailBody:'',
+    generatedAt:null,sentAt:null,sentChannel:null,
+    opened:false,openedAt:null,responded:false,respondedAt:null,nextAction:''
+  };
+}
+
+function updateLeadPreviewEngine(leadId,patch){
+  const l=leads.find(x=>x.id===leadId);if(!l) return;
+  l.previewEngine={...(l.previewEngine||emptyPreviewEngine()),...patch};
+  l.updatedAt=new Date().toISOString();
+}
+
+function buildRealEstateDiagnosis(l){
+  const a=l.websiteAudit?normalizeWebsiteAudit(l.websiteAudit,l):null;
+  const s=(a&&a.signals)||{};
+  if(!a||a.status!=='success'){
+    return 'La web todavia no ha sido auditada. Con la auditoria web se puede generar una preview mas precisa detectando tour, video, CTA y senales de captacion reales. Esta version es una preview general basada en el perfil inmobiliario.';
+  }
+  if(!s.hasVirtualTourSignals){
+    return 'La web muestra inmuebles, pero cada ficha funciona todavia como un escaparate estatico. Hay oportunidad de convertir inmuebles seleccionados en experiencias interactivas de venta con tour 360, QR y video corto.';
+  }
+  if(!s.hasVideoSignals){
+    return 'La presentacion visual de los inmuebles puede ganar fuerza con videos breves para redes, WhatsApp y portales.';
+  }
+  if(!s.hasClearCTA){
+    return 'Los inmuebles se muestran con buena base, pero falta un CTA claro para captar la visita o el contacto. Reforzar la llamada a la accion en cada ficha puede mejorar la conversion de cada propiedad.';
+  }
+  return 'La inmobiliaria ya cuenta con una base digital razonable. La oportunidad esta en empaquetar mejor cada inmueble como experiencia premium con QR, tour, video y seguimiento comercial.';
+}
+
+function buildRealEstateRecommendedPack(l){
+  const a=l.websiteAudit?normalizeWebsiteAudit(l.websiteAudit,l):null;
+  const s=(a&&a.signals)||{};
+  const items=[];
+  if(!a||a.status!=='success'||!s.hasVirtualTourSignals) items.push('Tour 360 por inmueble');
+  if(!a||a.status!=='success'||!s.hasVideoSignals) items.push('Video corto desde fotos del inmueble');
+  items.push('QR para escaparate, folleto o WhatsApp');
+  if(!a||a.status!=='success'||!s.hasClearCTA) items.push('CTA de captacion de lead');
+  items.push('Plano basico / floorplan-ready (opcional)');
+  items.push('Preview premium de propiedad');
+  items.push('Visita guiada remota (opcional, fase siguiente)');
+  return {name:'Immersphere Real Estate Preview Pack',items};
+}
+
+function buildRealEstatePostcardCopy(){
+  return {
+    headline:'Tu próxima visita empieza antes de pisar la vivienda.',
+    subheadline:'Hemos preparado una preview privada para mostrar cómo tus inmuebles pueden convertirse en experiencias interactivas con tour, vídeo, plano y QR.',
+    cta:'Escanea el QR para ver la propuesta.'
+  };
+}
+
+function buildRealEstatePreviewUrl(l){
+  const slug=(l.empresa||'lead').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'')||'lead';
+  return '#preview-'+l.id+'-'+slug;
+}
+
+function buildPreviewQrUrl(absoluteUrl){
+  return 'https://api.qrserver.com/v1/create-qr-code/?size=220x220&data='+encodeURIComponent(absoluteUrl);
+}
+
+function buildRealEstateWhatsAppMessage(absoluteUrl){
+  return 'Hola, he preparado una preview privada para enseñaros cómo podrían verse algunos inmuebles como experiencia interactiva: tour, vídeo, plano y QR para filtrar mejor al comprador antes de la visita.\n\nLa he hecho sobre vuestra presencia actual para que se vea claro el potencial.\n\nPreview: '+absoluteUrl;
+}
+
+function buildRealEstateEmailMessage(l,absoluteUrl){
+  const subject='Preview privada para mejorar la presentación de vuestros inmuebles';
+  const body='Hola,\n\nHe preparado una preview privada para mostrar cómo una inmobiliaria como '+(l.empresa||'')+' podría convertir sus fichas en experiencias más completas: tour 360, vídeo breve, plano básico, QR para escaparate/WhatsApp y CTA de captación.\n\nLa idea no es enviar una propuesta genérica, sino enseñaros visualmente una oportunidad concreta sobre vuestra presencia actual.\n\nPodéis verla aquí:\n'+absoluteUrl+'\n\nSi os interesa, puedo enseñaros cómo aplicarlo a una vivienda real o a un inmueble premium.\n\nUn saludo.';
+  return {subject,body};
+}
+
+function previewEngineAbsoluteUrl(previewUrl){
+  return location.origin+location.pathname+previewUrl;
+}
+
+function generatePreviewEngineForLead(id,force){
+  const l=leads.find(x=>x.id===id);if(!l) return;
+  if(!isRealEstateLead(l)){_showToast('Preview Engine disponible solo para leads inmobiliarios.','var(--red)');return;}
+  if((!l.websiteAudit||l.websiteAudit.status!=='success')&&!force){
+    _showToast('Primero ejecuta la auditoría web para generar una preview más precisa. Pulsa Generar preview de nuevo para crear una básica igualmente.','var(--gold)');
+    return;
+  }
+  const pack=buildRealEstateRecommendedPack(l);
+  const postcard=buildRealEstatePostcardCopy();
+  const previewUrl=buildRealEstatePreviewUrl(l);
+  const absoluteUrl=previewEngineAbsoluteUrl(previewUrl);
+  const qrUrl=buildPreviewQrUrl(absoluteUrl);
+  const wa=buildRealEstateWhatsAppMessage(absoluteUrl);
+  const em=buildRealEstateEmailMessage(l,absoluteUrl);
+  updateLeadPreviewEngine(id,{
+    status:'generated',
+    diagnosis:buildRealEstateDiagnosis(l),
+    recommendedPack:pack.name,
+    packItems:pack.items,
+    postcardHeadline:postcard.headline,
+    postcardSubheadline:postcard.subheadline,
+    postcardCta:postcard.cta,
+    previewUrl,
+    qrUrl,
+    whatsappMessage:wa,
+    emailSubject:em.subject,
+    emailBody:em.body,
+    generatedAt:new Date().toISOString()
+  });
+  if(!l._actividad) l._actividad=[];
+  l._actividad.push({tipo:'sistema',texto:'Preview generada con Immersphere Preview Engine.',fecha:new Date().toLocaleDateString('es-ES')});
+  saveState();
+  openModal(id);
+  _showToast('Preview generada.','var(--accent2)');
+}
+
+function previewEngineStatusLabel(status){
+  const map={not_generated:'No generado',generated:'Generado',sent:'Enviado',opened:'Abierto',responded:'Respondido'};
+  return map[status]||'No generado';
+}
+function previewEngineStatusClass(status){
+  const map={not_generated:'est-sin',generated:'est-visual',sent:'est-propuesta',opened:'est-demo',responded:'est-cerrado'};
+  return map[status]||'est-sin';
+}
+
+function renderPreviewEngineBlock(l){
+  if(!isRealEstateLead(l)) return '';
+  const pe=l.previewEngine||emptyPreviewEngine();
+  const absoluteUrl=pe.previewUrl?previewEngineAbsoluteUrl(pe.previewUrl):'';
+  return `
+    <div class="modal-section">
+      <div class="modal-section-title">IMMERSPHERE PREVIEW ENGINE</div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
+        <span class="tag ${previewEngineStatusClass(pe.status)}">${previewEngineStatusLabel(pe.status)}</span>
+        ${pe.generatedAt?'<span class="tag est-visual">Generada '+safeHtml(new Date(pe.generatedAt).toLocaleString('es-ES'))+'</span>':''}
+        ${pe.sentAt?'<span class="tag est-propuesta">Enviada '+safeHtml(new Date(pe.sentAt).toLocaleString('es-ES'))+'</span>':''}
+        ${pe.opened?'<span class="tag est-demo">Abierta</span>':''}
+        ${pe.responded?'<span class="tag est-cerrado">Respondida</span>':''}
+      </div>
+      ${pe.status==='not_generated'?'<div style="font-size:12px;color:var(--text3);margin-bottom:10px">'+(!l.websiteAudit||l.websiteAudit.status!=='success'?'Primero ejecuta la auditoría web para generar una preview más precisa, o pulsa Generar preview dos veces para crear una versión básica.':'Pulsa Generar preview para crear la primera preview comercial de este lead.')+'</div>':''}
+      ${pe.status!=='not_generated'?`
+      <div class="info-grid">
+        <div class="info-item"><label>Pack recomendado</label><span style="color:var(--gold);font-weight:600">${safeHtml(pe.recommendedPack)}</span></div>
+        <div class="info-item"><label>Componentes</label><span>${safeHtml((pe.packItems||[]).join(', '))}</span></div>
+      </div>
+      <div style="margin:10px 0;background:var(--bg3);border-radius:10px;padding:12px;border-left:3px solid var(--accent)">
+        <div style="font-size:10px;color:var(--accent2);font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px">Diagnóstico</div>
+        <div style="font-size:13px;color:var(--text);line-height:1.6">${safeHtml(pe.diagnosis)}</div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr auto;gap:14px;align-items:center;background:var(--bg3);border-radius:10px;padding:14px;margin-bottom:10px">
+        <div>
+          <div style="font-size:15px;font-weight:700;color:var(--text);margin-bottom:6px">${safeHtml(pe.postcardHeadline)}</div>
+          <div style="font-size:12px;color:var(--text2);line-height:1.6;margin-bottom:8px">${safeHtml(pe.postcardSubheadline)}</div>
+          <div style="font-size:12px;color:var(--accent2);font-weight:700">${safeHtml(pe.postcardCta)}</div>
+          <div style="font-size:11px;color:var(--text3);margin-top:8px;word-break:break-all">${safeHtml(absoluteUrl)}</div>
+        </div>
+        ${pe.qrUrl?'<img src="'+safeHtml(pe.qrUrl)+'" alt="QR preview" style="width:110px;height:110px;border-radius:8px;background:#fff;padding:6px">':''}
+      </div>`:''}
+      <div class="contact-actions">
+        <button class="contact-btn btn-web" onclick="generatePreviewEngineForLead(${l.id},${pe.status!=='not_generated'})">${pe.status==='not_generated'?'Generar preview':'Regenerar preview'}</button>
+        ${pe.status!=='not_generated'?'<button class="contact-btn btn-maps" onclick="openPreviewLanding('+l.id+')">Abrir landing privada</button>':''}
+        ${pe.previewUrl?'<button class="contact-btn btn-tel" onclick="copyPreviewEngineUrl('+l.id+')">Copiar enlace</button>':''}
+        ${pe.whatsappMessage?'<button class="contact-btn btn-wa" onclick="copyPreviewEngineWhatsApp('+l.id+')">Copiar WhatsApp</button>':''}
+        ${pe.emailSubject?'<button class="contact-btn btn-email" onclick="copyPreviewEngineEmail('+l.id+')">Copiar email</button>':''}
+        ${pe.status!=='not_generated'?'<button class="contact-btn btn-maps" onclick="markPreviewEngineSent('+l.id+')">Marcar enviado</button>':''}
+        ${pe.status!=='not_generated'?'<button class="contact-btn btn-tel" onclick="markPreviewEngineOpened('+l.id+')">Marcar abierto</button>':''}
+        ${pe.status!=='not_generated'?'<button class="contact-btn btn-web" onclick="markPreviewEngineResponded('+l.id+')">Marcar respondido</button>':''}
+        ${pe.status!=='not_generated'?'<button class="contact-btn btn-email" onclick="resetPreviewEngine('+l.id+')">Reiniciar preview</button>':''}
+      </div>
+    </div>`;
+}
+
+function renderPreviewLanding(l){
+  const pe=l.previewEngine||emptyPreviewEngine();
+  const absoluteUrl=pe.previewUrl?previewEngineAbsoluteUrl(pe.previewUrl):'';
+  return `
+    <div style="max-width:640px">
+      <div style="font-size:11px;color:var(--accent2);font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Preview privada · ${safeHtml(l.empresa)}</div>
+      <h2 style="font-size:22px;margin:0 0 8px">${safeHtml(pe.postcardHeadline||'Tu próxima visita empieza antes de pisar la vivienda.')}</h2>
+      <p style="font-size:13px;color:var(--text2);line-height:1.7;margin-bottom:16px">${safeHtml(pe.postcardSubheadline)}</p>
+
+      <div class="modal-section">
+        <div class="modal-section-title">Diagnóstico</div>
+        <div style="font-size:13px;color:var(--text);line-height:1.6">${safeHtml(pe.diagnosis)}</div>
+      </div>
+
+      <div class="modal-section">
+        <div class="modal-section-title">Pack recomendado</div>
+        <div style="font-size:13px;color:var(--gold);font-weight:600;margin-bottom:6px">${safeHtml(pe.recommendedPack)}</div>
+        <ul style="margin:0 0 0 16px;padding:0;font-size:12px;color:var(--text2);line-height:1.8">${(pe.packItems||[]).map(i=>'<li>'+safeHtml(i)+'</li>').join('')}</ul>
+      </div>
+
+      <div class="modal-section">
+        <div class="modal-section-title">Postal digital</div>
+        <div style="display:grid;grid-template-columns:1fr auto;gap:14px;align-items:center;background:var(--bg3);border-radius:10px;padding:14px">
+          <div>
+            <div style="font-size:13px;color:var(--accent2);font-weight:700">${safeHtml(pe.postcardCta)}</div>
+            <div style="font-size:11px;color:var(--text3);margin-top:8px;word-break:break-all">${safeHtml(absoluteUrl)}</div>
+          </div>
+          ${pe.qrUrl?'<img src="'+safeHtml(pe.qrUrl)+'" alt="QR preview" style="width:120px;height:120px;border-radius:8px;background:#fff;padding:6px">':''}
+        </div>
+      </div>
+
+      <div class="contact-actions">
+        <button class="contact-btn btn-wa" onclick="copyPreviewEngineWhatsApp(${l.id})">Solicitar demo / Responder por WhatsApp</button>
+        ${l.email?'<a href="mailto:'+safeHtml(l.email)+'" class="contact-btn btn-email">Responder por email</a>':''}
+      </div>
+      <div style="font-size:10px;color:var(--text3);margin-top:14px;line-height:1.6">Preview conceptual privada. Los materiales finales se producirían con activos autorizados, imágenes aprobadas e información comercial validada.</div>
+    </div>`;
+}
+
+function openPreviewLanding(id){
+  const l=leads.find(x=>x.id===id);if(!l) return;
+  const body=document.getElementById('preview-landing-body');
+  if(body) body.innerHTML=renderPreviewLanding(l);
+  const overlay=document.getElementById('preview-landing-overlay');
+  if(overlay) overlay.classList.add('open');
+  if(location.hash!=='#preview-'+id) history.replaceState(null,'',location.pathname+location.search+'#preview-'+id);
+}
+
+function closePreviewLanding(){
+  const overlay=document.getElementById('preview-landing-overlay');
+  if(overlay) overlay.classList.remove('open');
+}
+
+function copyPreviewEngineUrl(id){
+  const l=leads.find(x=>x.id===id);if(!l||!l.previewEngine||!l.previewEngine.previewUrl) return;
+  const txt=previewEngineAbsoluteUrl(l.previewEngine.previewUrl);
+  navigator.clipboard.writeText(txt).catch(()=>{const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta);});
+  _showToast('Enlace de preview copiado.','var(--accent2)');
+}
+
+function copyPreviewEngineWhatsApp(id){
+  const l=leads.find(x=>x.id===id);if(!l||!l.previewEngine||!l.previewEngine.whatsappMessage) return;
+  const txt=l.previewEngine.whatsappMessage;
+  navigator.clipboard.writeText(txt).catch(()=>{const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta);});
+  _showToast('Mensaje de WhatsApp copiado.','var(--green)');
+}
+
+function copyPreviewEngineEmail(id){
+  const l=leads.find(x=>x.id===id);if(!l||!l.previewEngine||!l.previewEngine.emailSubject) return;
+  const txt='Asunto: '+l.previewEngine.emailSubject+'\n\n'+l.previewEngine.emailBody;
+  navigator.clipboard.writeText(txt).catch(()=>{const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta);});
+  _showToast('Email copiado.','var(--blue)');
+}
+
+function markPreviewEngineSent(id){
+  const l=leads.find(x=>x.id===id);if(!l) return;
+  updateLeadPreviewEngine(id,{status:'sent',sentAt:new Date().toISOString(),sentChannel:'manual'});
+  if(!l._actividad) l._actividad=[];
+  l._actividad.push({tipo:'propuesta',texto:'Preview Engine marcada como enviada.',fecha:new Date().toLocaleDateString('es-ES')});
+  saveState();openModal(id);_showToast('Preview marcada como enviada.','var(--gold)');
+}
+
+function markPreviewEngineOpened(id){
+  const l=leads.find(x=>x.id===id);if(!l) return;
+  updateLeadPreviewEngine(id,{status:'opened',opened:true,openedAt:new Date().toISOString()});
+  if(!l._actividad) l._actividad=[];
+  l._actividad.push({tipo:'sistema',texto:'Preview Engine marcada como abierta.',fecha:new Date().toLocaleDateString('es-ES')});
+  saveState();openModal(id);_showToast('Preview marcada como abierta.','var(--blue)');
+}
+
+function markPreviewEngineResponded(id){
+  const l=leads.find(x=>x.id===id);if(!l) return;
+  updateLeadPreviewEngine(id,{status:'responded',responded:true,respondedAt:new Date().toISOString()});
+  if(!l._actividad) l._actividad=[];
+  l._actividad.push({tipo:'sistema',texto:'Preview Engine marcada como respondida.',fecha:new Date().toLocaleDateString('es-ES')});
+  saveState();openModal(id);_showToast('Preview marcada como respondida.','var(--green)');
+}
+
+function resetPreviewEngine(id){
+  const l=leads.find(x=>x.id===id);if(!l) return;
+  if(!confirm('¿Reiniciar la Preview Engine de este lead? Se perderán diagnóstico, postal, QR y mensajes generados.')) return;
+  l.previewEngine=emptyPreviewEngine();
+  l.updatedAt=new Date().toISOString();
+  saveState();openModal(id);_showToast('Preview Engine reiniciada.','var(--red)');
+}
+
 function renderAll(){renderDashboard();renderLeads();renderTop10();renderPipeline();renderJourney();renderCatalogo();renderIntegraciones();renderAgenteResumen();renderVisualProposals();renderSearchPlanner();renderCsvSearchPlanOptions();}
 
 // ── Events ────────────────────────────────────────────────────────────────────
@@ -7442,7 +7745,7 @@ function copyQuoteWA(leadId,qId){
 }
 
 document.addEventListener('keydown',e=>{
-  if(e.key==='Escape'){closeModalBtn();closeEditForm();closeOfertaForm();closeQuoteBuilder();cerrarSvcEdit();closeProposalEditor();}
+  if(e.key==='Escape'){closeModalBtn();closeEditForm();closeOfertaForm();closeQuoteBuilder();cerrarSvcEdit();closeProposalEditor();closePreviewLanding();}
 });
 
 // Render promo chips in oferta overlay
