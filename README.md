@@ -77,6 +77,12 @@ La landing privada (`#preview-{leadId}-{slug}`) ya no se renderiza como un modal
 
 Cada lead inmobiliario con preview generada incluye un bloque **OUTREACH ASSISTANT** con mensajes manuales listos para copiar (WhatsApp inicial, email inicial, guion de llamada, LinkedIn, follow-up 1 y 2, y respuestas a 3 objeciones habituales), botones para registrar manualmente acciones de contacto (enviado, llamada, follow-up, respuesta positiva, reunión, no interesa) y una recomendación de siguiente acción calculada a partir del estado de la preview. Todo el registro queda en `lead.previewEngine.outreach` y persiste junto al resto de la ficha. Sin envío automático.
 
+### Fase 4A.3 — Template-Based Premium Proposal Generator
+
+Para leads inmobiliarios, el CRM puede generar una **Premium Web Proposal** estructurada: a partir del lead y de la auditoría web (si existe) detecta carencias reales (tour virtual, vídeo, plano, QR, blog, captación de propietarios, etc.), las traduce en módulos Immersphere recomendados, selecciona automáticamente una plantilla premium externa (`AURUM_PROPERTIES_BOUTIQUE` para inmobiliarias, `BOUTIQUE_IRIS_ARQUITECTURA` reservada para arquitectura) y genera una estructura de secciones, copy mejorado, un brief de implementación y un prompt específico para adaptar la plantilla y crear la demo privada. Todo queda en `lead.previewEngine.premiumProposal`, es copiable desde la ficha y permite registrar manualmente la URL de la demo final una vez creada.
+
+Esta fase no clona ni modifica los repos plantilla, no despliega nada automáticamente y no genera la demo web final: solo prepara la inteligencia y los textos necesarios para que esa demo se construya después de forma controlada.
+
 ---
 
 ## Fase 5B.1 — Propuestas visuales desde Room Designer

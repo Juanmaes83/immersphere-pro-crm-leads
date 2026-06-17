@@ -1433,6 +1433,16 @@ body.preview-mode{background:radial-gradient(circle at 20% -10%,rgba(124,58,237,
   </div>
 </div>
 
+<div class="oferta-overlay" id="premium-proposal-overlay">
+  <div class="oferta-modal">
+    <div class="oferta-header">
+      <h3 style="font-size:17px;font-weight:700">IMMERSPHERE PREMIUM PROPOSAL ENGINE</h3>
+      <button class="modal-close" onclick="closePremiumProposalView()">✕</button>
+    </div>
+    <div class="oferta-body" id="premium-proposal-body"></div>
+  </div>
+</div>
+
 <!-- QUOTE BUILDER OVERLAY -->
 <div class="quote-overlay" id="quote-overlay">
   <div class="quote-modal">
@@ -4838,6 +4848,7 @@ function openModal(id){
 
     ${renderPreviewEngineBlock(l)}
     ${renderOutreachAssistantBlock(l)}
+    ${renderPremiumProposalBlock(l)}
 
     <!-- MENSAJES -->
     <div class="modal-section">
@@ -7505,7 +7516,8 @@ function emptyPreviewEngine(){
     previewUrl:'',qrUrl:'',whatsappMessage:'',emailSubject:'',emailBody:'',
     generatedAt:null,sentAt:null,sentChannel:null,
     opened:false,openedAt:null,responded:false,respondedAt:null,nextAction:'',
-    outreach:emptyOutreach()
+    outreach:emptyOutreach(),
+    premiumProposal:emptyPremiumProposal()
   };
 }
 
@@ -7919,15 +7931,18 @@ function computeOutreachRecommendation(l){
 
 function buildOutreachMessages(l){
   const pe=l.previewEngine||emptyPreviewEngine();
-  const absoluteUrl=pe.previewUrl?previewEngineAbsoluteUrl(pe.previewUrl):'';
+  const pp=pe.premiumProposal||emptyPremiumProposal();
+  const hasPremiumDemo=pp.status==='generated'&&!!pp.demoUrl;
+  const absoluteUrl=hasPremiumDemo?pp.demoUrl:(pe.previewUrl?previewEngineAbsoluteUrl(pe.previewUrl):'');
   const nombre=l.empresa||'vuestra inmobiliaria';
   const zonaTxt=l.zona?(' en '+l.zona):'';
+  const previewPhrase=hasPremiumDemo?('He preparado una propuesta visual premium basada en vuestra web actual, usando vuestra identidad: '+absoluteUrl):(pe.whatsappMessage||'');
   return {
-    whatsappInitial:pe.whatsappMessage||'',
-    emailInitial:pe.emailSubject?('Asunto: '+pe.emailSubject+'\n\n'+pe.emailBody):'',
-    callScript:'Guion de llamada:\n\n1. Presentación: "Hola, soy de Immersphere Pro, trabajamos con inmobiliarias'+zonaTxt+' para convertir fichas de propiedades en experiencias interactivas (tour, vídeo, plano, QR)."\n2. Gancho: "Hemos preparado una preview privada para '+nombre+', sin compromiso, para que veáis el potencial sobre vuestra presencia actual."\n3. Pregunta abierta: "¿Quién suele decidir este tipo de mejoras en la presentación de los inmuebles?"\n4. Cierre suave: "¿Os parece bien si os envío la preview por WhatsApp o email para que la veáis con calma?"',
-    linkedinMessage:'Hola, trabajamos con inmobiliarias'+zonaTxt+' ayudando a convertir fichas de propiedades en experiencias interactivas (tour 360, vídeo, plano, QR). Preparé una preview privada para '+nombre+' — encantado de compartirla si os interesa echarle un vistazo.',
-    followup1:'Hola de nuevo, os escribo por si tuvisteis ocasión de ver la preview privada que preparamos para '+nombre+'. '+(absoluteUrl?('Aquí la tenéis de nuevo: '+absoluteUrl+'. '):'')+'Cualquier duda, encantado de resolverla.',
+    whatsappInitial:hasPremiumDemo?previewPhrase:(pe.whatsappMessage||''),
+    emailInitial:hasPremiumDemo?('Asunto: Propuesta web premium para '+nombre+'\n\nHe preparado una propuesta visual premium basada en vuestra web actual y vuestra identidad de marca: '+absoluteUrl):(pe.emailSubject?('Asunto: '+pe.emailSubject+'\n\n'+pe.emailBody):''),
+    callScript:'Guion de llamada:\n\n1. Presentación: "Hola, soy de Immersphere Pro, trabajamos con inmobiliarias'+zonaTxt+' para convertir fichas de propiedades en experiencias interactivas (tour, vídeo, plano, QR)."\n2. Gancho: "'+(hasPremiumDemo?'Hemos preparado una propuesta visual premium basada en vuestra web actual y vuestra identidad de marca, sin compromiso.':'Hemos preparado una preview privada para '+nombre+', sin compromiso, para que veáis el potencial sobre vuestra presencia actual.')+'"\n3. Pregunta abierta: "¿Quién suele decidir este tipo de mejoras en la presentación de los inmuebles?"\n4. Cierre suave: "¿Os parece bien si os envío la preview por WhatsApp o email para que la veáis con calma?"',
+    linkedinMessage:'Hola, trabajamos con inmobiliarias'+zonaTxt+' ayudando a convertir fichas de propiedades en experiencias interactivas (tour 360, vídeo, plano, QR). '+(hasPremiumDemo?'Preparé una propuesta visual premium para '+nombre+' basada en vuestra web actual':'Preparé una preview privada para '+nombre)+' — encantado de compartirla si os interesa echarle un vistazo.',
+    followup1:'Hola de nuevo, os escribo por si tuvisteis ocasión de ver la '+(hasPremiumDemo?'propuesta premium':'preview privada')+' que preparamos para '+nombre+'. '+(absoluteUrl?('Aquí la tenéis de nuevo: '+absoluteUrl+'. '):'')+'Cualquier duda, encantado de resolverla.',
     followup2:'Hola, retomamos el contacto sobre la preview de '+nombre+'. Si ahora no es buen momento, decidme cuándo sería mejor revisarlo y os escribo entonces.',
     objectionTours:'Entendemos que ya tengáis tours o fotos. La diferencia es que Immersphere convierte cada inmueble en una experiencia propia (tour, vídeo, plano y QR) integrada en vuestra web y materiales, sin depender solo del portal. Os lo enseñamos aplicado a un inmueble real, sin compromiso.',
     objectionWebsite:'No hace falta cambiar la web. Immersphere se integra como una capa adicional (enlace, QR o widget) sobre lo que ya tenéis, así que no implica rehacer nada.',
@@ -8060,6 +8075,415 @@ function renderOutreachAssistantBlock(l){
     </div>`;
 }
 
+// ── IMMERSPHERE PREMIUM PROPOSAL ENGINE (Fase 4A.3 — Template-Based) ───────
+// AURUM_PROPERTIES_BOUTIQUE y BOUTIQUE_IRIS_ARQUITECTURA son plantillas externas
+// referenciadas por URL/repo. No se clonan ni se modifican desde este CRM.
+const PREMIUM_PROPOSAL_VERSION='4A.3';
+const PREMIUM_TEMPLATE_REGISTRY=[
+  {id:'real_estate_aurum',name:'AURUM Properties Boutique',vertical:'real_estate',repo:'https://github.com/Juanmaes83/AURUM_PROPERTIES_BOUTIQUE',demoUrl:'https://aurum-properties-boutique.vercel.app/',bestFor:['Inmobiliarias boutique','Promotoras de obra nueva premium','Agencias de propiedades de alto standing']},
+  {id:'architecture_iris',name:'IRIS Arquitectura Boutique',vertical:'architecture',repo:'https://github.com/Juanmaes83/BOUTIQUE_IRIS_ARQUITECTURA',demoUrl:'https://boutique-iris-arquitectura.vercel.app/',bestFor:['Estudios de arquitectura','Estudios de interiorismo premium']}
+];
+
+const GAP_MODULE_MAP={
+  no_virtual_tour:'Tour 360 Immersphere',
+  no_video:'Video Property Pack',
+  no_floorplan:'Floorplan-ready module',
+  no_qr:'QR para escaparate, WhatsApp y folleto',
+  no_blog:'Blog/guías locales',
+  no_premium_listing:'Ficha premium de inmueble',
+  weak_cta:'CTA de visita, valoración y captación',
+  weak_lead_capture:'Formularios y CTA conectados al CRM',
+  no_hotspots:'Hotspots interactivos de estancia, detalles y CTA',
+  no_guided_visit:'Live Guided Visit / visita guiada remota',
+  weak_owner_acquisition:'Landing de captación de propietarios',
+  weak_property_storytelling:'Narrativa premium por inmueble'
+};
+
+function emptyPremiumProposal(){
+  return {
+    version:PREMIUM_PROPOSAL_VERSION,status:'not_generated',
+    templateId:'',templateName:'',templateRepo:'',templateDemoUrl:'',
+    vertical:'real_estate',
+    leadName:'',leadCity:'',sourceWebsite:'',
+    brand:{name:'',logoUrl:'',detectedColors:[],tone:'',notes:''},
+    auditSummary:{strengths:[],gaps:[],opportunities:[],missingModules:[]},
+    proposedWebsite:{title:'',positioning:'',heroHeadline:'',heroSubheadline:'',sections:[],ctas:[]},
+    immersphereModules:[],
+    improvedCopy:{hero:'',about:'',services:[],propertyExperience:'',blog:'',finalCta:''},
+    assetPlan:{detectedImages:[],neededImages:[],notes:''},
+    implementationBrief:'',implementationPrompt:'',
+    demoUrl:'',demoStatus:'not_started',demoCreatedAt:null,
+    generatedAt:null,updatedAt:null
+  };
+}
+
+function updateLeadPremiumProposal(leadId,patch){
+  const l=leads.find(x=>x.id===leadId);if(!l) return;
+  const pe=l.previewEngine||emptyPreviewEngine();
+  const pp=pe.premiumProposal||emptyPremiumProposal();
+  l.previewEngine={...pe,premiumProposal:{...pp,...patch,updatedAt:new Date().toISOString()}};
+  l.updatedAt=new Date().toISOString();
+}
+
+function extractLeadBrandProfile(lead){
+  const auditOk=lead.websiteAudit&&lead.websiteAudit.status==='success';
+  return {
+    name:lead.empresa||'',
+    logoUrl:'',
+    detectedColors:[],
+    tone:auditOk?'Tono sugerido a partir del estilo actual de la web (pendiente de validar)':'Tono pendiente de definir con el cliente',
+    notes:'Logo pendiente de validar. Colores sugeridos a partir del estilo actual. Imágenes del cliente pendientes de autorización.'
+  };
+}
+
+function extractWebsiteAuditInsights(lead){
+  if(!lead.websiteAudit||lead.websiteAudit.status!=='success'){
+    return {hasAudit:false,confidence:'baja',signals:{},weaknesses:[],opportunities:[],score:0,recommendedService:'',labels:defaultAuditLabels('real_estate')};
+  }
+  const a=normalizeWebsiteAudit(lead.websiteAudit,lead);
+  return {hasAudit:true,confidence:a.confidence||'media',signals:a.signals||{},weaknesses:a.weaknesses||[],opportunities:a.opportunities||[],score:a.websiteOpportunityScore||0,recommendedService:a.recommendedService||'',labels:a.labels||defaultAuditLabels('real_estate')};
+}
+
+function detectRealEstateGaps(lead,insights){
+  const ins=insights||extractWebsiteAuditInsights(lead);
+  const s=ins.signals||{};
+  const gaps=[];
+  const add=(id,label,severity,proposedSolution,confidence)=>gaps.push({id,label,severity,proposedSolution,confidence:confidence||(ins.hasAudit?'alta':'media')});
+  if(!ins.hasAudit){
+    add('no_virtual_tour','No se detecta tour virtual claro (auditoría no disponible)','media','Integrar tour 360 / experiencia Immersphere en fichas destacadas','baja');
+    add('no_video','No se detecta vídeo de propiedad (auditoría no disponible)','media','Incorporar Video Property Pack por inmueble destacado','baja');
+    add('no_qr','No se detecta QR de escaparate/folleto (auditoría no disponible)','media','Añadir QR para escaparate, WhatsApp y folleto','baja');
+    add('weak_cta','No se puede confirmar CTA claro sin auditoría','media','Reforzar CTA de visita, valoración y captación','baja');
+    add('no_premium_listing','No se puede confirmar ficha premium sin auditoría','media','Diseñar ficha premium de inmueble con plantilla AURUM','baja');
+    return gaps;
+  }
+  if(!s.hasVirtualTourSignals) add('no_virtual_tour','No se detecta tour virtual claro','high','Integrar tour 360 / experiencia Immersphere en fichas destacadas');
+  if(!s.hasVirtualTourSignals) add('no_hotspots','No se detectan hotspots interactivos','media','Añadir hotspots de estancia, detalles y CTA sobre el tour 360');
+  if(!s.hasVideoSignals) add('no_video','No se detecta vídeo de propiedad','media','Incorporar Video Property Pack por inmueble destacado');
+  if(!s.hasClearCTA) add('weak_cta','CTA poco claro o ausente','high','Reforzar CTA de visita, valoración y captación');
+  if(!s.hasContactForm) add('weak_lead_capture','No se detecta formulario de contacto claro','media','Conectar formularios y CTA al CRM');
+  if(s.hasGenericPortalSignals) add('no_premium_listing','La presencia actual depende de portales genéricos','high','Diseñar ficha premium de inmueble con plantilla AURUM');
+  if(!s.hasPropertyListings) add('weak_property_storytelling','No se detecta narrativa diferenciada por inmueble','media','Construir narrativa premium por inmueble');
+  add('no_qr','No se confirma QR de escaparate/folleto','media','Añadir QR para escaparate, WhatsApp y folleto');
+  add('no_floorplan','No se confirma plano interactivo de propiedad','media','Incorporar módulo Floorplan-ready');
+  add('no_blog','No se confirma blog/guías locales','baja','Añadir Blog/guías locales para SEO y confianza');
+  add('weak_owner_acquisition','No se detecta landing específica de captación de propietarios','baja','Crear landing de captación de propietarios');
+  add('no_guided_visit','No se confirma visita guiada remota','baja','Ofrecer Live Guided Visit / visita guiada remota');
+  return gaps;
+}
+
+function mapGapsToImmersphereModules(gaps){
+  const seen=new Set();const modules=[];
+  (gaps||[]).forEach(g=>{
+    const m=GAP_MODULE_MAP[g.id];
+    if(m&&!seen.has(m)){seen.add(m);modules.push(m);}
+  });
+  return modules;
+}
+
+function selectPremiumTemplateForLead(lead){
+  const vertical=(lead.websiteAudit&&lead.websiteAudit.verticalProfile)||(isRealEstateLead(lead)?'real_estate':'generic');
+  if(vertical==='architecture') return PREMIUM_TEMPLATE_REGISTRY.find(t=>t.id==='architecture_iris');
+  return PREMIUM_TEMPLATE_REGISTRY.find(t=>t.id==='real_estate_aurum');
+}
+
+function buildPremiumProposalSections(lead,insights,gaps){
+  const gapIds=new Set((gaps||[]).map(g=>g.id));
+  const pri=id=>gapIds.has(id)?'alta':'estándar';
+  return [
+    {id:'hero',title:'Hero premium personalizado',objective:'Primer impacto con identidad del cliente',suggestedContent:'Imagen/vídeo de cabecera con titular adaptado a '+(lead.empresa||'la inmobiliaria'),modules:[],priority:'alta'},
+    {id:'positioning',title:'Posicionamiento de marca',objective:'Comunicar diferenciación frente a portales genéricos',suggestedContent:'Narrativa sobre estilo, zona y propuesta de valor',modules:[],priority:pri('no_premium_listing')},
+    {id:'featured_properties',title:'Propiedades destacadas / selección premium',objective:'Mostrar el inventario actual con curaduría premium',suggestedContent:'Selección de propiedades reales del lead (pendiente validar imágenes)',modules:['Ficha premium de inmueble'],priority:pri('no_premium_listing')},
+    {id:'property_sheet',title:'Ficha premium de inmueble',objective:'Elevar cada ficha individual de propiedad',suggestedContent:'Plantilla de ficha con narrativa, datos clave y CTA',modules:['Ficha premium de inmueble','Narrativa premium por inmueble'],priority:pri('weak_property_storytelling')},
+    {id:'experience',title:'Experiencia Immersphere',objective:'Mostrar el valor añadido de Immersphere Pro',suggestedContent:'Bloque explicando tour, hotspots, vídeo y plano integrados',modules:['Tour 360 Immersphere'],priority:'alta'},
+    {id:'tour360',title:'Tour 360 + Hotspots',objective:'Resolver la falta de tour virtual detectada',suggestedContent:'Tour 360 embebido con hotspots de estancia y CTA',modules:['Tour 360 Immersphere','Hotspots interactivos de estancia, detalles y CTA'],priority:pri('no_virtual_tour')},
+    {id:'video',title:'Video Property Pack',objective:'Aportar vídeo profesional por propiedad',suggestedContent:'Vídeo corto de propiedad destacada',modules:['Video Property Pack'],priority:pri('no_video')},
+    {id:'floorplan',title:'Plano / Floorplan-ready',objective:'Dar contexto espacial de la propiedad',suggestedContent:'Plano interactivo o descargable por propiedad',modules:['Floorplan-ready module'],priority:pri('no_floorplan')},
+    {id:'qr',title:'QR para escaparate, WhatsApp y folleto',objective:'Conectar offline/online',suggestedContent:'QR de acceso directo a la ficha o tour de la propiedad',modules:['QR para escaparate, WhatsApp y folleto'],priority:pri('no_qr')},
+    {id:'owner_acquisition',title:'Captación de propietarios',objective:'Generar nuevas captaciones de inmuebles',suggestedContent:'Landing específica de valoración/captación para propietarios',modules:['Landing de captación de propietarios'],priority:pri('weak_owner_acquisition')},
+    {id:'blog',title:'Blog / guías locales',objective:'Reforzar SEO local y confianza',suggestedContent:'Artículos sobre la zona, proceso de compra y mercado local',modules:['Blog/guías locales'],priority:pri('no_blog')},
+    {id:'final_cta',title:'CTA final',objective:'Cerrar con una llamada a la acción clara',suggestedContent:'CTA de visita, valoración o contacto directo',modules:['CTA de visita, valoración y captación','Formularios y CTA conectados al CRM'],priority:pri('weak_cta')}
+  ];
+}
+
+function buildPremiumProposalCopy(lead,insights){
+  const nombre=lead.empresa||'vuestra inmobiliaria';
+  const zona=lead.zona?lead.zona:'vuestra zona local';
+  const ins=insights||extractWebsiteAuditInsights(lead);
+  return {
+    hero:'Una nueva forma de mostrar las propiedades de '+nombre+': experiencias inmersivas, no solo fotos.',
+    about:'Propuesta basada en la estructura premium AURUM Properties Boutique, adaptada a la identidad y la presencia digital actual de '+nombre+' en '+zona+'.',
+    services:['Tour 360 por propiedad','Vídeo de propiedad','Plano interactivo','Ficha premium con narrativa propia','Captación de propietarios'],
+    propertyExperience:'Cada propiedad se presenta como una experiencia: tour 360, hotspots de estancia, vídeo y plano, en lugar de una galería de fotos estática.'+(ins.hasAudit?'':' (diagnóstico basado en información limitada, a confirmar con auditoría web completa).'),
+    blog:'Guías y contenido local para acompañar a compradores y propietarios en '+zona+', reforzando confianza y SEO.',
+    finalCta:'¿Queréis ver cómo quedaría esta propuesta aplicada a una propiedad real de '+nombre+'?'
+  };
+}
+
+function buildPremiumProposalImplementationBrief(lead,proposal){
+  const gapsTxt=(proposal.auditSummary.gaps||[]).map(g=>'- '+g.label+' (severidad: '+g.severity+', confianza: '+g.confidence+') → '+g.proposedSolution).join('\n');
+  const modulesTxt=(proposal.immersphereModules||[]).map(m=>'- '+m).join('\n');
+  const sectionsTxt=(proposal.proposedWebsite.sections||[]).map(s=>'- '+s.title+' ['+s.priority+']: '+s.objective).join('\n');
+  return 'BRIEF DE IMPLEMENTACIÓN — PROPUESTA PREMIUM\n\n'
+    +'Cliente: '+(proposal.leadName||'—')+'\n'
+    +'Web actual: '+(proposal.sourceWebsite||'no detectada')+'\n'
+    +'Zona: '+(proposal.leadCity||'no especificada')+'\n'
+    +'Vertical: '+proposal.vertical+'\n'
+    +'Plantilla base: '+proposal.templateName+' ('+proposal.templateRepo+')\n'
+    +'Demo de referencia de la plantilla: '+proposal.templateDemoUrl+'\n\n'
+    +'GAPS DETECTADOS:\n'+(gapsTxt||'- Sin datos suficientes, diagnóstico general aplicado.')+'\n\n'
+    +'MÓDULOS IMMERSPHERE A INCORPORAR:\n'+(modulesTxt||'- Por definir')+'\n\n'
+    +'ESTRUCTURA WEB PROPUESTA:\n'+(sectionsTxt||'- Por definir')+'\n\n'
+    +'NOTAS DE MARCA Y ASSETS:\n'+proposal.brand.notes+'\n'
+    +'Activos del cliente: pendientes de validación. No usar imágenes ni propiedades inventadas.';
+}
+
+function buildPremiumProposalImplementationPrompt(lead,proposal){
+  const nombre=proposal.leadName||'el cliente';
+  const gapsList=(proposal.auditSummary.gaps||[]).map(g=>'- '+g.label+' → '+g.proposedSolution).join('\n');
+  const modulesList=(proposal.immersphereModules||[]).map(m=>'- '+m).join('\n');
+  const sectionsList=(proposal.proposedWebsite.sections||[]).map(s=>'- '+s.title+': '+s.suggestedContent).join('\n');
+  return 'Actúa como senior frontend/product designer. Vas a adaptar la plantilla '+ (proposal.templateId==='architecture_iris'?'BOUTIQUE_IRIS_ARQUITECTURA':'AURUM_PROPERTIES_BOUTIQUE') +' para crear una demo privada premium para '+nombre+'. Usa la estructura visual de la plantilla como base, pero reemplaza contenido, narrativa y módulos para que la propuesta parezca creada específicamente para '+nombre+', no una plantilla genérica con el nombre cambiado.\n\n'
+    +'DATOS DEL CLIENTE:\n'
+    +'- Nombre: '+nombre+'\n'
+    +'- Web actual: '+(proposal.sourceWebsite||'no detectada')+'\n'
+    +'- Zona: '+(proposal.leadCity||'no especificada, usar referencia genérica de zona local')+'\n'
+    +'- Vertical: '+proposal.vertical+'\n\n'
+    +'PLANTILLA BASE:\n'
+    +'- Repo: '+proposal.templateRepo+'\n'
+    +'- Demo de referencia: '+proposal.templateDemoUrl+'\n\n'
+    +'GAPS DETECTADOS A RESOLVER:\n'+(gapsList||'- Diagnóstico general, sin auditoría detallada')+'\n\n'
+    +'MÓDULOS IMMERSPHERE A AÑADIR:\n'+(modulesList||'- Por definir')+'\n\n'
+    +'ESTRUCTURA DE SECCIONES PROPUESTA:\n'+(sectionsList||'- Por definir')+'\n\n'
+    +'TEXTOS MEJORADOS DE REFERENCIA:\n'
+    +'- Hero: '+proposal.improvedCopy.hero+'\n'
+    +'- Sobre nosotros: '+proposal.improvedCopy.about+'\n'
+    +'- CTA final: '+proposal.improvedCopy.finalCta+'\n\n'
+    +'ASSETS:\n'+proposal.assetPlan.notes+'\n\n'
+    +'REGLAS IMPORTANTES:\n'
+    +'- No inventes datos reales (propiedades concretas, cifras de resultados, logos o imágenes que no existan).\n'
+    +'- Si falta un material (logo, fotos, vídeo), usa placeholders claramente marcados como pendientes de validar.\n'
+    +'- El objetivo es generar una demo privada para presentar comercialmente, no un despliegue de producción.\n\n'
+    +'CRITERIOS DE QA:\n'
+    +'- La demo debe sentirse hecha a medida para '+nombre+', no una plantilla con el nombre cambiado.\n'
+    +'- Debe integrar visualmente los módulos Immersphere listados arriba.\n'
+    +'- Debe mantener la calidad visual y estructura premium de la plantilla base.\n'
+    +'- No debe romper la build de la plantilla original.';
+}
+
+function generatePremiumProposalForLead(leadId){
+  const l=leads.find(x=>x.id===leadId);if(!l) return;
+  const template=selectPremiumTemplateForLead(l);
+  const insights=extractWebsiteAuditInsights(l);
+  const gaps=detectRealEstateGaps(l,insights);
+  const modules=mapGapsToImmersphereModules(gaps);
+  const brand=extractLeadBrandProfile(l);
+  const sections=buildPremiumProposalSections(l,insights,gaps);
+  const copy=buildPremiumProposalCopy(l,insights);
+  const pe=l.previewEngine||emptyPreviewEngine();
+  const prev=pe.premiumProposal||emptyPremiumProposal();
+  const proposal={
+    ...prev,
+    version:PREMIUM_PROPOSAL_VERSION,status:'generated',
+    templateId:template?template.id:'',templateName:template?template.name:'',templateRepo:template?template.repo:'',templateDemoUrl:template?template.demoUrl:'',
+    vertical:(l.websiteAudit&&l.websiteAudit.verticalProfile)||'real_estate',
+    leadName:l.empresa||'',leadCity:l.zona||'',sourceWebsite:l.web||'',
+    brand,
+    auditSummary:{strengths:insights.opportunities||[],gaps,opportunities:insights.opportunities||[],missingModules:modules},
+    proposedWebsite:{
+      title:'Propuesta web premium para '+(l.empresa||'el cliente'),
+      positioning:template?('Basada en plantilla '+template.name):'',
+      heroHeadline:copy.hero,heroSubheadline:copy.about,
+      sections,ctas:[copy.finalCta]
+    },
+    immersphereModules:modules,
+    improvedCopy:copy,
+    assetPlan:{detectedImages:[],neededImages:['Logo en alta resolución','Fotografías de propiedades destacadas','Vídeo o material audiovisual si existe'],notes:'Sin activos confirmados del cliente. No usar imágenes de stock como si fueran reales del cliente sin marcarlas como placeholder.'},
+    generatedAt:prev.generatedAt||new Date().toISOString()
+  };
+  proposal.implementationBrief=buildPremiumProposalImplementationBrief(l,proposal);
+  proposal.implementationPrompt=buildPremiumProposalImplementationPrompt(l,proposal);
+  updateLeadPremiumProposal(leadId,proposal);
+  if(!l._actividad) l._actividad=[];
+  l._actividad.push({tipo:'sistema',texto:'Propuesta premium generada ('+(template?template.name:'sin plantilla')+')',fecha:new Date().toLocaleDateString('es-ES')});
+  saveState();openModal(leadId);_showToast('Propuesta premium generada.','var(--gold)');
+}
+
+function premiumProposalStatusLabel(status){
+  const map={not_generated:'No generada',generated:'Generada'};
+  return map[status]||'No generada';
+}
+function premiumProposalDemoStatusLabel(status){
+  const map={not_started:'Demo no iniciada',brief_generated:'Brief generado',demo_in_progress:'Demo en progreso',demo_created:'Demo creada',sent:'Demo enviada',responded:'Cliente respondió',won:'Ganado',lost:'Perdido'};
+  return map[status]||'Demo no iniciada';
+}
+
+function renderPremiumProposalBlock(l){
+  if(!isRealEstateLead(l)) return '';
+  const pe=l.previewEngine||emptyPreviewEngine();
+  const pp=pe.premiumProposal||emptyPremiumProposal();
+  const hasAudit=l.websiteAudit&&l.websiteAudit.status==='success';
+  return `
+    <div class="modal-section">
+      <div class="modal-section-title">PREMIUM WEB PROPOSAL</div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
+        <span class="tag ${pp.status==='generated'?'est-demo':'est-sin'}">${safeHtml(premiumProposalStatusLabel(pp.status))}</span>
+        ${pp.status==='generated'?'<span class="tag est-visual">'+safeHtml(pp.templateName)+'</span>':''}
+        ${pp.status==='generated'?'<span class="tag est-propuesta">'+safeHtml(premiumProposalDemoStatusLabel(pp.demoStatus))+'</span>':''}
+      </div>
+      ${!hasAudit?'<div style="font-size:12px;color:var(--text3);margin-bottom:10px">Recomendado: ejecuta primero la auditoría web para personalizar mejor la propuesta. Aún así puedes generar una propuesta base.</div>':''}
+      ${pp.status==='generated'?`
+      <div class="info-grid">
+        <div class="info-item"><label>Plantilla</label><span style="color:var(--gold);font-weight:600">${safeHtml(pp.templateName)}</span></div>
+        <div class="info-item"><label>Gaps detectados</label><span>${(pp.auditSummary.gaps||[]).length}</span></div>
+        <div class="info-item"><label>Módulos Immersphere</label><span>${(pp.immersphereModules||[]).length}</span></div>
+        <div class="info-item"><label>Secciones propuestas</label><span>${(pp.proposedWebsite.sections||[]).length}</span></div>
+      </div>
+      <div style="margin:10px 0;display:flex;flex-wrap:wrap;gap:6px">
+        ${(pp.immersphereModules||[]).map(m=>'<span class="tag est-visual">'+safeHtml(m)+'</span>').join('')}
+      </div>
+      ${pp.demoUrl?'<div style="font-size:11px;color:var(--text3);margin-bottom:8px;word-break:break-all">Demo: '+safeHtml(pp.demoUrl)+'</div>':''}
+      `:''}
+      <div class="contact-actions">
+        <button class="contact-btn btn-web" onclick="generatePremiumProposalForLead(${l.id})">${pp.status==='generated'?'Regenerar propuesta premium':'Generar propuesta premium'}</button>
+        ${pp.status==='generated'?'<button class="contact-btn btn-maps" onclick="openPremiumProposalView('+l.id+')">Ver propuesta</button>':''}
+        ${pp.status==='generated'?'<button class="contact-btn btn-tel" onclick="copyPremiumProposalBrief('+l.id+')">Copiar brief</button>':''}
+        ${pp.status==='generated'?'<button class="contact-btn btn-email" onclick="copyPremiumProposalPrompt('+l.id+')">Copiar prompt para demo web</button>':''}
+        ${pp.status==='generated'?'<button class="contact-btn btn-web" onclick="openPremiumTemplateRepo('+l.id+')">Abrir plantilla AURUM</button>':''}
+        ${pp.status==='generated'?'<button class="contact-btn btn-maps" onclick="openPremiumTemplateDemo('+l.id+')">Abrir demo AURUM</button>':''}
+        ${pp.status==='generated'?'<button class="contact-btn btn-tel" onclick="savePremiumProposalDemoUrl('+l.id+')">Pegar/guardar URL de demo final</button>':''}
+        ${pp.status==='generated'&&pp.demoUrl?'<button class="contact-btn btn-email" onclick="markPremiumProposalDemoCreated('+l.id+')">Marcar demo creada</button>':''}
+        ${pp.status==='generated'?'<button class="contact-btn btn-email" onclick="resetPremiumProposal('+l.id+')">Reiniciar propuesta premium</button>':''}
+      </div>
+    </div>`;
+}
+
+function renderPremiumProposalView(l){
+  const pe=l.previewEngine||emptyPreviewEngine();
+  const pp=pe.premiumProposal||emptyPremiumProposal();
+  const gaps=pp.auditSummary.gaps||[];
+  const sections=pp.proposedWebsite.sections||[];
+  return `
+    <div style="margin-bottom:18px">
+      <div style="font-size:20px;font-weight:700;color:var(--text)">Propuesta web premium para ${safeHtml(pp.leadName||l.empresa||'')}</div>
+      <div style="font-size:13px;color:var(--text2);margin-top:4px">Basada en plantilla ${safeHtml(pp.templateName)}</div>
+    </div>
+    <div class="modal-section">
+      <div class="modal-section-title">Antes / Después</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div style="background:var(--bg3);border-radius:10px;padding:12px">
+          <div style="font-size:10px;color:var(--text3);font-weight:700;text-transform:uppercase;margin-bottom:6px">Antes</div>
+          <div style="font-size:12px;color:var(--text2)">${safeHtml(pp.sourceWebsite||'Sin web detectada')}</div>
+        </div>
+        <div style="background:var(--bg3);border-radius:10px;padding:12px;border-left:3px solid var(--gold)">
+          <div style="font-size:10px;color:var(--gold);font-weight:700;text-transform:uppercase;margin-bottom:6px">Después (propuesta)</div>
+          <div style="font-size:12px;color:var(--text)">${safeHtml(pp.proposedWebsite.heroHeadline)}</div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-section">
+      <div class="modal-section-title">Auditoría resumida</div>
+      <div style="font-size:12px;color:var(--text2);margin-bottom:6px"><b>Gaps detectados:</b></div>
+      ${gaps.map(g=>'<div style="font-size:12px;color:var(--text2);padding:4px 0;border-bottom:1px solid var(--border)">'+safeHtml(g.label)+' — <span style="color:var(--text3)">'+safeHtml(g.proposedSolution)+'</span></div>').join('')||'<div style="font-size:12px;color:var(--text3)">Sin gaps registrados.</div>'}
+    </div>
+    <div class="modal-section">
+      <div class="modal-section-title">Plantilla seleccionada</div>
+      <div style="font-size:12px;color:var(--text2);line-height:1.7">
+        <b>${safeHtml(pp.templateName)}</b><br>
+        Repo: ${safeHtml(pp.templateRepo)}<br>
+        Demo de referencia: ${safeHtml(pp.templateDemoUrl)}<br>
+        Por qué encaja: estructura premium ya validada para presencia de marca y propiedades destacadas, adaptable a la identidad del cliente.
+      </div>
+    </div>
+    <div class="modal-section">
+      <div class="modal-section-title">Nueva estructura web propuesta</div>
+      ${sections.map(s=>'<div style="background:var(--bg3);border-radius:8px;padding:10px 12px;margin-bottom:6px"><div style="font-size:12px;font-weight:700;color:var(--text)">'+safeHtml(s.title)+' <span class="tag est-sin" style="margin-left:6px">'+safeHtml(s.priority)+'</span></div><div style="font-size:11px;color:var(--text3);margin-top:2px">'+safeHtml(s.objective)+' · '+safeHtml(s.suggestedContent)+'</div></div>').join('')}
+    </div>
+    <div class="modal-section">
+      <div class="modal-section-title">Copy mejorado</div>
+      <div style="font-size:12px;color:var(--text2);line-height:1.7">
+        <b>Hero:</b> ${safeHtml(pp.improvedCopy.hero)}<br>
+        <b>Subheadline:</b> ${safeHtml(pp.improvedCopy.about)}<br>
+        <b>Servicios:</b> ${safeHtml((pp.improvedCopy.services||[]).join(', '))}<br>
+        <b>Experiencia Immersphere:</b> ${safeHtml(pp.improvedCopy.propertyExperience)}<br>
+        <b>CTA final:</b> ${safeHtml(pp.improvedCopy.finalCta)}
+      </div>
+    </div>
+    <div class="modal-section">
+      <div class="modal-section-title">Módulos Immersphere</div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px">
+        ${(pp.immersphereModules||[]).map(m=>'<span class="tag est-visual">'+safeHtml(m)+'</span>').join('')}
+      </div>
+    </div>
+    <div class="modal-section">
+      <div class="modal-section-title">Brief de implementación</div>
+      <pre style="white-space:pre-wrap;font-size:11px;color:var(--text2);background:var(--bg3);border-radius:8px;padding:12px;max-height:220px;overflow:auto">${safeHtml(pp.implementationBrief)}</pre>
+      <button class="contact-btn btn-tel" onclick="copyPremiumProposalBrief(${l.id})">Copiar brief</button>
+    </div>
+    <div class="modal-section">
+      <div class="modal-section-title">Prompt para generar la demo</div>
+      <pre style="white-space:pre-wrap;font-size:11px;color:var(--text2);background:var(--bg3);border-radius:8px;padding:12px;max-height:260px;overflow:auto">${safeHtml(pp.implementationPrompt)}</pre>
+      <button class="contact-btn btn-email" onclick="copyPremiumProposalPrompt(${l.id})">Copiar prompt para demo web</button>
+    </div>
+    <div style="font-size:11px;color:var(--text3);margin-top:10px;line-height:1.6">
+      Propuesta conceptual privada basada en información pública/auditada. La demo final debe producirse con activos autorizados, imágenes aprobadas y validación del cliente.
+    </div>`;
+}
+
+function openPremiumProposalView(id){
+  const l=leads.find(x=>x.id===id);if(!l) return;
+  const pe=l.previewEngine||emptyPreviewEngine();
+  if(!pe.premiumProposal||pe.premiumProposal.status!=='generated'){_showToast('Genera primero la propuesta premium.','var(--red)');return;}
+  document.getElementById('premium-proposal-body').innerHTML=renderPremiumProposalView(l);
+  document.getElementById('premium-proposal-overlay').classList.add('open');
+}
+function closePremiumProposalView(){
+  const ov=document.getElementById('premium-proposal-overlay');
+  if(ov) ov.classList.remove('open');
+}
+
+function copyPremiumProposalBrief(id){
+  const l=leads.find(x=>x.id===id);if(!l||!l.previewEngine||!l.previewEngine.premiumProposal) return;
+  const txt=l.previewEngine.premiumProposal.implementationBrief||'';
+  navigator.clipboard.writeText(txt).catch(()=>{const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta);});
+  _showToast('Brief copiado.','var(--accent2)');
+}
+function copyPremiumProposalPrompt(id){
+  const l=leads.find(x=>x.id===id);if(!l||!l.previewEngine||!l.previewEngine.premiumProposal) return;
+  const txt=l.previewEngine.premiumProposal.implementationPrompt||'';
+  navigator.clipboard.writeText(txt).catch(()=>{const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta);});
+  _showToast('Prompt de demo copiado.','var(--accent2)');
+}
+function openPremiumTemplateRepo(id){
+  const l=leads.find(x=>x.id===id);if(!l||!l.previewEngine||!l.previewEngine.premiumProposal) return;
+  const url=l.previewEngine.premiumProposal.templateRepo;if(url) window.open(url,'_blank');
+}
+function openPremiumTemplateDemo(id){
+  const l=leads.find(x=>x.id===id);if(!l||!l.previewEngine||!l.previewEngine.premiumProposal) return;
+  const url=l.previewEngine.premiumProposal.templateDemoUrl;if(url) window.open(url,'_blank');
+}
+function savePremiumProposalDemoUrl(id){
+  const l=leads.find(x=>x.id===id);if(!l) return;
+  const current=(l.previewEngine&&l.previewEngine.premiumProposal&&l.previewEngine.premiumProposal.demoUrl)||'';
+  const url=prompt('Pega la URL de la demo privada generada con la plantilla:',current);
+  if(url===null) return;
+  updateLeadPremiumProposal(id,{demoUrl:url.trim(),demoStatus:url.trim()?'demo_in_progress':'not_started'});
+  saveState();openModal(id);_showToast('URL de demo guardada.','var(--accent2)');
+}
+function markPremiumProposalDemoCreated(id){
+  const l=leads.find(x=>x.id===id);if(!l) return;
+  updateLeadPremiumProposal(id,{demoStatus:'demo_created',demoCreatedAt:new Date().toISOString()});
+  saveState();openModal(id);_showToast('Demo marcada como creada.','var(--green)');
+}
+function resetPremiumProposal(id){
+  const l=leads.find(x=>x.id===id);if(!l) return;
+  if(!confirm('¿Reiniciar la propuesta premium de este lead?')) return;
+  const pe=l.previewEngine||emptyPreviewEngine();
+  l.previewEngine={...pe,premiumProposal:emptyPremiumProposal()};
+  l.updatedAt=new Date().toISOString();
+  saveState();openModal(id);_showToast('Propuesta premium reiniciada.','var(--red)');
+}
+
 function renderAll(){renderDashboard();renderLeads();renderTop10();renderPipeline();renderJourney();renderCatalogo();renderIntegraciones();renderAgenteResumen();renderVisualProposals();renderSearchPlanner();renderCsvSearchPlanOptions();}
 
 // ── Events ────────────────────────────────────────────────────────────────────
@@ -8119,7 +8543,7 @@ function copyQuoteWA(leadId,qId){
 }
 
 document.addEventListener('keydown',e=>{
-  if(e.key==='Escape'){closeModalBtn();closeEditForm();closeOfertaForm();closeQuoteBuilder();cerrarSvcEdit();closeProposalEditor();closePreviewLanding();}
+  if(e.key==='Escape'){closeModalBtn();closeEditForm();closeOfertaForm();closeQuoteBuilder();cerrarSvcEdit();closeProposalEditor();closePreviewLanding();closePremiumProposalView();}
 });
 
 // Render promo chips in oferta overlay
