@@ -2993,202 +2993,484 @@ function websiteAuditCardBadge(l){
   const c=a.status==='success'?'est-visual':(a.status==='failed'?'est-pendiente':'est-pendiente');
   return '<span class="tag '+c+'">Web '+score+'/100'+safeHtml(alert)+'</span>';
 }
-// ── Production Brief ──────────────────────────────────────────────────────────
+// ── Production Brief v2 ──────────────────────────────────────────────────────
 function toLeadSlug(empresa){
-  return (empresa||'').toLowerCase()
+  return (empresa||'')
+    .toLowerCase()
+    .replace(/ñ/g,'n')
     .normalize('NFD').replace(/[\u0300-\u036f]/g,'')
-    .replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'');
+    .replace(/[^a-z0-9\s]/g,'')
+    .trim()
+    .replace(/\s+/g,'-')
+    .replace(/-+/g,'-')
+    .replace(/^-+|-+$/g,'');
 }
 function capFirst(s){
-  return (s||'').replace(/-([a-z])/g,(_,c)=>c.toUpperCase()).replace(/^[a-z]/,c=>c.toUpperCase());
+  return (s||'').replace(/-([a-z0-9])/g,(_,c)=>c.toUpperCase()).replace(/^[a-z]/,c=>c.toUpperCase());
 }
 function buildProductionBrief(l){
-  const a=l.websiteAudit||{};
-  const H=ensureLeadCommercialHooks(l)||{};
-  const ev=H.visualExperience||{};
-  const lp=H.landingPage||{};
-  const fw=H.fullWebDemo||{};
-  const bp=H.bannerPack||{};
-  const s=a.signals||{};
-  const slug=toLeadSlug(l.empresa);
-  return {
-    lead:{empresa:l.empresa||'—',sector:l.sector||l.vertical||'—',score:l.score||0,priority:l.priority||'—',ciudad:l.ciudad||l.zona||l.city||'—',slug,contacto:l.contacto||'—'},
-    web:{url:a.finalUrl||a.website||l.web||'—',score:a.websiteOpportunityScore||0,weaknesses:(a.weaknesses||[]).slice(0,5),opportunities:(a.opportunities||[]).slice(0,5),signals:{hasPhone:!!s.hasPhone,hasEmail:!!s.hasEmail,hasWhatsapp:!!s.hasWhatsapp,hasForm:!!s.hasContactForm,hasCTA:!!s.hasClearCTA,hasListings:!!s.hasPropertyListings,hasVirtualTour:!!s.hasVirtualTourSignals,hasVideo:!!s.hasVideoSignals},recommendedService:a.recommendedService||'—',nextAction:a.recommendedNextAction||'—'},
-    hooks:{ev:{status:ev.status||'pending',url:ev.url||''},landing:{status:lp.status||'pending',url:lp.url||''},webCompleta:{status:fw.status||'pending',url:fw.url||''},banners:{status:bp.status||'pending',packUrl:bp.packUrl||''}},
-    context:{vertical:a.verticalProfile||'real_estate',title:a.title||'—',technology:(a.technologySignals||[]).join(', ')||'—'},
-    generatedAt:new Date().toISOString()
-  };
+  try{
+    const a=l.websiteAudit||{};
+    const H=(typeof ensureLeadCommercialHooks==='function'?ensureLeadCommercialHooks(l):l.commercialHooks)||{};
+    const ev=H.visualExperience||{};
+    const lp=H.landingPage||{};
+    const fw=H.fullWebDemo||{};
+    const bp=H.bannerPack||{};
+    const s=a.signals||{};
+    const slug=toLeadSlug(l.empresa);
+    const AURUM='https://aurum-properties-boutique.vercel.app';
+    const RUBIK='https://rubik-sota-director-de-orquesta.vercel.app';
+    const tgt={
+      ev:AURUM+'/visual-experience/'+slug,
+      landing:AURUM+'/'+slug,
+      webCompleta:AURUM+'/'+slug+'-web-completa',
+      bannersIndex:AURUM+'/banners/'+slug,
+      bannersVertical:AURUM+'/banners/'+slug+'/vertical',
+      bannersHorizontal:AURUM+'/banners/'+slug+'/horizontal',
+      rubikEV:RUBIK+'/dynamic-motion-banner/'+slug+'/?embed=1',
+      rubikV:RUBIK+'/dynamic-motion-banner/'+slug+'/banner-vertical.html',
+      rubikH:RUBIK+'/dynamic-motion-banner/'+slug+'/banner-horizontal.html',
+    };
+    const hookStatus=[
+      {id:'ev',label:'G1 Experiencia Visual',status:ev.status||'pending',url:ev.url||'',target:tgt.ev},
+      {id:'landing',label:'G2 Landing Comercial',status:lp.status||'pending',url:lp.url||'',target:tgt.landing},
+      {id:'webCompleta',label:'G3 Web Completa',status:fw.status||'pending',url:fw.url||'',target:tgt.webCompleta},
+      {id:'banners',label:'G4 Pack Banners',status:bp.status||'pending',url:bp.packUrl||'',target:tgt.bannersIndex},
+    ];
+    const genCount=hookStatus.filter(h=>h.status==='generated').length;
+    const nextHook=hookStatus.find(h=>h.status!=='generated')||null;
+    const det={
+      hasLogo:!!(a.evidence&&a.evidence.logo&&a.evidence.logo.length),
+      hasHeroImage:!!(a.evidence&&(a.evidence.images||a.evidence.heroImages)&&((a.evidence.images||a.evidence.heroImages).length>0)),
+      hasVideo:!!s.hasVideoSignals,hasPhone:!!s.hasPhone,hasEmail:!!s.hasEmail,
+      hasWhatsapp:!!s.hasWhatsapp,hasListings:!!s.hasPropertyListings,hasVirtualTour:!!s.hasVirtualTourSignals,
+    };
+    const missing=[];
+    if(!l.empresa) missing.push('Nombre empresa');
+    if(!(l.web||a.website||a.finalUrl)) missing.push('URL web');
+    if(!(l.zona||l.ciudad||l.city)) missing.push('Ciudad/Zona');
+    if(!l.sector) missing.push('Sector');
+    if(a.status!=='success') missing.push('Auditoria web completa');
+    if(!det.hasLogo) missing.push('Logo detectado');
+    if(!det.hasHeroImage) missing.push('Imagen hero');
+    return {
+      leadIdentity:{empresa:l.empresa||'—',slug,sector:l.sector||l.vertical||'—',score:l.score||0,priority:l.prioridad||l.priority||'—',ciudad:l.ciudad||l.zona||l.city||'—'},
+      contactData:{contacto:l.contacto||l.nombre||'—',phone:l.telefono||l.phone||'—',email:l.email||'—',whatsapp:l.whatsapp||'—'},
+      websiteAudit:{url:a.finalUrl||a.website||l.web||'—',status:a.status||'none',score:a.websiteOpportunityScore||0,pagesAudited:a.pagesAudited||0,technology:(a.technologySignals||[]).join(', ')||'—',title:a.title||'—',vertical:a.verticalProfile||'real_estate',weaknesses:(a.weaknesses||[]).slice(0,5),opportunities:(a.opportunities||[]).slice(0,5),recommendedService:a.recommendedService||'—',nextAction:a.recommendedNextAction||'—'},
+      detectedAssets:det,
+      commercialDiagnosis:{dolor:l.dolor||'—',motivo:l.motivo||'—',mainOpportunity:(a.opportunities||[])[0]||l.motivo||'—',mainWeakness:(a.weaknesses||[])[0]||'—',confidence:a.confidence||'—'},
+      hookStrategy:{generatedCount:genCount,pendingCount:4-genCount,nextRecommended:nextHook?nextHook.label:'Todos generados',hooks:hookStatus},
+      targetRoutes:tgt,
+      currentHookStatus:hookStatus,
+      missingData:missing,
+      validationRisks:[genCount<4?'Ganchos pendientes: '+(4-genCount)+'/4':null,a.status!=='success'?'Auditoria web incompleta':null,missing.length>0?'Datos faltantes: '+missing.join(', '):null].filter(Boolean),
+      productionInstructions:{componentBase:capFirst(slug),publicDir:'/public/'+slug+'/',rubikDir:'dynamic-motion-banner/'+slug+'/',aurumRoutes:tgt,referenceBlueprint:'docs/SYSTEM_RULES_WEB_COMPLETA_BLUEPRINT.md',baseComponent:'CostaInvestWebCompleta.tsx',noContentFrom:['CostaInvestWebCompleta.tsx','CasasYMarDemo.tsx']},
+      generatedAt:new Date().toISOString(),
+    };
+  }catch(e){
+    return {leadIdentity:{empresa:l&&l.empresa||'—',slug:toLeadSlug(l&&l.empresa||''),sector:'—',score:0,priority:'—',ciudad:'—'},error:String(e),hookStrategy:{generatedCount:0,pendingCount:4,hooks:[]},targetRoutes:{},currentHookStatus:[],missingData:[],validationRisks:['Error al generar brief: '+String(e)],productionInstructions:{componentBase:'',publicDir:'',rubikDir:'',aurumRoutes:{}}};
+  }
 }
 function productionBriefText(l){
   const b=buildProductionBrief(l);
-  const yn=v=>v?'Sí':'No';
+  const yn=v=>v?'Si':'No';
+  const li=b.leadIdentity;const wa=b.websiteAudit||{};const det=b.detectedAssets||{};const diag=b.commercialDiagnosis||{};const hs=b.hookStrategy||{};
   return [
-    '=== BASE DE PRODUCCIÓN IA ===',
-    `Cliente: ${b.lead.empresa}`,
-    `Sector: ${b.lead.sector}`,
-    `Score: ${b.lead.score}/100 · Prioridad: ${b.lead.priority}`,
-    `Ciudad: ${b.lead.ciudad}`,
-    `Slug: ${b.lead.slug}`,
-    `Contacto: ${b.lead.contacto}`,
+    '====================================================',
+    '  PRODUCTION BRIEF — '+li.empresa,
+    '  Generado: '+new Date(b.generatedAt).toLocaleString('es-ES'),
+    '====================================================',
     '',
-    '--- WEB ACTUAL ---',
-    `URL: ${b.web.url}`,
-    `Score oportunidad: ${b.web.score}/100`,
-    `Teléfono: ${yn(b.web.signals.hasPhone)} | Email: ${yn(b.web.signals.hasEmail)} | WhatsApp: ${yn(b.web.signals.hasWhatsapp)}`,
-    `Formulario: ${yn(b.web.signals.hasForm)} | CTA claro: ${yn(b.web.signals.hasCTA)}`,
-    `Listings: ${yn(b.web.signals.hasListings)} | Tour virtual: ${yn(b.web.signals.hasVirtualTour)} | Vídeo: ${yn(b.web.signals.hasVideo)}`,
-    b.web.weaknesses.length?`Debilidades: ${b.web.weaknesses.join(' / ')}`:null,
-    b.web.opportunities.length?`Oportunidades: ${b.web.opportunities.join(' / ')}`:null,
-    `Servicio recomendado: ${b.web.recommendedService}`,
+    '-- IDENTIDAD DEL LEAD -----------------------------------',
+    'Empresa:   '+li.empresa,
+    'Slug:      '+li.slug,
+    'Sector:    '+li.sector,
+    'Score:     '+li.score+'/100',
+    'Prioridad: '+li.priority,
+    'Ciudad:    '+li.ciudad,
     '',
-    '--- ESTADO GANCHOS ---',
-    `G1 EV: ${b.hooks.ev.status}${b.hooks.ev.url?' · '+b.hooks.ev.url:''}`,
-    `G2 Landing: ${b.hooks.landing.status}${b.hooks.landing.url?' · '+b.hooks.landing.url:''}`,
-    `G3 Web Completa: ${b.hooks.webCompleta.status}${b.hooks.webCompleta.url?' · '+b.hooks.webCompleta.url:''}`,
-    `G4 Banners: ${b.hooks.banners.status}${b.hooks.banners.packUrl?' · '+b.hooks.banners.packUrl:''}`,
+    '-- CONTACTO ---------------------------------------------',
+    'Contacto:  '+(b.contactData&&b.contactData.contacto||'—'),
+    'Telefono:  '+(b.contactData&&b.contactData.phone||'—'),
+    'Email:     '+(b.contactData&&b.contactData.email||'—'),
+    'WhatsApp:  '+(b.contactData&&b.contactData.whatsapp||'—'),
     '',
-    `Generado: ${new Date().toLocaleString('es-ES')}`,
-  ].filter(x=>x!=null).join('\n');
+    '-- AUDITORIA WEB ----------------------------------------',
+    'URL:       '+wa.url,
+    'Estado:    '+wa.status+' | Score oportunidad: '+wa.score+'/100',
+    'Paginas:   '+wa.pagesAudited,
+    'Tecnologia:'+wa.technology,
+    'Titulo:    '+wa.title,
+    'Vertical:  '+wa.vertical,
+    '',
+    'Senales: Tel:'+yn(det.hasPhone)+' | Email:'+yn(det.hasEmail)+' | WA:'+yn(det.hasWhatsapp),
+    '         Listings:'+yn(det.hasListings)+' | Tour:'+yn(det.hasVirtualTour)+' | Video:'+yn(det.hasVideo),
+    '',
+    wa.weaknesses.length?'Debilidades: '+wa.weaknesses.join(' / '):'Debilidades: sin datos',
+    wa.opportunities.length?'Oportunidades: '+wa.opportunities.join(' / '):'Oportunidades: sin datos',
+    'Servicio recomendado: '+wa.recommendedService,
+    'Siguiente accion: '+wa.nextAction,
+    '',
+    '-- DIAGNOSTICO COMERCIAL ---------------------------------',
+    'Dolor:          '+diag.dolor,
+    'Motivo:         '+diag.motivo,
+    'Oportunidad #1: '+diag.mainOpportunity,
+    'Debilidad #1:   '+diag.mainWeakness,
+    '',
+    '-- ASSETS DETECTADOS ------------------------------------',
+    'Logo:         '+yn(det.hasLogo),
+    'Imagen hero:  '+yn(det.hasHeroImage),
+    'Video:        '+yn(det.hasVideo),
+    'Listings:     '+yn(det.hasListings),
+    'Tour virtual: '+yn(det.hasVirtualTour),
+    '',
+    b.missingData&&b.missingData.length?'DATOS FALTANTES: '+b.missingData.join(', '):'Sin datos criticos faltantes',
+    '',
+    '-- ESTADO GANCHOS ---------------------------------------',
+    (hs.hooks||[]).map(h=>h.label+': '+h.status+(h.url?' > '+h.url:' > PENDIENTE')).join('\n'),
+    '',
+    'Siguiente recomendado: '+hs.nextRecommended,
+    '',
+    '-- RUTAS OBJETIVO AURUM ---------------------------------',
+    'G1 EV:         '+b.targetRoutes.ev,
+    'G2 Landing:    '+b.targetRoutes.landing,
+    'G3 Web:        '+b.targetRoutes.webCompleta,
+    'G4 Banners:    '+b.targetRoutes.bannersIndex,
+    '   Vertical:   '+b.targetRoutes.bannersVertical,
+    '   Horizontal: '+b.targetRoutes.bannersHorizontal,
+    '(Rubik EV):    '+b.targetRoutes.rubikEV,
+    '',
+    '-- INSTRUCCIONES DE PRODUCCION --------------------------',
+    'Componente base:  '+b.productionInstructions.componentBase+'WebCompleta.tsx',
+    'Directorio Rubik: '+b.productionInstructions.rubikDir,
+    'Assets publicos:  '+b.productionInstructions.publicDir,
+    'Blueprint:        '+b.productionInstructions.referenceBlueprint,
+    'Base de codigo:   '+b.productionInstructions.baseComponent,
+    'NO copiar de:     '+(b.productionInstructions.noContentFrom||[]).join(', '),
+    '',
+    b.validationRisks&&b.validationRisks.length?'RIESGOS: '+b.validationRisks.join(' | '):'Sin riesgos detectados',
+  ].join('\n');
+}
+function targetRoutesText(l){
+  const b=buildProductionBrief(l);
+  const li=b.leadIdentity;const t=b.targetRoutes;
+  return [
+    '-- RUTAS OBJETIVO AURUM — '+li.empresa+' --',
+    '',
+    'AURUM (cliente-facing):',
+    'G1 EV:                '+t.ev,
+    'G2 Landing:           '+t.landing,
+    'G3 Web Completa:      '+t.webCompleta,
+    'G4 Pack Banners:      '+t.bannersIndex,
+    '   Banner Vertical:   '+t.bannersVertical,
+    '   Banner Horizontal: '+t.bannersHorizontal,
+    '',
+    'Rubik (motor interno / iframe src):',
+    'EV embed:          '+t.rubikEV,
+    'Banner vertical:   '+t.rubikV,
+    'Banner horizontal: '+t.rubikH,
+    '',
+    'Rutas OBJETIVO — no marcar generated hasta que respondan 200 en produccion',
+  ].join('\n');
+}
+function qaChecklistText(l){
+  const b=buildProductionBrief(l);
+  const li=b.leadIdentity;const C=capFirst(li.slug);const t=b.targetRoutes||{};
+  return [
+    '====================================================',
+    '  QA CHECKLIST — '+li.empresa,
+    '====================================================',
+    '',
+    '-- PRE-PRODUCCION ----------------------------------------',
+    '[ ] Production Brief leido y datos verificados',
+    '[ ] Auditoria web: estado = '+(b.websiteAudit&&b.websiteAudit.status||'sin auditar'),
+    '[ ] Assets: logo='+(b.detectedAssets&&b.detectedAssets.hasLogo?'OK':'falta')+' hero='+(b.detectedAssets&&b.detectedAssets.hasHeroImage?'OK':'falta'),
+    '[ ] No hay conflictos con otros clientes',
+    '[ ] Slug confirmado: '+li.slug,
+    '',
+    '-- G1 EXPERIENCIA VISUAL --------------------------------',
+    '[ ] dynamic-motion-banner/'+li.slug+'/ creado en Rubik',
+    '[ ] banner-engine.js, banner-vertical.html, banner-horizontal.html presentes',
+    '[ ] '+C+'VisualExperience.tsx creado en AURUM/src/',
+    '[ ] Ruta /visual-experience/'+li.slug+' registrada en App.tsx',
+    '[ ] iframe src apunta a Rubik con ?embed=1 (no rewrite URL)',
+    '[ ] Local: carga sin errores de consola',
+    '[ ] Produccion: '+t.ev+' responde 200',
+    '[ ] CRM: visualExperience.url = '+t.ev,
+    '[ ] CRM: visualExperience.embedUrl = '+t.rubikEV,
+    '',
+    '-- G2 LANDING COMERCIAL ---------------------------------',
+    '[ ] '+C+'Demo.tsx creado en AURUM/src/',
+    '[ ] Ruta /'+li.slug+' registrada en App.tsx',
+    '[ ] Hero con CTA WhatsApp visible',
+    '[ ] Score diagnostico visible',
+    '[ ] Embed EV incluido',
+    '[ ] Sin contenido de otros clientes',
+    '[ ] Responsive sin overflow horizontal',
+    '[ ] Produccion: '+t.landing+' responde 200',
+    '[ ] CRM: landingPage.url = '+t.landing,
+    '',
+    '-- G3 WEB DESARROLLADA COMPLETA -------------------------',
+    '[ ] '+C+'WebCompleta.tsx creado en AURUM/src/',
+    '[ ] Ruta /'+li.slug+'-web-completa registrada en App.tsx',
+    '[ ] Hero: <video autoPlay muted loop playsInline src="/VIDEO_AURUM_HEROWEB.mp4">',
+    '[ ] Hero: imagen fallback /'+li.slug+'/place-to-live.jpg',
+    '[ ] h1 con GSAP + SplitType (yPercent:100, rotate:4)',
+    '[ ] Minimo 8 secciones: hero, diagnostico, before/after, EV, galeria, servicios, proceso, contacto',
+    '[ ] VisualExperienceBannerSection o iframe EV incluido',
+    '[ ] CTA principal WhatsApp',
+    '[ ] Helmet noindex, nofollow',
+    '[ ] Sin placeholders criticos visibles',
+    '[ ] Sin contenido de CostaInvestWebCompleta.tsx ni CasasYMarDemo.tsx',
+    '[ ] Responsive mobile-first',
+    '[ ] Produccion: '+t.webCompleta+' responde 200',
+    '[ ] CRM: fullWebDemo.url = '+t.webCompleta,
+    '',
+    '-- G4 PACK DE BANNERS -----------------------------------',
+    '[ ] Rubik: dynamic-motion-banner/'+li.slug+'/banner-vertical.html con imagenes del cliente',
+    '[ ] Rubik: dynamic-motion-banner/'+li.slug+'/banner-horizontal.html',
+    '[ ] '+C+'BannerPack.tsx, '+C+'BannerVertical.tsx, '+C+'BannerHorizontal.tsx en AURUM/src/',
+    '[ ] Rutas /banners/'+li.slug+', /banners/'+li.slug+'/vertical, /banners/'+li.slug+'/horizontal en App.tsx',
+    '[ ] iframe src DIRECTO a .html (NO rewrite URL)',
+    '[ ] Verificado: '+t.rubikV+' anima correctamente',
+    '[ ] Verificado: '+t.rubikH+' anima correctamente',
+    '[ ] Produccion: '+t.bannersIndex+' responde 200',
+    '[ ] Produccion: '+t.bannersVertical+' responde 200',
+    '[ ] Produccion: '+t.bannersHorizontal+' responde 200',
+    '[ ] CRM: bannerPack.packUrl = '+t.bannersIndex,
+    '[ ] CRM: bannerPack.verticalUrl = '+t.bannersVertical,
+    '[ ] CRM: bannerPack.horizontalUrl = '+t.bannersHorizontal,
+    '',
+    '-- POST-PRODUCCION ---------------------------------------',
+    '[ ] Todos los ganchos marcados generated SOLO si URL responde 200',
+    '[ ] Costa Invest: 4/4 generated intacto',
+    '[ ] Casas y Mar: intacto sin cambios',
+    '[ ] Sin URLs Rubik como url primaria cliente-facing en CRM',
+    '[ ] Sin /gesture-lab/ en URLs cliente',
+    '[ ] Sin datos cruzados entre clientes',
+    '[ ] QA visual: abrir cada URL y confirmar contenido del cliente correcto',
+  ].join('\n');
 }
 function prompt4GanchosText(l){
   const b=buildProductionBrief(l);
-  const yn=v=>v?'Sí':'No';
-  const C=capFirst(b.lead.slug);
+  const li=b.leadIdentity;const C=capFirst(li.slug);const wa=b.websiteAudit||{};const diag=b.commercialDiagnosis||{};const det=b.detectedAssets||{};
+  const yn=v=>v?'Si':'No';
   return [
-    `# System prompt — 4 Ganchos Comerciales · ${b.lead.empresa}`,
+    '# PROMPT MAESTRO — 4 GANCHOS COMERCIALES · '+li.empresa,
+    '# Sistema: Rubik-Sota-Director-de-Orquesta + AURUM_PROPERTIES_BOUTIQUE',
     '',
-    '## Cliente',
-    `Empresa: ${b.lead.empresa}`,
-    `Sector: ${b.lead.sector} | Vertical CRM: ${b.context.vertical}`,
-    `Score CRM: ${b.lead.score}/100 | Prioridad: ${b.lead.priority}`,
-    `Ciudad/Mercado: ${b.lead.ciudad}`,
-    `Slug URL: ${b.lead.slug}`,
+    '## 1. IDENTIDAD DEL LEAD',
+    'Empresa: '+li.empresa,
+    'Slug URL: '+li.slug,
+    'Sector: '+li.sector+' | Vertical: '+wa.vertical,
+    'Score CRM: '+li.score+'/100 | Prioridad: '+li.priority,
+    'Ciudad/Mercado: '+li.ciudad,
     '',
-    '## Web actual del cliente',
-    `URL: ${b.web.url}`,
-    `Score oportunidad web: ${b.web.score}/100`,
-    b.web.weaknesses.length?`Debilidades: ${b.web.weaknesses.join('; ')}`:null,
-    b.web.opportunities.length?`Oportunidades: ${b.web.opportunities.join('; ')}`:null,
-    `Teléfono: ${yn(b.web.signals.hasPhone)} | Email: ${yn(b.web.signals.hasEmail)} | WhatsApp: ${yn(b.web.signals.hasWhatsapp)} | CTA claro: ${yn(b.web.signals.hasCTA)}`,
-    `Listings: ${yn(b.web.signals.hasListings)} | Tour virtual: ${yn(b.web.signals.hasVirtualTour)} | Vídeo: ${yn(b.web.signals.hasVideo)}`,
-    `Tecnología web: ${b.context.technology}`,
-    `Título detectado: ${b.context.title}`,
+    '## 2. WEB ACTUAL DEL CLIENTE',
+    'URL: '+wa.url,
+    'Score oportunidad: '+wa.score+'/100',
+    wa.weaknesses.length?'Debilidades: '+wa.weaknesses.join('; '):'Debilidades: sin datos auditados',
+    wa.opportunities.length?'Oportunidades: '+wa.opportunities.join('; '):'Oportunidades: sin datos auditados',
+    'Tel: '+yn(det.hasPhone)+' | WhatsApp: '+yn(det.hasWhatsapp)+' | CTA: '+yn(!!(wa.signals&&wa.signals.hasClearCTA)),
+    'Listings: '+yn(det.hasListings)+' | Tour virtual: '+yn(det.hasVirtualTour)+' | Video: '+yn(det.hasVideo),
+    'Tecnologia: '+wa.technology,
     '',
-    '## Estado actual de ganchos',
-    `G1 Experiencia Visual (EV): ${b.hooks.ev.status}`,
-    `G2 Landing Comercial: ${b.hooks.landing.status}`,
-    `G3 Web Desarrollada Completa: ${b.hooks.webCompleta.status}`,
-    `G4 Pack Banners: ${b.hooks.banners.status}`,
+    '## 3. DIAGNOSTICO COMERCIAL',
+    'Dolor principal: '+diag.dolor,
+    'Oportunidad detectada: '+diag.mainOpportunity,
+    'Debilidad principal: '+diag.mainWeakness,
     '',
-    '## Rutas AURUM a generar',
-    `G1 EV: /visual-experience/${b.lead.slug}`,
-    `G2 Landing: /${b.lead.slug}`,
-    `G3 Web Completa: /${b.lead.slug}-web-completa`,
-    `G4 Banners: /banners/${b.lead.slug}`,
+    '## 4. ESTADO ACTUAL GANCHOS',
+    (b.currentHookStatus||[]).map(h=>h.label+': '+h.status+(h.url?' ('+h.url+')':'')).join('\n'),
     '',
-    '## Componentes React a crear (AURUM)',
-    `G1: ${C}VisualExperience.tsx`,
-    `G2: ${C}Demo.tsx`,
-    `G3: ${C}WebCompleta.tsx`,
-    `G4: ${C}BannerPack.tsx + ${C}BannerVertical.tsx + ${C}BannerHorizontal.tsx`,
+    '## 5. RUTAS AURUM A CREAR (objetivo — no generadas aun)',
+    'G1 EV:       '+b.targetRoutes.ev,
+    'G2 Landing:  '+b.targetRoutes.landing,
+    'G3 Web:      '+b.targetRoutes.webCompleta,
+    'G4 Banners:  '+b.targetRoutes.bannersIndex,
     '',
-    '## Instrucciones generales',
-    '- Seguir el patrón validado con Costa Invest / Casas y Mar',
-    '- Web Completa: hero video/motion AURUM obligatorio (/VIDEO_AURUM_HEROWEB.mp4 + GSAP + SplitType)',
-    '- Web Completa: mínimo 8 secciones (hero, diagnóstico, before/after, EV embed, galería, servicios, proceso, contacto)',
-    '- EV: iframe a Rubik con ?embed=1',
-    '- Banners: iframe a .html directo (no rewrite URL)',
-    '- Sin mezclar contenido de otros clientes',
-    '- Sin placeholders críticos visibles',
-    '- Responsive mobile-first Tailwind',
-    '- <Helmet> noindex, nofollow',
-    '- URL principal siempre AURUM, embedUrl puede ser Rubik',
-  ].filter(x=>x!=null).join('\n');
+    '## 6. COMPONENTES REACT A CREAR (AURUM/src/)',
+    'G1: '+C+'VisualExperience.tsx',
+    'G2: '+C+'Demo.tsx',
+    'G3: '+C+'WebCompleta.tsx',
+    'G4: '+C+'BannerPack.tsx + '+C+'BannerVertical.tsx + '+C+'BannerHorizontal.tsx',
+    '',
+    '## 7. ASSETS Y DIRECTORIOS',
+    'Assets publicos AURUM: /public/'+li.slug+'/',
+    'Motor Rubik: dynamic-motion-banner/'+li.slug+'/',
+    'Logo: '+yn(det.hasLogo)+' | Hero image: '+yn(det.hasHeroImage),
+    b.missingData.length?'FALTANTES: '+b.missingData.join(', '):'Sin datos criticos faltantes',
+    '',
+    '## 8. REGLAS OBLIGATORIAS DE ARQUITECTURA',
+    '- AURUM es la capa publica cliente-facing SIEMPRE',
+    '- Rubik es motor interno / src de iframe SOLO',
+    '- url principal en CRM siempre AURUM (aurum-properties-boutique.vercel.app)',
+    '- embedUrl en CRM puede ser Rubik (motor iframe)',
+    '- NO registrar URLs hasta que respondan 200 en produccion',
+    '- NO marcar generated sin URL real que responda 200',
+    '- NO usar /gesture-lab/ como URL cliente-facing',
+    '- NO cruzar contenido entre clientes (no copiar texto, imagenes, datos)',
+    '',
+    '## 9. INSTRUCCIONES POR GANCHO',
+    '',
+    '### G1 — EXPERIENCIA VISUAL',
+    '1. Crear dynamic-motion-banner/'+li.slug+'/ en Rubik con banner-engine.js adaptado',
+    '2. Crear '+C+'VisualExperience.tsx en AURUM como iframe wrapper',
+    '   src del iframe: '+b.targetRoutes.rubikEV,
+    '3. Registrar ruta /visual-experience/'+li.slug+' en App.tsx',
+    '4. Validar build + produccion, luego registrar en CRM',
+    '',
+    '### G2 — LANDING COMERCIAL',
+    '1. Crear '+C+'Demo.tsx en AURUM: hero + diagnostico + EV embed + CTA WhatsApp',
+    '2. Usar colores AURUM: #0d0b09 fondo, #c4a96a dorado, serif para headings',
+    '3. Framer Motion scroll reveal, Tailwind responsive',
+    '4. Registrar ruta /'+li.slug+' en App.tsx',
+    '',
+    '### G3 — WEB DESARROLLADA COMPLETA',
+    '1. LEER PRIMERO: docs/SYSTEM_RULES_WEB_COMPLETA_BLUEPRINT.md',
+    '2. Copiar ESTRUCTURA de CostaInvestWebCompleta.tsx (NO contenido)',
+    '3. Hero OBLIGATORIO: video autoPlay muted loop playsInline src="/VIDEO_AURUM_HEROWEB.mp4"',
+    '4. h1 OBLIGATORIO: GSAP + SplitType tipos words, yPercent 100, rotate 4',
+    '5. Minimo 8 secciones: hero, diagnostico/score, before/after, EV embed, galeria, servicios, proceso, contacto',
+    '6. Helmet noindex nofollow',
+    '7. Sin contenido de Costa Invest ni Casas y Mar',
+    '8. Registrar ruta /'+li.slug+'-web-completa en App.tsx',
+    '',
+    '### G4 — PACK DE BANNERS',
+    '1. Crear dynamic-motion-banner/'+li.slug+'/ en Rubik (copiar de costa-invest, adaptar)',
+    '2. banner-vertical.html + banner-horizontal.html con import BannerEngine relativo',
+    '3. iframe src DIRECTO a .html: '+b.targetRoutes.rubikV,
+    '   NO usar rewrite URLs: los imports relativos del banner fallan -> 404',
+    '4. Registrar rutas /banners/'+li.slug+', /banners/'+li.slug+'/vertical, /banners/'+li.slug+'/horizontal',
+    '',
+    '## 10. PROCESO COMPLETO DE EJECUCION',
+    '1. Leer Production Brief completo',
+    '2. Auditar material visual del cliente (imagenes, logo, colores)',
+    '3. Crear activos Rubik (EV + Banners)',
+    '4. Crear componentes AURUM (4 ganchos)',
+    '5. Validar local: npm run dev + abrir cada ruta',
+    '6. Validar build: tsc --noEmit + npm run build',
+    '7. Push Rubik -> esperar deploy -> validar produccion',
+    '8. Push AURUM -> esperar deploy -> validar produccion',
+    '9. Actualizar CRM con URLs reales (solo si responden 200)',
+    '10. QA visual: abrir cada URL + confirmar contenido del cliente',
+    '11. Marcar generated SOLO cuando validado en produccion',
+    '12. Confirmar: Costa Invest 4/4 intacto, Casas y Mar intacto',
+  ].filter(x=>x!==null).join('\n');
 }
 function promptEVText(l){
   const b=buildProductionBrief(l);
-  const C=capFirst(b.lead.slug);
+  const li=b.leadIdentity;const C=capFirst(li.slug);const det=b.detectedAssets||{};
+  const yn=v=>v?'Si':'No';
   return [
-    `# G1 — Experiencia Visual de Propiedad · ${b.lead.empresa}`,
+    '# G1 — EXPERIENCIA VISUAL DE PROPIEDAD · '+li.empresa,
     '',
-    `Crear componente React: ${C}VisualExperience.tsx`,
-    `Ruta AURUM: /visual-experience/${b.lead.slug}`,
-    `Ruta Rubik (iframe): /dynamic-motion-banner/${b.lead.slug}/?embed=1`,
+    '## COMPONENTE AURUM',
+    'Archivo: AURUM_PROPERTIES_BOUTIQUE/src/'+C+'VisualExperience.tsx',
+    'Ruta:    /visual-experience/'+li.slug,
     '',
-    '## Patrón técnico (obligatorio)',
-    '```tsx',
-    `export function ${C}VisualExperience() {`,
-    `  return (`,
-    `    <div style={{ position: 'fixed', inset: 0, background: '#0d0b09' }}>`,
-    `      <iframe`,
-    `        src="https://rubik-sota-director-de-orquesta.vercel.app/dynamic-motion-banner/${b.lead.slug}/?embed=1"`,
-    `        title="Experiencia Visual · ${b.lead.empresa}"`,
-    `        style={{ width: '100%', height: '100%', border: 'none' }}`,
-    `        allow="autoplay"`,
-    `      />`,
-    `    </div>`,
-    `  );`,
-    `}`,
-    '```',
+    '## CODIGO OBLIGATORIO',
+    "import { Helmet } from 'react-helmet-async';",
+    'export function '+C+'VisualExperience() {',
+    '  return (',
+    '    <>',
+    '      <Helmet><title>Experiencia Visual · '+li.empresa+'</title>',
+    '        <meta name="robots" content="noindex, nofollow" /></Helmet>',
+    '      <div style={{ position:"fixed", inset:0, background:"#0d0b09" }}>',
+    '        <iframe',
+    '          src="'+b.targetRoutes.rubikEV+'"',
+    '          title="Experiencia Visual · '+li.empresa+'"',
+    '          style={{ width:"100%", height:"100%", border:"none" }}',
+    '          allow="autoplay"',
+    '        />',
+    '      </div>',
+    '    </>',
+    '  );',
+    '}',
     '',
-    '## Registro en CRM (después de validar 200 en prod)',
-    `visualExperience.url = https://aurum-properties-boutique.vercel.app/visual-experience/${b.lead.slug}`,
-    `visualExperience.embedUrl = https://rubik-sota-director-de-orquesta.vercel.app/dynamic-motion-banner/${b.lead.slug}/?embed=1`,
-    `Imágenes del cliente en: /public/${b.lead.slug}/`,
+    '## MOTOR RUBIK',
+    'Directorio: Rubik-Sota-Director-de-Orquesta/dynamic-motion-banner/'+li.slug+'/',
+    'Copiar de:  dynamic-motion-banner/costa-invest/',
+    'Adaptar:    banner-engine.js con imagenes del cliente en images/',
+    '',
+    '## DATOS DEL CLIENTE',
+    'Empresa: '+li.empresa+' | Sector: '+li.sector,
+    'Ciudad: '+li.ciudad,
+    'Logo detectado: '+yn(det.hasLogo),
+    'Hero image: '+yn(det.hasHeroImage),
+    '',
+    '## REGISTRO EN CRM (despues de validar 200 en produccion)',
+    'visualExperience.url = '+b.targetRoutes.ev,
+    'visualExperience.embedUrl = '+b.targetRoutes.rubikEV,
   ].join('\n');
 }
 function promptLandingText(l){
   const b=buildProductionBrief(l);
-  const C=capFirst(b.lead.slug);
-  const yn=v=>v?'Sí':'No';
+  const li=b.leadIdentity;const C=capFirst(li.slug);const wa=b.websiteAudit||{};const diag=b.commercialDiagnosis||{};const det=b.detectedAssets||{};
+  const yn=v=>v?'Si':'No';
   return [
-    `# G2 — Landing Comercial Personalizada · ${b.lead.empresa}`,
+    '# G2 — LANDING COMERCIAL PERSONALIZADA · '+li.empresa,
     '',
-    `Crear componente React: ${C}Demo.tsx`,
-    `Ruta AURUM: /${b.lead.slug}`,
+    '## COMPONENTE AURUM',
+    'Archivo: AURUM_PROPERTIES_BOUTIQUE/src/'+C+'Demo.tsx',
+    'Ruta:    /'+li.slug,
     '',
-    '## Datos del cliente para el copy',
-    `Empresa: ${b.lead.empresa}`,
-    `Sector: ${b.lead.sector} | Ciudad: ${b.lead.ciudad}`,
-    `Score CRM: ${b.lead.score}/100`,
-    b.web.opportunities.length?`Oportunidades: ${b.web.opportunities.join('; ')}`:null,
-    `Web actual: ${b.web.url}`,
-    `Recomendación AURUM: ${b.web.recommendedService}`,
+    '## DATOS PARA EL COPY',
+    'Empresa: '+li.empresa+' | Sector: '+li.sector,
+    'Ciudad/Mercado: '+li.ciudad,
+    'Score CRM: '+li.score+'/100',
+    'Dolor: '+diag.dolor,
+    'Oportunidad: '+diag.mainOpportunity,
+    'Debilidad web: '+diag.mainWeakness,
+    'Web actual: '+wa.url,
+    'Recomendacion: '+wa.recommendedService,
     '',
-    '## Secciones mínimas',
-    '1. Hero — titular orientado al cliente + CTA WhatsApp',
-    '2. Score diagnóstico + fortalezas + oportunidades',
-    '3. Qué ofrecemos (servicios AURUM)',
-    '4. Embed Experiencia Visual (iframe EV)',
-    '5. Testimonial / proceso / credibilidad',
-    '6. CTA final alta intención',
+    '## SENALES WEB',
+    'WhatsApp: '+yn(det.hasWhatsapp)+' | Listings: '+yn(det.hasListings)+' | CTA: '+yn(!!(wa.signals&&wa.signals.hasClearCTA)),
     '',
-    '## Señales actuales web',
-    `WhatsApp: ${yn(b.web.signals.hasWhatsapp)} | CTA: ${yn(b.web.signals.hasCTA)} | Listings: ${yn(b.web.signals.hasListings)}`,
+    '## SECCIONES MINIMAS',
+    '1. Hero — titular orientado a '+li.empresa+' + CTA WhatsApp',
+    '2. Score diagnostico CRM ('+li.score+'/100) + fortalezas + oportunidades',
+    '3. Servicios AURUM relevantes para '+li.sector,
+    '4. Embed Experiencia Visual: iframe src '+b.targetRoutes.rubikEV,
+    '5. Proceso / credibilidad',
+    '6. CTA final alta intencion: WhatsApp + llamada',
     '',
-    '## Instrucciones',
-    '- Tailwind + Framer Motion para scroll reveal',
-    '- Colores AURUM: #0d0b09 fondo, #c4a96a dorado, serif para headings',
-    '- Sin copiar contenido de otros clientes',
-    `- Registrar en CRM: landingPage.url = https://aurum-properties-boutique.vercel.app/${b.lead.slug}`,
-  ].filter(x=>x!=null).join('\n');
+    '## INSTRUCCIONES TECNICAS',
+    '- Tailwind CSS + Framer Motion (useInView scroll reveal)',
+    '- Paleta AURUM: #0d0b09 fondo, #c4a96a dorado, serif para headings',
+    '- Sin copiar contenido de CostaInvestDemo.tsx ni CasasYMarDemo.tsx',
+    '- Responsive mobile-first, sin overflow horizontal',
+    '- Helmet noindex, nofollow',
+    '',
+    '## REGISTRO EN CRM (despues de validar 200 en produccion)',
+    'landingPage.url = '+b.targetRoutes.landing,
+  ].join('\n');
 }
 function promptWebCompletaText(l){
   const b=buildProductionBrief(l);
-  const C=capFirst(b.lead.slug);
+  const li=b.leadIdentity;const C=capFirst(li.slug);const wa=b.websiteAudit||{};const diag=b.commercialDiagnosis||{};
   return [
-    `# G3 — Web Desarrollada Completa · ${b.lead.empresa}`,
+    '# G3 — WEB DESARROLLADA COMPLETA · '+li.empresa,
+    '# BLUEPRINT PREMIUM — LECTURA OBLIGATORIA ANTES DE EMPEZAR',
     '',
-    `Crear componente React: ${C}WebCompleta.tsx`,
-    `Ruta AURUM: /${b.lead.slug}-web-completa`,
+    '## ARCHIVO DE REFERENCIA OBLIGATORIO',
+    'docs/SYSTEM_RULES_WEB_COMPLETA_BLUEPRINT.md',
+    '(Si no esta disponible, aplicar TODAS las reglas de esta seccion)',
     '',
-    '## OBLIGATORIO — Hero video/motion AURUM',
-    '```tsx',
+    '## COMPONENTE AURUM',
+    'Archivo: AURUM_PROPERTIES_BOUTIQUE/src/'+C+'WebCompleta.tsx',
+    'Ruta:    /'+li.slug+'-web-completa',
+    'Base:    Copiar ESTRUCTURA de CostaInvestWebCompleta.tsx (NO texto, NO imagenes)',
+    '',
+    '## HERO VIDEO/MOTION — OBLIGATORIO Y NO NEGOCIABLE',
+    'Esta web NO ES una landing larga. El hero video/motion es la diferencia clave.',
+    '',
     "import { useRef, useEffect } from 'react';",
     "import { gsap } from 'gsap';",
     "import SplitType from 'split-type';",
     '',
-    'const headlineRef = useRef<HTMLHeadingElement>(null);',
+    'const headlineRef = useRef(null);',
     'useEffect(() => {',
     '  if (!headlineRef.current) return;',
     "  const text = new SplitType(headlineRef.current, { types: 'words' });",
@@ -3201,147 +3483,242 @@ function promptWebCompletaText(l){
     '  return () => { text.revert(); ctx.revert(); };',
     '}, []);',
     '',
-    `<video autoPlay muted loop playsInline preload="auto" className="absolute inset-0 w-full h-full object-cover" style={{ opacity: 0.42 }}>`,
-    `  <source src="/VIDEO_AURUM_HEROWEB.mp4" type="video/mp4" />`,
-    `</video>`,
-    `<img src="/${b.lead.slug}/place-to-live.jpg" aria-hidden="true" className="absolute inset-0 w-full h-full object-cover opacity-35" style={{ zIndex: -1 }} />`,
-    `<h1 ref={headlineRef} className="... overflow-hidden">Titular del cliente</h1>`,
-    '```',
+    '// JSX del hero:',
+    '<section id="hero" className="relative min-h-screen overflow-hidden flex items-center">',
+    '  <video autoPlay muted loop playsInline preload="auto"',
+    '    className="absolute inset-0 w-full h-full object-cover"',
+    '    style={{ opacity: 0.42 }}>',
+    '    <source src="/VIDEO_AURUM_HEROWEB.mp4" type="video/mp4" />',
+    '  </video>',
+    '  <img src="/'+li.slug+'/place-to-live.jpg" aria-hidden="true"',
+    '    className="absolute inset-0 w-full h-full object-cover opacity-35"',
+    '    style={{ zIndex: -1 }} />',
+    '  <h1 ref={headlineRef}',
+    '    className="font-serif text-5xl md:text-7xl lg:text-8xl leading-[0.92] max-w-3xl overflow-hidden">',
+    '    Titular de '+li.empresa,
+    '  </h1>',
+    '</section>',
     '',
-    '## 8 secciones obligatorias',
-    '1. Hero video/motion (ver arriba)',
-    `2. Diagnóstico / Score CRM — score: ${b.lead.score}/100`,
-    '3. Before/After — comparativa web actual vs AURUM',
-    `4. Experiencia Visual — iframe /visual-experience/${b.lead.slug}`,
-    `5. Galería — imágenes desde /public/${b.lead.slug}/`,
-    '6. Servicios internacionales / mercados',
-    '7. Proceso AURUM — 4-5 pasos',
-    '8. Contacto alta intención — WhatsApp primario',
+    '## 8 SECCIONES OBLIGATORIAS',
+    '1. Hero video/motion (codigo arriba — OBLIGATORIO)',
+    '2. Diagnostico/Score — score CRM: '+li.score+'/100 + fortalezas + oportunidades',
+    '3. Before/After — comparativa web actual ('+wa.url+') vs AURUM',
+    '4. Experiencia Visual — iframe /visual-experience/'+li.slug+' o VisualExperienceBannerSection',
+    '5. Galeria propiedades — minimo 3 imagenes de /public/'+li.slug+'/',
+    '6. Servicios/Mercados — 4 bloques con narrativa comercial para '+li.sector,
+    '7. Proceso AURUM — 4-5 pasos numerados',
+    '8. Contacto alta intencion — WhatsApp primario + llamada',
     '',
-    '## Datos del cliente',
-    `Empresa: ${b.lead.empresa} | Sector: ${b.lead.sector}`,
-    `Ciudad: ${b.lead.ciudad} | Score: ${b.lead.score}/100`,
-    b.web.weaknesses.length?`Debilidades web actual: ${b.web.weaknesses.join('; ')}`:null,
-    b.web.opportunities.length?`Oportunidades: ${b.web.opportunities.join('; ')}`:null,
+    '## DATOS DEL CLIENTE',
+    'Empresa: '+li.empresa+' | Sector: '+li.sector,
+    'Ciudad: '+li.ciudad+' | Score: '+li.score+'/100',
+    wa.weaknesses.length?'Debilidades web actual: '+wa.weaknesses.join('; '):'',
+    wa.opportunities.length?'Oportunidades: '+wa.opportunities.join('; '):'',
+    'Dolor: '+diag.dolor,
+    'Oportunidad: '+diag.mainOpportunity,
     '',
-    '## Instrucciones',
-    '- Copiar patrón técnico de CostaInvestWebCompleta.tsx (NO de Casas y Mar directamente)',
-    '- <Helmet> noindex, nofollow',
-    '- Sin overflow horizontal',
-    '- Sin contenido cruzado de otros clientes',
-    `- Registrar en CRM: fullWebDemo.url = https://aurum-properties-boutique.vercel.app/${b.lead.slug}-web-completa`,
-  ].filter(x=>x!=null).join('\n');
+    '## REGLAS OBLIGATORIAS (del SYSTEM_RULES_WEB_COMPLETA_BLUEPRINT)',
+    '- NO es una landing larga: es una web completa con narrativa comercial',
+    '- Hero video/motion AURUM es OBLIGATORIO (diferencia vs G2 Landing)',
+    '- /VIDEO_AURUM_HEROWEB.mp4 esta en /public/ de AURUM (compartido)',
+    '- GSAP y split-type ya instalados: gsap@^3.14.2, split-type@^0.3.4',
+    '- Helmet noindex, nofollow',
+    '- Sin overflow horizontal en ningun viewport',
+    '- Sin contenido de CostaInvestWebCompleta.tsx ni CasasYMarDemo.tsx',
+    '- Sin placeholders criticos visibles (fallback elegante si falta asset)',
+    '- Responsive mobile-first con Tailwind',
+    '',
+    '## REGISTRO EN CRM (despues de validar 200 en produccion)',
+    'fullWebDemo.url = '+b.targetRoutes.webCompleta,
+    'Validar visualmente: hero video carga, animacion GSAP funciona, 8 secciones visibles',
+  ].filter(x=>x!==null).join('\n');
 }
 function promptBannersText(l){
   const b=buildProductionBrief(l);
-  const C=capFirst(b.lead.slug);
+  const li=b.leadIdentity;const C=capFirst(li.slug);const det=b.detectedAssets||{};const t=b.targetRoutes||{};
+  const yn=v=>v?'Si':'No';
   return [
-    `# G4 — Pack de Banners · ${b.lead.empresa}`,
+    '# G4 — PACK DE BANNERS PERSONALIZADOS · '+li.empresa,
     '',
-    '## Componentes a crear (AURUM)',
-    `- ${C}BannerPack.tsx → ruta /banners/${b.lead.slug}`,
-    `- ${C}BannerVertical.tsx → ruta /banners/${b.lead.slug}/vertical`,
-    `- ${C}BannerHorizontal.tsx → ruta /banners/${b.lead.slug}/horizontal`,
+    '## COMPONENTES AURUM A CREAR',
+    C+'BannerPack.tsx     -> /banners/'+li.slug,
+    C+'BannerVertical.tsx -> /banners/'+li.slug+'/vertical',
+    C+'BannerHorizontal.tsx -> /banners/'+li.slug+'/horizontal',
     '',
-    '## Motor Rubik (dynamic-motion-banner)',
-    `Directorio: dynamic-motion-banner/${b.lead.slug}/`,
-    `Banner vertical src: https://rubik-sota-director-de-orquesta.vercel.app/dynamic-motion-banner/${b.lead.slug}/banner-vertical.html`,
-    `Banner horizontal src: https://rubik-sota-director-de-orquesta.vercel.app/dynamic-motion-banner/${b.lead.slug}/banner-horizontal.html`,
+    '## MOTOR RUBIK',
+    'Directorio: dynamic-motion-banner/'+li.slug+'/',
+    'Copiar de:  dynamic-motion-banner/costa-invest/',
+    'Adaptar:    banner-engine.js (imagenes, QR, CTA para '+li.empresa+')',
     '',
-    '## CRÍTICO — URL de iframe',
-    '```',
-    '// CORRECTO — .html directo (imports ES module resuelven bien)',
-    `src="https://rubik-sota-director-de-orquesta.vercel.app/dynamic-motion-banner/${b.lead.slug}/banner-vertical.html"`,
-    '// INCORRECTO — rewrite URL → imports relativos fallan → 404',
-    `// src="https://rubik-sota-director-de-orquesta.vercel.app/banner-pack/${b.lead.slug}/vertical/"`,
-    '```',
+    '## ESPECIFICACIONES',
+    'Vertical:   1080 x 1920 · Stories · Reels',
+    'Horizontal: 1920 x 1080 · Display · YouTube',
+    'Imagenes:   dynamic-motion-banner/'+li.slug+'/images/',
+    'Logo: '+yn(det.hasLogo),
     '',
-    '## Especificaciones',
-    '- Vertical: 1080 × 1920 · Stories · Reels',
-    '- Horizontal: 1920 × 1080 · Display · YouTube',
-    `- Imágenes en: dynamic-motion-banner/${b.lead.slug}/images/`,
+    '## REGLA CRITICA — SRC DE IFRAME',
+    'CORRECTO (imports ES module resuelven bien):',
+    t.rubikV,
+    t.rubikH,
     '',
-    '## Registro en CRM (solo si responden 200 en producción)',
-    `bannerPack.packUrl = https://aurum-properties-boutique.vercel.app/banners/${b.lead.slug}`,
-    `bannerPack.verticalUrl = https://aurum-properties-boutique.vercel.app/banners/${b.lead.slug}/vertical`,
-    `bannerPack.horizontalUrl = https://aurum-properties-boutique.vercel.app/banners/${b.lead.slug}/horizontal`,
+    'INCORRECTO (rewrite URL -> imports relativos fallan -> banner en blanco):',
+    '// NO usar https://rubik-.../banner-pack/'+li.slug+'/vertical/',
+    '',
+    '## CODIGO WRAPPER VERTICAL',
+    'export function '+C+'BannerVertical() {',
+    '  return (',
+    '    <div style={{ position:"fixed", inset:0, background:"#0d0b09" }}>',
+    '      <iframe src="'+t.rubikV+'"',
+    '        title="Banner Vertical · '+li.empresa+'"',
+    '        style={{ width:"100%", height:"100%", border:"none" }} allow="autoplay" />',
+    '    </div>',
+    '  );',
+    '}',
+    '',
+    '## REGLAS',
+    '- Nunca usar /gesture-lab/ como URL cliente-facing',
+    '- url principal CRM siempre AURUM',
+    '- Sin cruzar contenido con Costa Invest, Casas y Mar u otros clientes',
+    '- Imagenes del cliente solo en dynamic-motion-banner/'+li.slug+'/images/',
+    '',
+    '## REGISTRO EN CRM (solo si responden 200)',
+    'bannerPack.packUrl = '+t.bannersIndex,
+    'bannerPack.verticalUrl = '+t.bannersVertical,
+    'bannerPack.horizontalUrl = '+t.bannersHorizontal,
   ].join('\n');
 }
 function copyProductionBrief(id){
-  const l=leads.find(x=>x.id===id);if(!l) return;
+  const l=leads.find(x=>x.id===id);if(!l)return;
   navigator.clipboard.writeText(productionBriefText(l))
-    .then(()=>_showToast('✓ Production Brief copiado','var(--accent2)'))
+    .then(()=>_showToast('Production Brief copiado','var(--accent2)'))
     .catch(()=>_showToast('Error al copiar','var(--red)'));
 }
 function copyPrompt4Ganchos(id){
-  const l=leads.find(x=>x.id===id);if(!l) return;
+  const l=leads.find(x=>x.id===id);if(!l)return;
   navigator.clipboard.writeText(prompt4GanchosText(l))
-    .then(()=>_showToast('✓ Prompt 4 Ganchos copiado','var(--accent2)'))
+    .then(()=>_showToast('Prompt 4 Ganchos copiado','var(--accent2)'))
     .catch(()=>_showToast('Error al copiar','var(--red)'));
 }
 function copyPromptEV(id){
-  const l=leads.find(x=>x.id===id);if(!l) return;
+  const l=leads.find(x=>x.id===id);if(!l)return;
   navigator.clipboard.writeText(promptEVText(l))
-    .then(()=>_showToast('✓ Prompt G1 EV copiado','var(--accent2)'))
+    .then(()=>_showToast('Prompt G1 EV copiado','var(--accent2)'))
     .catch(()=>_showToast('Error al copiar','var(--red)'));
 }
 function copyPromptLanding(id){
-  const l=leads.find(x=>x.id===id);if(!l) return;
+  const l=leads.find(x=>x.id===id);if(!l)return;
   navigator.clipboard.writeText(promptLandingText(l))
-    .then(()=>_showToast('✓ Prompt G2 Landing copiado','var(--accent2)'))
+    .then(()=>_showToast('Prompt G2 Landing copiado','var(--accent2)'))
     .catch(()=>_showToast('Error al copiar','var(--red)'));
 }
 function copyPromptWebCompleta(id){
-  const l=leads.find(x=>x.id===id);if(!l) return;
+  const l=leads.find(x=>x.id===id);if(!l)return;
   navigator.clipboard.writeText(promptWebCompletaText(l))
-    .then(()=>_showToast('✓ Prompt G3 Web Completa copiado','var(--accent2)'))
+    .then(()=>_showToast('Prompt G3 Web Completa copiado','var(--accent2)'))
     .catch(()=>_showToast('Error al copiar','var(--red)'));
 }
 function copyPromptBanners(id){
-  const l=leads.find(x=>x.id===id);if(!l) return;
+  const l=leads.find(x=>x.id===id);if(!l)return;
   navigator.clipboard.writeText(promptBannersText(l))
-    .then(()=>_showToast('✓ Prompt G4 Banners copiado','var(--accent2)'))
+    .then(()=>_showToast('Prompt G4 Banners copiado','var(--accent2)'))
+    .catch(()=>_showToast('Error al copiar','var(--red)'));
+}
+function copyTargetRoutes(id){
+  const l=leads.find(x=>x.id===id);if(!l)return;
+  navigator.clipboard.writeText(targetRoutesText(l))
+    .then(()=>_showToast('Rutas objetivo copiadas','var(--accent2)'))
+    .catch(()=>_showToast('Error al copiar','var(--red)'));
+}
+function copyQAChecklist(id){
+  const l=leads.find(x=>x.id===id);if(!l)return;
+  navigator.clipboard.writeText(qaChecklistText(l))
+    .then(()=>_showToast('QA Checklist copiado','var(--accent2)'))
     .catch(()=>_showToast('Error al copiar','var(--red)'));
 }
 function renderProductionBase(l){
-  const b=buildProductionBrief(l);
-  const hks=[b.hooks.ev,b.hooks.landing,b.hooks.webCompleta,b.hooks.banners];
-  const gen=hks.filter(h=>h.status==='generated').length;
-  const pend=4-gen;
-  return `
-    <div class="modal-section" style="border-top:1px solid rgba(196,169,106,0.15);margin-top:4px">
-      <div class="modal-section-title" style="color:var(--accent2)">Base de Producción IA</div>
-      <div style="font-size:11px;color:var(--text3);margin-bottom:10px">
-        Ganchos generados: <strong style="color:var(--accent2)">${gen}/4</strong>
-        · Pendientes: <strong style="color:var(--red)">${pend}</strong>
-        · Slug: <code style="background:var(--bg3);padding:2px 6px;border-radius:4px;font-size:10px">${safeHtml(b.lead.slug)}</code>
-      </div>
-      <div style="display:flex;flex-direction:column;gap:6px">
-        <button class="contact-btn btn-email" onclick="copyProductionBrief(${l.id})" style="text-align:left">
-          Copiar Production Brief completo
-        </button>
-        <button class="contact-btn btn-email" onclick="copyPrompt4Ganchos(${l.id})" style="text-align:left">
-          Copiar Prompt 4 Ganchos (sistema completo)
-        </button>
-        <button class="contact-btn btn-web" onclick="copyPromptEV(${l.id})" style="text-align:left;background:rgba(196,169,106,0.08)">
-          Copiar Prompt G1 — Experiencia Visual
-        </button>
-        <button class="contact-btn btn-web" onclick="copyPromptLanding(${l.id})" style="text-align:left;background:rgba(196,169,106,0.08)">
-          Copiar Prompt G2 — Landing Comercial
-        </button>
-        <button class="contact-btn btn-web" onclick="copyPromptWebCompleta(${l.id})" style="text-align:left;background:rgba(196,169,106,0.08)">
-          Copiar Prompt G3 — Web Completa
-        </button>
-        <button class="contact-btn btn-web" onclick="copyPromptBanners(${l.id})" style="text-align:left;background:rgba(196,169,106,0.08)">
-          Copiar Prompt G4 — Pack Banners
-        </button>
-      </div>
-      <div style="font-size:10px;color:var(--text3);margin-top:8px;text-align:right">
-        Brief generado al vuelo · No persiste · Actualizar auditando web
-      </div>
-    </div>`;
+  try{
+    const b=buildProductionBrief(l);
+    const li=b.leadIdentity;const hs=b.hookStrategy||{};const wa=b.websiteAudit||{};const det=b.detectedAssets||{};const t=b.targetRoutes||{};
+    const gen=hs.generatedCount||0;
+    const auditOk=wa.status==='success';const auditPartial=(wa.status==='pending'||wa.status==='failed');
+    const auditChipHtml=auditOk?'<span class="tag est-cerrado">Auditoria completa</span>':auditPartial?'<span class="tag est-pendiente">Auditoria parcial</span>':'<span class="tag est-visual">Sin auditoria</span>';
+    const hookChipHtml=gen===4?'<span class="tag est-cerrado">4/4 generados</span>':'<span class="tag est-pendiente">'+gen+'/4 generados</span>';
+    const yn=function(v,y,n){return v?'<span style="color:var(--green);font-weight:600">'+(y||'Si')+'</span>':'<span style="color:var(--text3)">'+(n||'No')+'</span>';};
+    function safeR(x){return typeof safeHtml==='function'?safeHtml(x):String(x).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+    function routeRow(label,currentUrl,targetUrl){
+      const isLive=!!(currentUrl&&currentUrl===targetUrl);
+      const displayUrl=(targetUrl||'').replace('https://aurum-properties-boutique.vercel.app','AURUM').replace('https://rubik-sota-director-de-orquesta.vercel.app','RUBIK');
+      return '<div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;border-bottom:1px solid rgba(255,255,255,0.04);font-size:11px">'
+        +'<span style="color:var(--text3);flex-shrink:0;min-width:70px">'+safeR(label)+'</span>'
+        +'<a href="'+safeR(targetUrl||'')+'" target="_blank" rel="noopener noreferrer" style="color:var(--accent2);text-decoration:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;margin:0 8px;font-size:10px">'+safeR(displayUrl)+'</a>'
+        +(isLive?'<span class="tag est-cerrado" style="font-size:9px;flex-shrink:0">LIVE</span>':'<span class="tag est-pendiente" style="font-size:9px;flex-shrink:0">obj</span>')
+        +'</div>';
+    }
+    function btn(label,fn,id,cls){return '<button class="contact-btn '+(cls||'btn-email')+'" onclick="'+fn+'('+id+')" style="text-align:left;font-size:11px;padding:6px 10px;line-height:1.3">'+label+'</button>';}
+    const curEV=(l.commercialHooks&&l.commercialHooks.visualExperience&&l.commercialHooks.visualExperience.url)||'';
+    const curLp=(l.commercialHooks&&l.commercialHooks.landingPage&&l.commercialHooks.landingPage.url)||'';
+    const curFw=(l.commercialHooks&&l.commercialHooks.fullWebDemo&&l.commercialHooks.fullWebDemo.url)||'';
+    const curBp=(l.commercialHooks&&l.commercialHooks.bannerPack&&l.commercialHooks.bannerPack.packUrl)||'';
+    return '<div class="modal-section" style="border-top:2px solid rgba(196,169,106,0.3);background:rgba(196,169,106,0.04)">'
+      +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:6px">'
+      +'<div class="modal-section-title" style="color:var(--accent2);margin:0">Base de Producción IA</div>'
+      +'<div style="display:flex;gap:6px;flex-wrap:wrap">'+auditChipHtml+hookChipHtml+'</div>'
+      +'</div>'
+      +'<div style="font-size:11px;color:var(--text3);margin-bottom:10px;display:flex;gap:12px;flex-wrap:wrap">'
+      +'<span>Slug: <code style="background:var(--bg3);padding:2px 6px;border-radius:4px;color:var(--accent2);font-size:10px">'+safeR(li.slug)+'</code></span>'
+      +'<span>Score web: <strong style="color:var(--accent2)">'+wa.score+'/100</strong></span>'
+      +'<span>Siguiente: <strong style="color:var(--text2)">'+safeR(hs.nextRecommended||'—')+'</strong></span>'
+      +'</div>'
+      +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:6px;margin-bottom:10px">'
+      +'<div style="background:var(--bg3);border-radius:6px;padding:8px">'
+      +'<div style="font-size:10px;color:var(--text3);font-weight:700;text-transform:uppercase;margin-bottom:5px">Datos detectados</div>'
+      +'<div style="display:flex;flex-wrap:wrap;gap:3px;font-size:10px">'
+      +yn(det.hasPhone,'Tel','Tel')+' '+yn(det.hasEmail,'Email','Email')+' '+yn(det.hasWhatsapp,'WA','WA')+' '
+      +yn(det.hasListings,'List.','List.')+' '+yn(det.hasVirtualTour,'Tour','Tour')+' '+yn(det.hasVideo,'Video','Video')
+      +'</div></div>'
+      +'<div style="background:var(--bg3);border-radius:6px;padding:8px">'
+      +'<div style="font-size:10px;color:var(--text3);font-weight:700;text-transform:uppercase;margin-bottom:5px">Assets visuales</div>'
+      +'<div style="display:flex;flex-wrap:wrap;gap:3px;font-size:10px">'
+      +yn(det.hasLogo,'Logo','Logo?')+' '+yn(det.hasHeroImage,'Hero','Hero?')+' '+yn(det.hasVideo,'Video','Video?')
+      +'</div>'
+      +(!det.hasLogo&&!det.hasHeroImage?'<div style="font-size:10px;color:var(--red);margin-top:3px">Solicitar material</div>':'')
+      +'</div>'
+      +'</div>'
+      +'<div style="background:var(--bg3);border-radius:6px;padding:8px;margin-bottom:10px">'
+      +'<div style="font-size:10px;color:var(--text3);font-weight:700;text-transform:uppercase;margin-bottom:5px">Rutas objetivo AURUM</div>'
+      +routeRow('G1 EV',curEV,t.ev)
+      +routeRow('G2 Landing',curLp,t.landing)
+      +routeRow('G3 Web',curFw,t.webCompleta)
+      +routeRow('G4 Banners',curBp,t.bannersIndex)
+      +'</div>'
+      +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-bottom:5px">'
+      +btn('Copiar Production Brief','copyProductionBrief',l.id,'btn-email')
+      +btn('Copiar Prompt 4 Ganchos','copyPrompt4Ganchos',l.id,'btn-email')
+      +'</div>'
+      +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-bottom:5px">'
+      +btn('Prompt G1 — EV','copyPromptEV',l.id,'btn-web')
+      +btn('Prompt G2 — Landing','copyPromptLanding',l.id,'btn-web')
+      +'</div>'
+      +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-bottom:5px">'
+      +btn('Prompt G3 — Web Completa','copyPromptWebCompleta',l.id,'btn-web')
+      +btn('Prompt G4 — Banners','copyPromptBanners',l.id,'btn-web')
+      +'</div>'
+      +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:5px">'
+      +btn('Copiar Rutas Objetivo','copyTargetRoutes',l.id,'btn-maps')
+      +btn('Copiar QA Checklist','copyQAChecklist',l.id,'btn-maps')
+      +'</div>'
+      +(b.missingData&&b.missingData.length?'<div style="font-size:10px;color:var(--red);margin-top:8px">Datos faltantes: '+safeR(b.missingData.join(', '))+'</div>':'')
+      +(b.validationRisks&&b.validationRisks.length?'<div style="font-size:10px;color:var(--red);margin-top:3px">'+safeR(b.validationRisks.join(' | '))+'</div>':'')
+      +'<div style="font-size:9px;color:var(--text3);margin-top:8px;text-align:right">Brief al vuelo · No persiste · v2.0</div>'
+      +'</div>';
+  }catch(e){
+    return '<div class="modal-section" style="border-top:2px solid rgba(196,169,106,0.3)">'
+      +'<div class="modal-section-title" style="color:var(--accent2)">Base de Producción IA</div>'
+      +'<div style="font-size:12px;color:var(--red)">Error al generar: '+String(e)+'</div></div>';
+  }
 }
-// ── End Production Brief ───────────────────────────────────────────────────────
+// ── End Production Brief v2 ───────────────────────────────────────────────────
+
 function renderWebsiteAudit(l){
   const safeWeb=nbeSafeUrl(l.web||l.website);
   const a=normalizeWebsiteAudit(l.websiteAudit||(safeWeb?{status:'pending',website:safeWeb,signals:{},weaknesses:[],opportunities:[],websiteOpportunityScore:0}:websiteAuditSkipped(l)),l);
@@ -3400,8 +3777,7 @@ function renderWebsiteAudit(l){
         <button class="contact-btn btn-web" id="audit-web-btn-${l.id}" onclick="auditLeadWebsite(${l.id})">${a.status==='success'?'Reauditar web':'Auditar web'}</button>
         <button class="contact-btn btn-email" onclick="copyWebsiteAuditSummary(${l.id})">Copiar resumen de oportunidad</button>
       </div>
-    </div>
-    ${renderProductionBase(l)}`;
+    </div>`;
 }
 
 // ── Temperature ───────────────────────────────────────────────────────────────
@@ -5828,6 +6204,7 @@ function openModal(id){
     </div>
 
     ${renderWebsiteAudit(l)}
+    ${renderProductionBase(l)}
 
     <!-- INTELIGENCIA -->
     <div class="modal-section">
