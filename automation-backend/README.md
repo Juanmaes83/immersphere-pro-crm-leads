@@ -1,16 +1,22 @@
-# Immersphere Production Orchestrator v0.1
+# Immersphere Production Orchestrator v0.2
 
-Backend local y aislado para preparar automatizacion de produccion en modo dry-run.
+Backend aislado para preparar automatizacion de produccion. v0.2 anade planificacion de PRs y paquete comercial, pero la escritura real en GitHub sigue bloqueada por defecto.
 
 ## Que hace
 
 - Expone `GET /health`.
 - Expone `POST /api/production/dry-run`.
+- Expone `GET /api/production/capabilities`.
+- Expone `GET /api/production/jobs`.
+- Expone `POST /api/production/pr-plan`.
+- Expone `POST /api/production/proposal-package`.
+- Expone `POST /api/production/create-prs`, bloqueado salvo flags server-side explicitas.
 - Expone `POST /api/github/dispatch-production`, pero queda desactivado en v0.1.
 - Valida un Production Package antes de planificar ramas, rutas y QA.
-- No crea archivos reales.
+- Genera un plan de archivos para Rubik y AURUM sin tocar esos repos.
+- Prepara un Proposal Package con WhatsApp, email, guion de llamada y seguimiento, sin enviar nada.
 - No ejecuta comandos shell con datos del usuario.
-- No hace commits, push ni deploys.
+- No hace commits, push, deploys ni merge.
 
 ## Scripts
 
@@ -31,9 +37,17 @@ NODE_ENV=development
 ALLOWED_ORIGINS=http://localhost:5500,http://127.0.0.1:5500,https://juanmaes83.github.io
 DRY_RUN_ONLY=true
 INTERNAL_API_TOKEN=change-me-local-only
+PROPOSAL_PACKAGE_ENABLED=true
+GITHUB_PR_AUTOMATION_ENABLED=false
+GITHUB_SERVER_TOKEN=
+GITHUB_ALLOWED_REPOS=Juanmaes83/Rubik-Sota-Director-de-Orquesta,Juanmaes83/AURUM_PROPERTIES_BOUTIQUE
 ```
 
-`INTERNAL_API_TOKEN` queda reservado para una fase posterior. No se usan tokens reales en v0.1.
+`INTERNAL_API_TOKEN` protege los endpoints `POST` cuando existe y no es `change-me-local-only`.
+
+`GITHUB_PR_AUTOMATION_ENABLED` debe quedar en `false` hasta revision de seguridad. Con `false`, `/api/production/create-prs` responde sin intentar escribir.
+
+`GITHUB_SERVER_TOKEN` no debe configurarse todavia en Railway ni guardarse en git. En el futuro vivira solo server-side.
 
 En despliegue Railway v0.1.2 se recomienda activar `INTERNAL_API_TOKEN` como variable de entorno. Si el valor existe y no es `change-me-local-only`, los endpoints `POST` exigen el header:
 
@@ -53,6 +67,23 @@ curl -X POST http://127.0.0.1:8787/api/production/dry-run \
 
 La respuesta valida el paquete y devuelve un plan no destructivo con ramas, rutas y checklist de QA.
 
+## Endpoints v0.2
+
+`GET /api/production/capabilities` informa capacidades y flags activas sin revelar secretos.
+
+`POST /api/production/pr-plan` devuelve:
+
+- ramas previstas por lead;
+- PRs objetivo en Rubik y AURUM;
+- archivos generados en memoria;
+- Proposal Package;
+- checklist de QA;
+- `nextStep: "review_required"`.
+
+`POST /api/production/proposal-package` devuelve solo el paquete comercial reutilizable para la ficha CRM: resumen, 4 ganchos, WhatsApp, email, guion de llamada y seguimiento. No envia mensajes.
+
+`POST /api/production/create-prs` esta preparado para crear ramas y PRs en Rubik/AURUM, pero queda bloqueado mientras `GITHUB_PR_AUTOMATION_ENABLED=false`. No toca `main` y no hace merge.
+
 ## Seguridad v0.1
 
 - CORS allowlist.
@@ -64,6 +95,10 @@ La respuesta valida el paquete y devuelve un plan no destructivo con ramas, ruta
 - Limite de tamano de payload.
 - Limites de arrays y strings.
 - Sanitizado de slug, branch, nombres de archivo y logs.
+- Allowlist estricta de repos: Rubik y AURUM.
+- Prohibicion explicita de escribir en CRM, `crm.html`, `index.html`, `.env`, `.claude`, `.vercel`, `node_modules` y rutas con traversal.
+- Ramas de produccion obligatorias con prefijo `production/`.
+- GitHub client server-side sin token hardcodeado y sin auto-merge.
 
 ## Asset & Template Pipeline
 

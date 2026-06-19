@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { buildPrAutomationPlan } from "../src/buildPrAutomationPlan.ts";
+import { AURUM_REPO, CRM_REPO, RUBIK_REPO, validateProductionBranch, validateRepoPath } from "../src/pathSecurity.ts";
 import { startServer } from "../src/server.ts";
+import { validateProductionPackage } from "../src/validateProductionPackage.ts";
 
 function validPayload(overrides = {}) {
   const slug = overrides.slug || "torrevieja-sur";
@@ -373,4 +376,147 @@ test("rechaza media URL con /gesture-lab/ si se propone como cliente-facing", as
     assert.equal(body.ok, false);
     assert.match(body.validation.errors.join(" "), /media_url_gesture_lab/);
   });
+});
+
+test("capabilities declara v0.2 disponible pero PR automation desactivada por defecto", async () => {
+  await withServer(async (baseUrl) => {
+    const res = await fetch(`${baseUrl}/api/production/capabilities`);
+    const body = await res.json();
+    assert.equal(res.status, 200);
+    assert.equal(body.ok, true);
+    assert.equal(body.dryRunEnabled, true);
+    assert.equal(body.prAutomationAvailable, true);
+    assert.equal(body.prAutomationEnabled, false);
+    assert.equal(body.crmDirectConnection, false);
+    assert.deepEqual(body.allowedRepos.sort(), [AURUM_REPO, RUBIK_REPO].sort());
+  });
+});
+
+test("pr-plan devuelve PRs objetivo, archivos generados y Proposal Package", async () => {
+  await withServer(async (baseUrl) => {
+    const { status, body } = await postJson(baseUrl, "/api/production/pr-plan", validPayload());
+    assert.equal(status, 200);
+    assert.equal(body.ok, true);
+    assert.equal(body.mode, "pr-plan");
+    assert.equal(body.blockedWrite, true);
+    assert.equal(body.nextStep, "review_required");
+    assert.equal(body.targetPRs.rubik.repo, RUBIK_REPO);
+    assert.equal(body.targetPRs.aurum.repo, AURUM_REPO);
+    assert.ok(body.generatedFiles.some((file) => file.repo === RUBIK_REPO && file.path.endsWith("index.html")));
+    assert.ok(body.generatedFiles.some((file) => file.repo === RUBIK_REPO && file.path.endsWith("banner-vertical.html")));
+    assert.ok(body.generatedFiles.some((file) => file.repo === RUBIK_REPO && file.path.endsWith("banner-horizontal.html")));
+    assert.ok(body.generatedFiles.some((file) => file.repo === AURUM_REPO && file.path.includes("ProductionPlan.ts")));
+    assert.ok(body.generatedFiles.some((file) => file.repo === AURUM_REPO && file.path.includes("ProposalPackage.ts")));
+    assert.equal(body.proposalPackage.fourHooks.visualExperience.status, "planned");
+    assert.match(body.proposalPackage.whatsappMessage, /Torrevieja Sur/);
+    assert.match(body.proposalPackage.emailSubject, /Torrevieja Sur/);
+  });
+});
+
+test("proposal-package devuelve copy comercial sin enviar acciones", async () => {
+  await withServer(async (baseUrl) => {
+    const { status, body } = await postJson(baseUrl, "/api/production/proposal-package", validPayload());
+    assert.equal(status, 200);
+    assert.equal(body.ok, true);
+    assert.equal(body.mode, "proposal-package");
+    assert.equal(body.nextStep, "review_required");
+    assert.match(body.proposalPackage.proposalSummary, /Torrevieja Sur/);
+    assert.match(body.proposalPackage.whatsappMessage, /experiencia visual/i);
+    assert.match(body.proposalPackage.emailBody, /Experiencia Visual de Propiedad/);
+    assert.match(body.proposalPackage.callScript, /showroom/i);
+    assert.match(body.proposalPackage.followUpMessage, /Torrevieja Sur/);
+  });
+});
+
+test("create-prs queda bloqueado si la flag server-side no esta activada", async () => {
+  const previous = process.env.GITHUB_PR_AUTOMATION_ENABLED;
+  delete process.env.GITHUB_PR_AUTOMATION_ENABLED;
+  try {
+    await withServer(async (baseUrl) => {
+      const { status, body } = await postJson(baseUrl, "/api/production/create-prs", validPayload());
+      assert.equal(status, 200);
+      assert.equal(body.ok, false);
+      assert.equal(body.reason, "disabled_until_security_flags_enabled");
+      assert.equal(body.writeAttempted, false);
+    });
+  } finally {
+    if (previous === undefined) {
+      delete process.env.GITHUB_PR_AUTOMATION_ENABLED;
+    } else {
+      process.env.GITHUB_PR_AUTOMATION_ENABLED = previous;
+    }
+  }
+});
+
+test("create-prs exige token interno si INTERNAL_API_TOKEN esta configurado", async () => {
+  const previous = process.env.INTERNAL_API_TOKEN;
+  process.env.INTERNAL_API_TOKEN = "local-test-token";
+  try {
+    await withServer(async (baseUrl) => {
+      const denied = await postJson(baseUrl, "/api/production/create-prs", validPayload());
+      assert.equal(denied.status, 401);
+      assert.equal(denied.body.error, "unauthorized");
+    });
+  } finally {
+    if (previous === undefined) {
+      delete process.env.INTERNAL_API_TOKEN;
+    } else {
+      process.env.INTERNAL_API_TOKEN = previous;
+    }
+  }
+});
+
+test("jobs registra planes generados sin guardar payload completo", async () => {
+  await withServer(async (baseUrl) => {
+    const planned = await postJson(baseUrl, "/api/production/pr-plan", validPayload());
+    const res = await fetch(`${baseUrl}/api/production/jobs/${encodeURIComponent(planned.body.jobId)}`);
+    const job = await res.json();
+    assert.equal(res.status, 200);
+    assert.equal(job.jobId, planned.body.jobId);
+    assert.equal(job.leadSlug, "torrevieja-sur");
+    assert.equal(job.status, "planned");
+    assert.equal(Object.prototype.hasOwnProperty.call(job, "payload"), false);
+    assert.equal(job.payload, undefined);
+  });
+});
+
+test("pathSecurity bloquea repos y rutas fuera de alcance", () => {
+  assert.equal(validateRepoPath(RUBIK_REPO, "dynamic-motion-banner/torrevieja-sur/index.html", "torrevieja-sur"), null);
+  assert.equal(validateRepoPath(AURUM_REPO, "src/generated/TorreviejaSurProductionPlan.ts", "torrevieja-sur"), null);
+  assert.notEqual(validateRepoPath(CRM_REPO, "crm.html", "torrevieja-sur"), null);
+  assert.notEqual(validateRepoPath("Juanmaes83/otro-repo", "production-manifests/torrevieja-sur.json", "torrevieja-sur"), null);
+  assert.notEqual(validateRepoPath(RUBIK_REPO, "crm.html", "torrevieja-sur"), null);
+  assert.notEqual(validateRepoPath(RUBIK_REPO, "index.html", "torrevieja-sur"), null);
+  assert.notEqual(validateRepoPath(RUBIK_REPO, ".env", "torrevieja-sur"), null);
+  assert.notEqual(validateRepoPath(RUBIK_REPO, "../index.html", "torrevieja-sur"), null);
+  assert.notEqual(validateRepoPath(RUBIK_REPO, "dynamic-motion-banner\\torrevieja-sur\\index.html", "torrevieja-sur"), null);
+  assert.notEqual(validateRepoPath(AURUM_REPO, "src/generated/CasasYMarProductionPlan.ts", "torrevieja-sur"), null);
+});
+
+test("pathSecurity obliga a ramas production por lead", () => {
+  assert.equal(validateProductionBranch("production/torrevieja-sur-public-pages", "torrevieja-sur"), null);
+  assert.notEqual(validateProductionBranch("main", "torrevieja-sur"), null);
+  assert.notEqual(validateProductionBranch("feature/torrevieja-sur", "torrevieja-sur"), null);
+  assert.notEqual(validateProductionBranch("production/otro-cliente", "torrevieja-sur"), null);
+  assert.notEqual(validateProductionBranch("production/torrevieja-sur/../../main", "torrevieja-sur"), null);
+});
+
+test("buildPrAutomationPlan bloquea payload inseguro antes de generar archivos", () => {
+  const payload = validPayload({
+    patch: { targetRoutes: { landing: "https://aurum-properties-boutique.vercel.app/gesture-lab/torrevieja-sur" } },
+  });
+  const validation = validateProductionPackage(payload);
+  const plan = buildPrAutomationPlan(payload, validation);
+  assert.equal(plan.ok, false);
+  assert.equal(plan.blocked, true);
+  assert.match(plan.validation.errors.join(" "), /gesture_lab/);
+});
+
+test("GitHub client no contiene endpoint de merge ni secretos hardcodeados", async () => {
+  const fs = await import("node:fs/promises");
+  const source = await fs.readFile("src/githubClient.ts", "utf8");
+  assert.doesNotMatch(source, /\/merge/);
+  assert.doesNotMatch(source, /ghp_[A-Za-z0-9_]+/);
+  assert.doesNotMatch(source, /github_pat_[A-Za-z0-9_]+/);
+  assert.match(source, /process\.env\.GITHUB_SERVER_TOKEN/);
 });
