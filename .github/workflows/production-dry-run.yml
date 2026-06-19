@@ -1,0 +1,63 @@
+name: Production Dry Run
+
+on:
+  workflow_dispatch:
+    inputs:
+      lead_slug:
+        description: "Safe lead slug"
+        required: true
+        type: string
+      lead_name:
+        description: "Lead display name"
+        required: true
+        type: string
+      mode:
+        description: "Only dry-run is accepted"
+        required: true
+        default: "dry-run"
+        type: string
+      production_package_json:
+        description: "Production Package JSON"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  dry-run:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate dry-run mode
+        shell: bash
+        run: |
+          if [ "${{ inputs.mode }}" != "dry-run" ]; then
+            echo "Only mode=dry-run is allowed in v0.1"
+            exit 1
+          fi
+
+      - name: Validate lead slug
+        shell: bash
+        run: |
+          if ! [[ "${{ inputs.lead_slug }}" =~ ^[a-z0-9]+(-[a-z0-9]+)*$ ]]; then
+            echo "Unsafe lead slug"
+            exit 1
+          fi
+
+      - name: Print non-destructive plan
+        shell: bash
+        env:
+          LEAD_SLUG: ${{ inputs.lead_slug }}
+          LEAD_NAME: ${{ inputs.lead_name }}
+          PRODUCTION_PACKAGE_JSON: ${{ inputs.production_package_json }}
+        run: |
+          echo "Production dry-run only"
+          echo "Lead: ${LEAD_NAME}"
+          echo "Slug: ${LEAD_SLUG}"
+          node -e "JSON.parse(process.env.PRODUCTION_PACKAGE_JSON); console.log('Production Package JSON parse OK')"
+          echo "No files created"
+          echo "No commits"
+          echo "No pushes"
+          echo "No deploy"
+          echo "No Vercel API"
+          echo "No write permissions"
