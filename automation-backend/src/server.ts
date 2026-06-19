@@ -246,7 +246,12 @@ export function createRequestHandler() {
       return;
     }
 
-    if (req.method === "POST" && !isAuthorized(req)) {
+    const url = new URL(req.url || "/", "http://127.0.0.1");
+
+    // Operator auth endpoints are exempt from the internal-token gate — the browser
+    // console has no way to supply INTERNAL_API_TOKEN.
+    const isOperatorAuthEndpoint = url.pathname === "/api/operator/login" || url.pathname === "/api/operator/logout";
+    if (req.method === "POST" && !isOperatorAuthEndpoint && !isAuthorized(req)) {
       sendJson(res, 401, { ok: false, error: "unauthorized" }, headers);
       return;
     }
@@ -255,8 +260,6 @@ export function createRequestHandler() {
       sendJson(res, 429, { ok: false, error: "rate_limited" }, headers);
       return;
     }
-
-    const url = new URL(req.url || "/", "http://127.0.0.1");
 
     if (req.method === "GET" && url.pathname === "/health") {
       sendJson(res, 200, { ok: true, service: SERVICE_NAME, version: SERVICE_VERSION, mode: MODE }, headers);
