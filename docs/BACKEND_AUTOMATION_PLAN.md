@@ -1,4 +1,4 @@
-# Backend Automation Plan v0.1
+# Backend Automation Plan v0.2
 
 ## Resumen de auditoria
 
@@ -385,6 +385,91 @@ Rollback/apagado:
 - Railway dashboard -> servicio -> Settings -> Stop/Delete service si era un entorno temporal.
 
 Siguiente fase: **GitHub PR Automation v0.2**, con GitHub App/token minimo en backend, rama por lead, PR y revision humana. No debe escribir en `main`.
+
+## GitHub PR Automation v0.2
+
+Objetivo: preparar la automatizacion real sin activarla todavia en produccion.
+
+Nuevos endpoints:
+
+- `GET /api/production/capabilities`: expone capacidades y flags, no secretos.
+- `GET /api/production/jobs`: lista jobs en memoria.
+- `GET /api/production/jobs/{jobId}`: consulta estado de un job.
+- `POST /api/production/pr-plan`: construye plan de PRs, archivos y paquete comercial sin escribir en GitHub.
+- `POST /api/production/proposal-package`: devuelve briefing comercial para CRM sin enviar WhatsApp/email.
+- `POST /api/production/create-prs`: preparado para crear ramas y PRs, bloqueado por defecto.
+
+Variables nuevas:
+
+```text
+PROPOSAL_PACKAGE_ENABLED=true
+GITHUB_PR_AUTOMATION_ENABLED=false
+GITHUB_SERVER_TOKEN=
+GITHUB_ALLOWED_REPOS=Juanmaes83/Rubik-Sota-Director-de-Orquesta,Juanmaes83/AURUM_PROPERTIES_BOUTIQUE
+```
+
+`GITHUB_PR_AUTOMATION_ENABLED=false` es obligatorio hasta la siguiente revision. Sin esa flag, el backend responde `disabled_until_security_flags_enabled` y `writeAttempted: false`.
+
+`GITHUB_SERVER_TOKEN` no se configura todavia. Cuando exista, debe ser server-side, con permisos minimos y nunca expuesto en frontend.
+
+Repos permitidos:
+
+- `Juanmaes83/Rubik-Sota-Director-de-Orquesta`
+- `Juanmaes83/AURUM_PROPERTIES_BOUTIQUE`
+
+Repos bloqueados:
+
+- `Juanmaes83/immersphere-pro-crm-leads`
+- cualquier repo fuera de allowlist
+
+Rutas permitidas en Rubik:
+
+- `dynamic-motion-banner/{slug}/README.md`
+- `dynamic-motion-banner/{slug}/config.json`
+- `dynamic-motion-banner/{slug}/index.html`
+- `dynamic-motion-banner/{slug}/banner-vertical.html`
+- `dynamic-motion-banner/{slug}/banner-horizontal.html`
+- `dynamic-motion-banner/{slug}/assets-manifest.json`
+- `production-manifests/{slug}.json`
+
+Rutas permitidas en AURUM:
+
+- `production-manifests/{slug}.json`
+- `src/generated/{ComponentBase}ProductionPlan.ts`
+- `src/generated/{ComponentBase}ProposalPackage.ts`
+
+Rutas siempre bloqueadas:
+
+- `crm.html`
+- `index.html`
+- `.env`
+- `.claude`
+- `.vercel`
+- `node_modules`
+- `package-lock.json`
+- rutas absolutas
+- rutas con `..`, `\`, `%2f` o `%5c`
+
+El GitHub client v0.2 solo contempla crear rama, subir archivos allowlisted y abrir PR con revision humana. No contiene endpoint de merge ni toca `main`.
+
+## Proposal Package v0.2
+
+El backend puede generar un paquete comercial desde el Production Package:
+
+- resumen de oportunidad;
+- 4 ganchos comerciales;
+- briefing EV;
+- briefing landing;
+- briefing Web Completa;
+- briefing pack banners;
+- WhatsApp sugerido;
+- asunto y cuerpo de email;
+- guion de llamada;
+- mensaje de seguimiento;
+- notas internas;
+- checklist de revision.
+
+No envia WhatsApp, no envia email y no registra URLs en CRM.
 
 ## Seguridad
 

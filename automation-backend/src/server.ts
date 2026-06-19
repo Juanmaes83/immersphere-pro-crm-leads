@@ -1,8 +1,11 @@
 import http from "node:http";
 import { URL } from "node:url";
+import { buildPrAutomationPlan } from "./buildPrAutomationPlan.ts";
 import { buildDryRunPlan } from "./buildDryRunPlan.ts";
+import { allowedRepos, createBranch, createPullRequest, getBranchHeadSha, putFile, sanitizeGithubError } from "./githubClient.ts";
 import { logInfo, logWarn } from "./logger.ts";
 import { MAX_BODY_BYTES, MODE, SERVICE_NAME, SERVICE_VERSION } from "./schemas.ts";
+import { buildProposalPackage } from "./proposalPackage.ts";
 import { validateProductionPackage } from "./validateProductionPackage.ts";
 
 const DEFAULT_ALLOWED_ORIGINS = [
@@ -12,6 +15,7 @@ const DEFAULT_ALLOWED_ORIGINS = [
 ];
 
 const rateLimitBuckets = new Map();
+const jobs = new Map();
 
 export function getAllowedOrigins() {
   return String(process.env.ALLOWED_ORIGINS || DEFAULT_ALLOWED_ORIGINS.join(","))
@@ -77,6 +81,18 @@ function isAuthorized(req) {
   return req.headers["x-internal-api-token"] === process.env.INTERNAL_API_TOKEN;
 }
 
+function prAutomationEnabled() {
+  return String(process.env.GITHUB_PR_AUTOMATION_ENABLED || "false").toLowerCase() === "true";
+}
+
+function proposalPackageEnabled() {
+  return String(process.env.PROPOSAL_PACKAGE_ENABLED || "true").toLowerCase() !== "false";
+}
+
+function hasGithubToken() {
+  return Boolean(String(process.env.GITHUB_SERVER_TOKEN || "").trim());
+}
+
 function readJsonBody(req) {
   return new Promise((resolve, reject) => {
     let total = 0;
@@ -128,6 +144,34 @@ export function createRequestHandler() {
       return;
     }
 
+    if (req.method === "GET" && url.pathname === "/api/production/capabilities") {
+      const enabled = prAutomationEnabled();
+      sendJson(res, 200, {
+        ok: true,
+        version: SERVICE_VERSION,
+        mode: MODE,
+        dryRunEnabled: true,
+        prAutomationAvailable: true,
+        prAutomationEnabled: enabled,
+        proposalPackageEnabled: proposalPackageEnabled(),
+        crmDirectConnection: false,
+        writeMode: enabled ? "enabled" : "disabled",
+        allowedRepos: allowedRepos(),
+      }, headers);
+      return;
+    }
+
+    if (req.method === "GET" && (url.pathname === "/api/production/jobs" || url.pathname === "/api/production/jobs/")) {
+      sendJson(res, 200, { ok: true, jobs: [...jobs.values()] }, headers);
+      return;
+    }
+
+    if (req.method === "GET" && url.pathname.startsWith("/api/production/jobs/")) {
+      const jobId = decodeURIComponent(url.pathname.replace("/api/production/jobs/", ""));
+      sendJson(res, jobs.has(jobId) ? 200 : 404, jobs.get(jobId) || { ok: false, error: "job_not_found" }, headers);
+      return;
+    }
+
     if (req.method === "POST" && url.pathname === "/api/github/dispatch-production") {
       logWarn("dispatch-production blocked in v0.1");
       sendJson(res, 200, { ok: false, reason: "disabled_in_v0_1_until_security_review" }, headers);
@@ -153,8 +197,119 @@ export function createRequestHandler() {
       return;
     }
 
+    if (req.method === "POST" && url.pathname === "/api/production/pr-plan") {
+      try {
+        const payload = await readJsonBody(req);
+        const validation = validateProductionPackage(payload);
+        const plan = buildPrAutomationPlan(payload, validation);
+        if (plan.jobId) {
+          jobs.set(plan.jobId, {
+            ok: plan.ok,
+            jobId: plan.jobId,
+            leadSlug: plan.leadSlug,
+            status: plan.ok ? "planned" : "blocked",
+            warnings: plan.validation?.warnings?.length || 0,
+            errors: plan.validation?.errors?.length || 0,
+          });
+        }
+        logInfo("pr-plan requested", { leadSlug: payload?.lead?.slug || "missing", ok: plan.ok });
+        sendJson(res, plan.ok ? 200 : 400, plan, headers);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "request_failed";
+        sendJson(res, 400, { ok: false, mode: "pr-plan", validation: { passed: false, errors: [message], warnings: [] }, blocked: true }, headers);
+      }
+      return;
+    }
+
+    if (req.method === "POST" && url.pathname === "/api/production/proposal-package") {
+      try {
+        const payload = await readJsonBody(req);
+        const validation = validateProductionPackage(payload);
+        if (!validation.passed) {
+          sendJson(res, 400, { ok: false, validation, blocked: true }, headers);
+          return;
+        }
+        const plan = buildPrAutomationPlan(payload, validation);
+        sendJson(res, 200, {
+          ok: true,
+          mode: "proposal-package",
+          jobId: plan.jobId,
+          leadSlug: plan.leadSlug,
+          proposalPackage: buildProposalPackage(payload, plan),
+          nextStep: "review_required",
+        }, headers);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "request_failed";
+        sendJson(res, 400, { ok: false, errors: [message] }, headers);
+      }
+      return;
+    }
+
+    if (req.method === "POST" && url.pathname === "/api/production/create-prs") {
+      if (!prAutomationEnabled()) {
+        sendJson(res, 200, { ok: false, reason: "disabled_until_security_flags_enabled", writeAttempted: false }, headers);
+        return;
+      }
+      if (!hasGithubToken()) {
+        sendJson(res, 200, { ok: false, reason: "missing_server_side_github_token", writeAttempted: false }, headers);
+        return;
+      }
+      try {
+        const payload = await readJsonBody(req);
+        const validation = validateProductionPackage(payload);
+        const plan = buildPrAutomationPlan(payload, validation);
+        if (!plan.ok) {
+          sendJson(res, 400, { ...plan, writeAttempted: false }, headers);
+          return;
+        }
+        const result = await createProductionPullRequests(plan);
+        jobs.set(plan.jobId, {
+          ok: true,
+          jobId: plan.jobId,
+          leadSlug: plan.leadSlug,
+          status: "prs_created",
+          pullRequests: result.pullRequests,
+        });
+        sendJson(res, 200, {
+          ok: true,
+          mode: "create-prs",
+          jobId: plan.jobId,
+          leadSlug: plan.leadSlug,
+          writeAttempted: true,
+          pullRequests: result.pullRequests,
+          nextStep: "human_review_required",
+        }, headers);
+      } catch (error) {
+        const safeError = sanitizeGithubError(error);
+        sendJson(res, 500, { ok: false, mode: "create-prs", writeAttempted: true, status: "error", error: safeError }, headers);
+      }
+      return;
+    }
+
     sendJson(res, 404, { ok: false, error: "not_found" }, headers);
   };
+}
+
+async function createProductionPullRequests(plan) {
+  const grouped = Map.groupBy(plan.generatedFiles, (file) => file.repo);
+  const pullRequests = {};
+  for (const [repo, files] of grouped.entries()) {
+    const target = Object.values(plan.targetPRs).find((item) => item.repo === repo);
+    const fromSha = await getBranchHeadSha(repo, "main");
+    await createBranch(repo, target.headBranch, fromSha);
+    for (const file of files) {
+      await putFile(repo, target.headBranch, file.path, file.content, file.message);
+    }
+    const pr = await createPullRequest(
+      repo,
+      target.headBranch,
+      "main",
+      `Production draft for ${plan.leadSlug}`,
+      "Automated v0.2 production draft. Human review required. No auto-merge.",
+    );
+    pullRequests[repo] = { url: pr.html_url, number: pr.number, branch: target.headBranch };
+  }
+  return { pullRequests };
 }
 
 export function startServer(options = {}) {
