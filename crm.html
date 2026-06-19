@@ -2308,7 +2308,7 @@ function loadState(){
       const customs=JSON.parse(cl);
       customs.forEach(c=>{ leads.push(c); if(c.id<=_nextCustomId) _nextCustomId=c.id-1; });
     }
-    if(migrateCasasYMarCommercialHooks()){
+    if(migrateLeadCommercialHooks()){
       saveState();
     }
   }catch(e){}
@@ -3063,45 +3063,25 @@ function hookStatusBtnClass(status){
   return m[status]||'sbtn-sin';
 }
 function getHookNBA(l){
-  const h=l&&l.commercialHooks; if(!h) return '';
-  const bs=(h.motionBanner&&h.motionBanner.status)||'pending';
-  const ds=(h.premiumDemo&&h.premiumDemo.status)||'pending';
-  if(bs==='interested') return '🔥 Cliente interesado en la Experiencia Visual. Preparar propuesta piloto.';
-  if(ds==='responded') return '🎯 Demo respondida. Llamar o cerrar reunión de propuesta.';
-  if(ds!=='pending') return '📞 Demo enviada. Follow-up para cerrar reunión.';
-  if(bs!=='pending') return '🎬 Experiencia Visual enviada. Reforzar con la Web Premium Demo como segundo impacto.';
-  return '🚀 Enviar primero la Experiencia Visual de Propiedad para abrir conversación.';
+  return commercialHooksNextAction(l);
 }
 function buildHookWa(l,key){
   const phone=((l.whatsapp||l.telefono||'')+'').replace(/\D/g,'');
   if(!phone) return null;
-  const h=l.commercialHooks||{};
-  const banner=(h.motionBanner&&h.motionBanner.url)||'';
-  const demo=(h.premiumDemo&&h.premiumDemo.url)||'';
-  let msg='';
-  if(key==='motionBanner'){
-    msg='Hola, equipo de Casas y Mar. Soy Juanma.\n\nOs comparto una primera experiencia visual personalizada para mostrar cómo una propiedad puede recorrerse y entenderse antes de visitarla.\n\nPodéis verla aquí:\n'+banner+'\n\nLa idea es usarla como primer impacto visual: web, WhatsApp, escaparate digital, QR o campaña local.\n\nDespués os comparto también la demo web premium completa:\n'+demo;
-  } else {
-    msg='Hola, equipo de Casas y Mar.\n\nAdemás de la pieza visual rápida, os he preparado una demo premium más completa para enseñar cómo podría verse una propuesta inmobiliaria más avanzada, con narrativa, tecnología y CTA comercial.\n\nPodéis verla aquí:\n'+demo+'\n\nLa idea es ayudaros a presentar propiedades y captar contactos con una experiencia más diferencial que una ficha inmobiliaria tradicional.';
-  }
+  const hook=getCommercialHook(l,key);
+  if(!hook||!hook.url) return null;
+  const msg=commercialHookMessages(l,key).whatsapp;
   return 'https://wa.me/'+phone+'?text='+encodeURIComponent(msg);
 }
 function buildHookMail(l,key){
   if(!l.email) return null;
-  const h=l.commercialHooks||{};
-  const banner=(h.motionBanner&&h.motionBanner.url)||'';
-  const demo=(h.premiumDemo&&h.premiumDemo.url)||'';
-  let subject,body;
-  if(key==='motionBanner'){
-    subject='Experiencia visual personalizada para Casas y Mar';
-    body='Hola, equipo de Casas y Mar.\n\nSoy Juanma. Os comparto una primera experiencia visual personalizada para mostrar cómo una propiedad puede presentarse de forma más dinámica, clara y comercial.\n\nPodéis verla aquí:\n'+banner+'\n\nEs una pieza animada con movimiento, propiedad destacada, QR, llamada a la acción y contacto directo. La idea es utilizarla como primer impacto visual para web, WhatsApp, escaparate digital, QR o campañas locales.\n\nAdemás, también podéis ver la demo web premium completa aquí:\n'+demo+'\n\nQuedo atento por si queréis que lo revisemos en una llamada breve.\n\nUn saludo,\nJuanma';
-  } else {
-    subject='Demo premium para Casas y Mar — propuesta Immersphere';
-    body='Hola, equipo de Casas y Mar.\n\nSoy Juanma. Os comparto una demo premium preparada específicamente para Casas y Mar:\n\n'+demo+'\n\nLa idea es mostrar cómo se podría presentar una propiedad o propuesta inmobiliaria con una experiencia más visual, tecnológica y comercial: narrativa, imágenes, CTA, QR, contacto y posible integración con visitas inmersivas.\n\nTambién he preparado una primera experiencia visual personalizada como pieza de impacto rápido:\n\n'+banner+'\n\nCreo que puede ser una forma interesante de diferenciar campañas, propiedades destacadas o escaparate digital.\n\nQuedo atento por si queréis que lo veamos en una llamada breve.\n\nUn saludo,\nJuanma';
-  }
-  return 'mailto:'+l.email+'?subject='+encodeURIComponent(subject)+'&body='+encodeURIComponent(body);
+  const hook=getCommercialHook(l,key);
+  if(!hook||!hook.url) return null;
+  const msg=commercialHookMessages(l,key);
+  return 'mailto:'+l.email+'?subject='+encodeURIComponent(msg.emailSubject)+'&body='+encodeURIComponent(msg.emailBody);
 }
 function copyHookLink(url){
+  if(!url){if(typeof _showToast==='function')_showToast('Primero genera este gancho.','var(--gold)');return;}
   const done=()=>{if(typeof _showToast==='function')_showToast('✓ Enlace copiado','var(--green)');};
   const fail=()=>{
     const ta=document.createElement('textarea');ta.value=url;document.body.appendChild(ta);ta.select();
@@ -3113,11 +3093,12 @@ function copyHookLink(url){
   } else { fail(); }
 }
 function setHookStatus(id,key,status){
-  const l=leads.find(x=>x.id===id); if(!l||!l.commercialHooks||!l.commercialHooks[key]) return;
-  l.commercialHooks[key].status=status;
-  l.commercialHooks[key].lastUpdate=new Date().toISOString();
+  const l=leads.find(x=>x.id===id); if(!l) return;
+  const hook=getCommercialHook(l,key); if(!hook) return;
+  hook.status=status;
+  hook.lastUpdate=new Date().toISOString();
   if(!Array.isArray(l._hookHistory)) l._hookHistory=[];
-  l._hookHistory.push({hook:key,status:status,at:l.commercialHooks[key].lastUpdate});
+  l._hookHistory.push({hook:canonicalHookKey(key),status:status,at:hook.lastUpdate});
   if(status==='interested' && l.prioridad!=='A'){ l.prioridad='A'; }
   saveState();
   const wrap=document.getElementById('hook-block-'+id);
@@ -3126,11 +3107,11 @@ function setHookStatus(id,key,status){
   if(typeof renderAll==='function') renderAll();
 }
 function renderCommercialHookBlock(l){
-  const h=l&&l.commercialHooks; if(!h||(!h.motionBanner&&!h.premiumDemo)) return '';
+  const h=ensureLeadCommercialHooks(l); if(!h) return '';
   const bannerStatuses=[{v:'pending',t:'Pendiente'},{v:'sent',t:'Enviado'},{v:'opened',t:'Abierto'},{v:'interested',t:'Interesado'}];
   const demoStatuses=[{v:'pending',t:'Pendiente'},{v:'sent',t:'Enviada'},{v:'viewed',t:'Vista'},{v:'responded',t:'Respondido'}];
   function card(key,badge,sub,statuses){
-    const hook=h[key]; if(!hook) return '';
+    const hook=getCommercialHook(l,key); if(!hook) return '';
     const url=hook.url||'';
     const embedUrl=hook.embedUrl||'';
     const safeUrl=safeHtml(url);
@@ -3140,23 +3121,33 @@ function renderCommercialHookBlock(l){
     const wa=buildHookWa(l,key);
     const mail=buildHookMail(l,key);
     const safeUrlJs=String(url).replace(/'/g,"\\'");
-    const openLabel=key==='motionBanner'?'Abrir experiencia visual':'Abrir demo';
+    const isVisual=canonicalHookKey(key)==='visualExperience';
+    const openLabel=isVisual?'Abrir experiencia visual':'Abrir demo';
+    const pendingLabel=isVisual?'Pendiente de generar':'Pendiente de preparar';
+    const prepareLabel=isVisual?'Preparar experiencia visual':'Preparar Web Demo';
     const iframeHtml=embedUrl?('<div class="hook-card-preview"><iframe src="'+safeEmbed+'" title="Preview '+safeHtml(hook.label||'')+' '+safeHtml(l.empresa||'')+'" loading="lazy" allow="autoplay; fullscreen" referrerpolicy="no-referrer-when-downgrade"></iframe></div>'):'';
-    return `<div class="hook-card">
-      <div class="hook-card-head">
-        <span class="hook-badge">${safeHtml(badge)}</span>
-        <span class="tag tag-estado ${hookStatusClass(st)}">${safeHtml(hookStatusLabel(key,st))}</span>
-      </div>
-      <div class="hook-card-title">${safeHtml(hook.label||'')}</div>
-      <div class="hook-card-sub">${safeHtml(sub)}</div>
-      ${iframeHtml}
-      <div class="hook-card-url"><a href="${safeUrl}" target="_blank" rel="noopener noreferrer">${visibleUrl}</a></div>
-      <div class="hook-card-desc">${safeHtml(hook.description||'')}</div>
-      <div class="hook-card-actions">
+    const activeActions=url?`
         <a href="${safeUrl}" target="_blank" rel="noopener noreferrer" class="tpl-btn tpl-link">↗ ${safeHtml(openLabel)}</a>
         <button class="tpl-btn tpl-copy" type="button" onclick="copyHookLink('${safeUrlJs}')">📋 Copiar enlace</button>
         ${wa?'<a href="'+wa+'" target="_blank" rel="noopener noreferrer" class="tpl-btn tpl-wa">💬 WhatsApp</a>':''}
         ${mail?'<a href="'+mail+'" class="tpl-btn tpl-mail">📧 Email</a>':''}
+      `:`
+        <button class="tpl-btn tpl-link" type="button" onclick="markHookPreparation(${l.id},'${canonicalHookKey(key)}')">${safeHtml(prepareLabel)}</button>
+        <button class="tpl-btn tpl-copy" type="button" onclick="copyLeadHookBriefing(${l.id})">📋 Copiar briefing base</button>
+        <button class="tpl-btn tpl-mail" type="button" onclick="setHookStatus(${l.id},'${canonicalHookKey(key)}','pending')">Marcar pendiente</button>
+      `;
+    return `<div class="hook-card">
+      <div class="hook-card-head">
+        <span class="hook-badge">${safeHtml(badge)}</span>
+        <span class="tag tag-estado ${url?hookStatusClass(st):'est-pendiente'}">${safeHtml(url?hookStatusLabel(key,st):pendingLabel)}</span>
+      </div>
+      <div class="hook-card-title">${safeHtml(hook.label||'')}</div>
+      <div class="hook-card-sub">${safeHtml(sub)}</div>
+      ${iframeHtml}
+      ${url?'<div class="hook-card-url"><a href="'+safeUrl+'" target="_blank" rel="noopener noreferrer">'+visibleUrl+'</a></div>':'<div class="hook-card-url">Sin URL generada todavía</div>'}
+      <div class="hook-card-desc">${safeHtml(hook.description||'')}</div>
+      <div class="hook-card-actions">
+        ${activeActions}
       </div>
       <div class="hook-card-statuses">${statuses.map(s=>'<button type="button" class="status-btn '+hookStatusBtnClass(s.v)+' '+(st===s.v?'active':'')+'" onclick="setHookStatus('+l.id+',&quot;'+key+'&quot;,&quot;'+s.v+'&quot;)">'+safeHtml(s.t)+'</button>').join('')}</div>
     </div>`;
@@ -3167,7 +3158,7 @@ function renderCommercialHookBlock(l){
     <div class="hook-explain">La Experiencia Visual de Propiedad funciona como gancho rápido para captar atención. La Web Premium Demo sirve como demostración más profunda de valor, diferenciación y tecnología.</div>
     <div class="hook-nba"><span class="hook-nba-label">⚡ Próximo paso</span><span class="hook-nba-text" id="hook-nba-${l.id}">${safeHtml(getHookNBA(l))}</span></div>
     <div class="hook-grid">
-      ${card('motionBanner','Gancho 1','Pieza animada personalizada con movimiento tipo tela, QR y CTA. Lista para enviar como primer impacto visual.',bannerStatuses)}
+      ${card('visualExperience','Gancho 1','Pieza visual personalizada para abrir conversación comercial.',bannerStatuses)}
       ${card('premiumDemo','Gancho 2','Segundo impacto comercial: propuesta web premium para enseñar diferenciación, captación y experiencia de propiedad.',demoStatuses)}
     </div>
   </div>`;
@@ -3175,18 +3166,7 @@ function renderCommercialHookBlock(l){
 
 // ── Next Best Action ──────────────────────────────────────────────────────────
 function getNBA(l){
-  const h=l&&l.commercialHooks;
-  if(h){
-    const bs=(h.motionBanner&&h.motionBanner.status)||'pending';
-    const ds=(h.premiumDemo&&h.premiumDemo.status)||'pending';
-    if(bs==='interested') return '🔥 Cliente interesado en la Experiencia Visual de Propiedad. Preparar propuesta piloto y agendar llamada.';
-    if(ds==='responded') return '🎯 Demo premium respondida. Cerrar reunión de propuesta esta semana.';
-    if(ds==='viewed') return '👀 Demo vista por el cliente. Follow-up en 24-48h preguntando feedback.';
-    if(ds==='sent') return '📨 Web Premium Demo enviada. Esperar visualización y follow-up en 48h.';
-    if(bs==='opened') return '👁️ Experiencia Visual abierta. Reforzar con la Web Premium Demo como segundo impacto.';
-    if(bs==='sent') return '🎬 Experiencia Visual enviada. Si responde, mandar la Web Premium Demo. Si silencio, follow-up en 48h.';
-    if(l.estado==='Sin contactar') return '🚀 Doble gancho listo: enviar primero la Experiencia Visual de Propiedad para abrir conversación.';
-  }
+  if(l) return commercialHooksNextAction(l);
   const t=calcTemp(l);
   const e=l.estado||'Sin contactar';
   if(e==='Cerrado') return '🎉 Cliente activo. Planifica onboarding, entrega y primer upsell.';
@@ -3231,11 +3211,37 @@ function statusBtnClass(s){
 }
 function safeHtml(s){return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 
-// ── Doble Gancho Comercial · Casas y Mar ─────────────────────────────────────
-const COMMERCIAL_HOOKS_VERSION='4A.6';
+// ── Doble Gancho Comercial ───────────────────────────────────────────────────
+const COMMERCIAL_HOOKS_VERSION='4A.6.2';
+const DEFAULT_LEAD_COMMERCIAL_HOOKS={
+  visualExperience:{
+    id:'visualExperience',
+    label:'Experiencia Visual de Propiedad',
+    title:'Experiencia Visual de Propiedad',
+    type:'visual-experience-banner',
+    objective:'Pieza visual personalizada pendiente de generar para este lead.',
+    description:'Pieza visual personalizada pendiente de generar para este lead.',
+    url:'',
+    embedUrl:'',
+    status:'pending',
+    order:1
+  },
+  premiumDemo:{
+    id:'premiumDemo',
+    label:'Web Premium Demo',
+    title:'Web Premium Demo',
+    type:'premium-web-demo',
+    objective:'Demo web premium pendiente de preparar para este lead.',
+    description:'Demo web premium pendiente de preparar para este lead.',
+    url:'',
+    embedUrl:'',
+    status:'pending',
+    order:2
+  }
+};
 const CASAS_Y_MAR_COMMERCIAL_HOOKS={
-  motionBanner:{
-    id:'motionBanner',
+  visualExperience:{
+    id:'visualExperience',
     label:'Experiencia Visual de Propiedad',
     title:'Experiencia Visual de Propiedad',
     type:'visual-experience-banner',
@@ -3263,32 +3269,46 @@ function isCasasYMarLead(l){
   return !!l&&String(l.empresa||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').includes('casas y mar');
 }
 
-function cloneCommercialHooks(){
-  return JSON.parse(JSON.stringify(CASAS_Y_MAR_COMMERCIAL_HOOKS));
+function cloneCommercialHooks(source){
+  return JSON.parse(JSON.stringify(source||DEFAULT_LEAD_COMMERCIAL_HOOKS));
+}
+
+function canonicalHookKey(key){
+  return key==='motionBanner'?'visualExperience':key;
+}
+
+function getCommercialHook(l,key){
+  const hooks=ensureLeadCommercialHooks(l);
+  if(!hooks) return null;
+  const normalized=canonicalHookKey(key);
+  return hooks[normalized]||null;
+}
+
+function normalizeHookWithDefaults(previous,defaults){
+  const hook={...defaults,...(previous||{})};
+  if(previous&&previous.status!==undefined) hook.status=previous.status;
+  if(previous&&previous.lastUpdate!==undefined) hook.lastUpdate=previous.lastUpdate;
+  if(previous&&previous._hookHistory!==undefined) hook._hookHistory=previous._hookHistory;
+  return hook;
 }
 
 function normalizeCasasYMarCommercialHooks(l){
   if(!isCasasYMarLead(l)) return false;
   const before=JSON.stringify(l.commercialHooks||{});
   const beforeNextAction=String(l._proxAccion||'');
-  const defaults=cloneCommercialHooks();
+  const defaults=cloneCommercialHooks(CASAS_Y_MAR_COMMERCIAL_HOOKS);
   const current=l.commercialHooks||{};
-  const previousMotion=current.motionBanner||{};
+  const previousMotion=current.visualExperience||current.motionBanner||{};
   const previousDemo=current.premiumDemo||{};
-  const motionBanner={...previousMotion,...defaults.motionBanner};
-  const premiumDemo={...previousDemo,...defaults.premiumDemo};
-  if(previousMotion.status!==undefined) motionBanner.status=previousMotion.status;
-  if(previousMotion.lastUpdate!==undefined) motionBanner.lastUpdate=previousMotion.lastUpdate;
-  if(previousMotion._hookHistory!==undefined) motionBanner._hookHistory=previousMotion._hookHistory;
-  if(previousDemo.status!==undefined) premiumDemo.status=previousDemo.status;
-  if(previousDemo.lastUpdate!==undefined) premiumDemo.lastUpdate=previousDemo.lastUpdate;
-  if(previousDemo._hookHistory!==undefined) premiumDemo._hookHistory=previousDemo._hookHistory;
+  const visualExperience=normalizeHookWithDefaults(previousMotion,defaults.visualExperience);
+  const premiumDemo=normalizeHookWithDefaults(previousDemo,defaults.premiumDemo);
   l.commercialHooks={
     ...current,
     version:COMMERCIAL_HOOKS_VERSION,
-    motionBanner,
+    visualExperience,
     premiumDemo
   };
+  delete l.commercialHooks.motionBanner;
   if(l._edits&&l._edits.commercialHooks){
     l._edits={...l._edits,commercialHooks:JSON.parse(JSON.stringify(l.commercialHooks))};
   }
@@ -3298,36 +3318,53 @@ function normalizeCasasYMarCommercialHooks(l){
   return before!==JSON.stringify(l.commercialHooks)||beforeNextAction!==String(l._proxAccion||'');
 }
 
-function migrateCasasYMarCommercialHooks(){
+function ensureLeadCommercialHooks(l){
+  if(!l) return null;
+  if(isCasasYMarLead(l)){
+    normalizeCasasYMarCommercialHooks(l);
+    return l.commercialHooks;
+  }
+  const before=JSON.stringify(l.commercialHooks||{});
+  const defaults=cloneCommercialHooks(DEFAULT_LEAD_COMMERCIAL_HOOKS);
+  const current=l.commercialHooks||{};
+  const previousVisual=current.visualExperience||current.motionBanner||{};
+  const previousDemo=current.premiumDemo||{};
+  l.commercialHooks={
+    ...current,
+    version:COMMERCIAL_HOOKS_VERSION,
+    visualExperience:normalizeHookWithDefaults(previousVisual,defaults.visualExperience),
+    premiumDemo:normalizeHookWithDefaults(previousDemo,defaults.premiumDemo)
+  };
+  delete l.commercialHooks.motionBanner;
+  if(l._edits&&l._edits.commercialHooks){
+    l._edits={...l._edits,commercialHooks:JSON.parse(JSON.stringify(l.commercialHooks))};
+  }
+  l._commercialHooksMigrated=before!==JSON.stringify(l.commercialHooks);
+  return l.commercialHooks;
+}
+
+function migrateLeadCommercialHooks(){
   let changed=false;
   leads.forEach(l=>{
-    if(normalizeCasasYMarCommercialHooks(l)) changed=true;
+    const before=JSON.stringify(l&&l.commercialHooks||{});
+    ensureLeadCommercialHooks(l);
+    if(before!==JSON.stringify(l&&l.commercialHooks||{})) changed=true;
   });
   return changed;
 }
 
 function ensureCommercialHooks(l){
-  if(!l||(!isCasasYMarLead(l)&&!l.commercialHooks)) return null;
-  if(isCasasYMarLead(l)){
-    normalizeCasasYMarCommercialHooks(l);
-    return l.commercialHooks;
-  }
-  const defaults=cloneCommercialHooks();
-  l.commercialHooks={
-    version:COMMERCIAL_HOOKS_VERSION,
-    ...(l.commercialHooks||{}),
-    motionBanner:{...defaults.motionBanner,...((l.commercialHooks&&l.commercialHooks.motionBanner)||{})},
-    premiumDemo:{...defaults.premiumDemo,...((l.commercialHooks&&l.commercialHooks.premiumDemo)||{})}
-  };
-  return l.commercialHooks;
+  return ensureLeadCommercialHooks(l);
 }
 
 function commercialHookStatusLabel(hookKey,status){
   const labels={
+    visualExperience:{pending:'Pendiente',sent:'Enviado',opened:'Abierto',interested:'Interesado'},
     motionBanner:{pending:'Pendiente',sent:'Enviado',opened:'Abierto',interested:'Interesado'},
     premiumDemo:{pending:'Pendiente',sent:'Enviada',viewed:'Vista',responded:'Respondido'}
   };
-  return (labels[hookKey]&&labels[hookKey][status])||'Pendiente';
+  const key=canonicalHookKey(hookKey);
+  return (labels[key]&&labels[key][status])||'Pendiente';
 }
 
 function commercialHookStatusClass(status){
@@ -3336,22 +3373,27 @@ function commercialHookStatusClass(status){
 }
 
 function commercialHooksNextAction(l){
-  const hooks=ensureCommercialHooks(l);
+  const hooks=ensureLeadCommercialHooks(l);
   if(!hooks) return '';
-  const banner=hooks.motionBanner.status||'pending';
-  const demo=hooks.premiumDemo.status||'pending';
-  if(banner==='interested'||demo==='responded') return 'Preparar propuesta piloto y cerrar una llamada corta para aplicar la demo a una propiedad real.';
-  if(banner==='pending') return 'Enviar primero la Experiencia Visual de Propiedad: pieza animada para abrir conversación sin fricción.';
-  if(['sent','opened'].includes(banner)&&demo==='pending') return 'Enviar Web Premium Demo como segundo gancho para mostrar recorrido completo de marca y captación.';
-  if(['sent','viewed'].includes(demo)) return 'Hacer follow-up consultivo: preguntar qué parte encaja mejor para captar propietarios o compradores.';
+  const visual=hooks.visualExperience||{};
+  const demo=hooks.premiumDemo||{};
+  const visualStatus=visual.status||'pending';
+  const demoStatus=demo.status||'pending';
+  if(!visual.url) return 'Preparar Experiencia Visual de Propiedad para abrir conversación.';
+  if(visual.url&&visualStatus==='pending') return 'Enviar primero la Experiencia Visual de Propiedad para abrir conversación.';
+  if(['sent','opened','interested'].includes(visualStatus)&&!demo.url) return 'Preparar Web Premium Demo como segundo impacto.';
+  if(demo.url&&demoStatus==='pending') return 'Enviar Web Premium Demo como segundo impacto.';
+  if(visualStatus==='interested'||demoStatus==='responded') return 'Preparar propuesta piloto y cerrar una llamada corta para aplicar la demo a una propiedad real.';
+  if(demoStatus==='viewed'||demoStatus==='sent') return 'Hacer follow-up consultivo: preguntar qué parte encaja mejor para captar propietarios o compradores.';
   return 'Revisar respuesta del cliente y proponer siguiente paso comercial.';
 }
 
 function commercialHookMessages(l,hookKey){
-  const hooks=ensureCommercialHooks(l);if(!hooks) return {whatsapp:'',emailSubject:'',emailBody:''};
-  const hook=hooks[hookKey];
-  const empresa=l.empresa||'Casas y Mar';
-  if(hookKey==='motionBanner'){
+  const hook=getCommercialHook(l,hookKey);if(!hook||!hook.url) return {whatsapp:'',emailSubject:'',emailBody:''};
+  const visual=getCommercialHook(l,'visualExperience');
+  const demo=getCommercialHook(l,'premiumDemo');
+  const empresa=l.empresa||'este lead';
+  if(canonicalHookKey(hookKey)==='visualExperience'){
     return {
       whatsapp:'Hola, he preparado una Experiencia Visual de Propiedad para '+empresa+', una pieza animada con movimiento tipo tela, QR y CTA pensada para usar como gancho en redes, escaparate digital o WhatsApp:\n\n'+hook.url+'\n\nLa idea es que el cliente vea una propuesta muy visual antes de entrar en una conversación comercial larga.',
       emailSubject:'Experiencia Visual de Propiedad para '+empresa,
@@ -3361,59 +3403,141 @@ function commercialHookMessages(l,hookKey){
   return {
     whatsapp:'Como segundo paso, también he preparado una Web Premium Demo para '+empresa+', orientada a captar mejor propietarios y compradores:\n\n'+hook.url+'\n\nNo es una web final; es una demo comercial para visualizar cómo podría sentirse una presencia más premium y diferenciada.',
     emailSubject:'Web Premium Demo para '+empresa,
-    emailBody:'Hola,\n\nComo segundo paso tras el impacto visual inicial, he preparado una Web Premium Demo para '+empresa+', orientada a captar mejor propietarios y compradores.\n\nDemo:\n'+hook.url+'\n\nNo es una web final; es una demo comercial para visualizar cómo podría sentirse una presencia más premium, diferenciada y preparada para convertir interés en contacto.\n\nSi os encaja, el siguiente paso sería aterrizarlo sobre una propiedad o campaña real.'
+    emailBody:'Hola,\n\nComo segundo paso tras el impacto visual inicial, he preparado una Web Premium Demo para '+empresa+', orientada a captar mejor propietarios y compradores.\n\nDemo:\n'+hook.url+'\n\nNo es una web final; es una demo comercial para visualizar cómo podría sentirse una presencia más premium, diferenciada y preparada para convertir interés en contacto.'+(visual&&visual.url?'\n\nTambién podéis ver la Experiencia Visual de Propiedad aquí:\n'+visual.url:'')+'\n\nSi os encaja, el siguiente paso sería aterrizarlo sobre una propiedad o campaña real.'
   };
 }
 
 function commercialHookWhatsAppUrl(l,hookKey){
   const n=l&&l.whatsapp?String(l.whatsapp).replace(/\D/g,''):'';
+  const hook=getCommercialHook(l,hookKey); if(!hook||!hook.url) return '#';
   const msg=commercialHookMessages(l,hookKey).whatsapp;
   return n?'https://wa.me/'+n+'?text='+encodeURIComponent(msg):'#';
 }
 
 function commercialHookEmailUrl(l,hookKey){
+  const hook=getCommercialHook(l,hookKey); if(!hook||!hook.url) return '#';
   const msg=commercialHookMessages(l,hookKey);
   return l&&l.email?'mailto:'+encodeURIComponent(l.email)+'?subject='+encodeURIComponent(msg.emailSubject)+'&body='+encodeURIComponent(msg.emailBody):'#';
 }
 
 function copyCommercialHookText(id,hookKey,kind){
   const l=leads.find(x=>x.id===id);if(!l) return;
+  const hook=getCommercialHook(l,hookKey);
+  if(!hook||!hook.url){_showToast('Primero genera este gancho.','var(--gold)');return;}
   const msg=commercialHookMessages(l,hookKey);
   const text=kind==='email'?('Asunto: '+msg.emailSubject+'\n\n'+msg.emailBody):msg.whatsapp;
   navigator.clipboard.writeText(text).catch(()=>{const ta=document.createElement('textarea');ta.value=text;document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta);});
   _showToast((kind==='email'?'Email':'WhatsApp')+' del gancho copiado.','var(--accent2)');
 }
 
+function leadValueOrDash(v){
+  const s=String(v||'').trim();
+  return s&&s!=='No localizado'&&s!=='Pendiente'?s:'—';
+}
+
+function leadHookBriefingText(l){
+  return [
+    'BRIEFING BASE — DOBLE GANCHO COMERCIAL',
+    '',
+    'Cliente:',
+    leadValueOrDash(l.empresa),
+    '',
+    'Sector:',
+    leadValueOrDash(l.sector),
+    '',
+    'Zona:',
+    leadValueOrDash(l.zona),
+    '',
+    'Web:',
+    leadValueOrDash(l.web),
+    '',
+    'Objetivo:',
+    'Crear dos activos comerciales:',
+    '',
+    'Experiencia Visual de Propiedad / pieza visual animada.',
+    'Web Premium Demo personalizada.',
+    '',
+    'Datos disponibles:',
+    '',
+    'Telefono:',
+    leadValueOrDash(l.telefono||l.whatsapp),
+    'Email:',
+    leadValueOrDash(l.email),
+    'Web:',
+    leadValueOrDash(l.web),
+    'Direccion:',
+    leadValueOrDash(l.direccion),
+    'Observaciones:',
+    leadValueOrDash(l.dolor||l.gancho||l.motivo),
+    'Score:',
+    leadValueOrDash(l.score),
+    'Estado comercial:',
+    leadValueOrDash(l.estado),
+    '',
+    'Proximo paso:',
+    'Preparar assets, copy, CTA y URL destino para generar el Gancho 1 y el Gancho 2.'
+  ].join('\n');
+}
+
+function copyLeadHookBriefing(id){
+  const l=leads.find(x=>x.id===id);if(!l) return;
+  const text=leadHookBriefingText(l);
+  navigator.clipboard.writeText(text).catch(()=>{const ta=document.createElement('textarea');ta.value=text;document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta);});
+  _showToast('Briefing copiado','var(--accent2)');
+}
+
+function markHookPreparation(id,hookKey){
+  const l=leads.find(x=>x.id===id);if(!l) return;
+  const key=canonicalHookKey(hookKey);
+  l._proxAccion=key==='visualExperience'?'Preparar Experiencia Visual de Propiedad para abrir conversación.':'Preparar Web Premium Demo como segundo impacto.';
+  saveState();
+  renderAll();
+  openModal(id);
+  _showToast('Acción preparatoria marcada.','var(--gold)');
+}
+
 function markCommercialHookStatus(id,hookKey,status){
   const l=leads.find(x=>x.id===id);if(!l) return;
-  const hooks=ensureCommercialHooks(l);if(!hooks||!hooks[hookKey]) return;
-  hooks[hookKey].status=status;
-  hooks[hookKey][status+'At']=new Date().toISOString();
+  const hook=getCommercialHook(l,hookKey);if(!hook) return;
+  const key=canonicalHookKey(hookKey);
+  hook.status=status;
+  hook[status+'At']=new Date().toISOString();
   l.updatedAt=new Date().toISOString();
   if(!l._actividad) l._actividad=[];
   const activityLabels={
-    motionBanner:{sent:'Experiencia Visual de Propiedad enviada.',opened:'Experiencia Visual de Propiedad abierta.',interested:'Cliente interesado en la Experiencia Visual de Propiedad.'},
+    visualExperience:{sent:'Experiencia Visual de Propiedad enviada.',opened:'Experiencia Visual de Propiedad abierta.',interested:'Cliente interesado en la Experiencia Visual de Propiedad.'},
     premiumDemo:{sent:'Web Premium Demo enviada.',viewed:'Web Premium Demo vista.',responded:'Cliente respondió a Web Premium Demo.'}
   };
-  l._actividad.push({tipo:status==='sent'?'propuesta':'sistema',texto:(activityLabels[hookKey]&&activityLabels[hookKey][status])||'Doble gancho actualizado.',fecha:new Date().toLocaleDateString('es-ES')});
+  l._actividad.push({tipo:status==='sent'?'propuesta':'sistema',texto:(activityLabels[key]&&activityLabels[key][status])||'Doble gancho actualizado.',fecha:new Date().toLocaleDateString('es-ES')});
   if((l.estado||'Sin contactar')==='Sin contactar'&&status==='sent') l.estado='Contactado';
   l._proxAccion=commercialHooksNextAction(l);
-  saveState();renderAll();openModal(id);_showToast(commercialHookStatusLabel(hookKey,status)+' registrado.','var(--green)');
+  saveState();renderAll();openModal(id);_showToast(commercialHookStatusLabel(key,status)+' registrado.','var(--green)');
 }
 
 function openCommercialHookUrl(id,hookKey){
   const l=leads.find(x=>x.id===id);if(!l) return;
-  const hooks=ensureCommercialHooks(l);if(!hooks||!hooks[hookKey]) return;
-  window.open(hooks[hookKey].url,'_blank','noopener,noreferrer');
-  markCommercialHookStatus(id,hookKey,hookKey==='motionBanner'?'opened':'viewed');
+  const hook=getCommercialHook(l,hookKey);if(!hook||!hook.url){_showToast('Primero genera este gancho.','var(--gold)');return;}
+  window.open(hook.url,'_blank','noopener,noreferrer');
+  markCommercialHookStatus(id,hookKey,canonicalHookKey(hookKey)==='visualExperience'?'opened':'viewed');
 }
 
 function renderCommercialHookCard(l,hookKey){
   const hooks=ensureCommercialHooks(l);if(!hooks) return '';
-  const hook=hooks[hookKey];
+  const hook=getCommercialHook(l,hookKey);
   const status=hook.status||'pending';
-  const sentStatus=hookKey==='motionBanner'?'sent':'sent';
-  const finalStatus=hookKey==='motionBanner'?'interested':'responded';
+  const key=canonicalHookKey(hookKey);
+  const sentStatus='sent';
+  const finalStatus=key==='visualExperience'?'interested':'responded';
+  const hasUrl=!!hook.url;
+  const openAction=hasUrl
+    ? '<button class="contact-btn btn-web" onclick="openCommercialHookUrl('+l.id+',\''+key+'\')">Abrir '+(key==='visualExperience'?'experiencia visual':'demo')+'</button>'
+    : '<button class="contact-btn btn-web" onclick="markHookPreparation('+l.id+',\''+key+'\')">'+(key==='visualExperience'?'Preparar experiencia visual':'Preparar Web Demo')+'</button>';
+  const waAction=hasUrl&&l.whatsapp
+    ? '<a class="contact-btn btn-wa" href="'+safeHtml(commercialHookWhatsAppUrl(l,key))+'" target="_blank" rel="noopener noreferrer">WhatsApp</a>'
+    : '<button class="contact-btn btn-wa" onclick="'+(hasUrl?'copyCommercialHookText('+l.id+',\''+key+'\',\'whatsapp\')':'copyLeadHookBriefing('+l.id+')')+'">'+(hasUrl?'Copiar WhatsApp':'Copiar briefing base')+'</button>';
+  const emailAction=hasUrl&&l.email
+    ? '<a class="contact-btn btn-email" href="'+safeHtml(commercialHookEmailUrl(l,key))+'">Email</a>'
+    : '<button class="contact-btn btn-email" onclick="'+(hasUrl?'copyCommercialHookText('+l.id+',\''+key+'\',\'email\')':'setHookStatus('+l.id+',\''+key+'\',\'pending\')')+'">'+(hasUrl?'Copiar email':'Marcar pendiente')+'</button>';
   return `
     <div class="commercial-hook-card">
       <div class="commercial-hook-top">
@@ -3424,16 +3548,16 @@ function renderCommercialHookCard(l,hookKey){
         <div class="commercial-hook-step">${hook.order}</div>
       </div>
       <div style="display:flex;gap:6px;flex-wrap:wrap">
-        <span class="tag ${commercialHookStatusClass(status)}">${safeHtml(commercialHookStatusLabel(hookKey,status))}</span>
-        <span class="tag est-visual">${hookKey==='motionBanner'?'Primer gancho':'Segundo gancho'}</span>
+        <span class="tag ${hasUrl?commercialHookStatusClass(status):'est-pendiente'}">${safeHtml(hasUrl?commercialHookStatusLabel(key,status):(key==='visualExperience'?'Pendiente de generar':'Pendiente de preparar'))}</span>
+        <span class="tag est-visual">${key==='visualExperience'?'Primer gancho':'Segundo gancho'}</span>
       </div>
-      <div class="commercial-hook-url">${safeHtml(hook.url)}</div>
+      <div class="commercial-hook-url">${hasUrl?safeHtml(hook.url):'Sin URL generada todavía'}</div>
       <div class="commercial-hook-actions">
-        <button class="contact-btn btn-web" onclick="openCommercialHookUrl(${l.id},'${hookKey}')">Abrir ${hookKey==='motionBanner'?'banner':'demo'}</button>
-        ${l.whatsapp?'<a class="contact-btn btn-wa" href="'+safeHtml(commercialHookWhatsAppUrl(l,hookKey))+'" target="_blank" rel="noopener noreferrer">WhatsApp</a>':'<button class="contact-btn btn-wa" onclick="copyCommercialHookText('+l.id+',\''+hookKey+'\',\'whatsapp\')">Copiar WhatsApp</button>'}
-        ${l.email?'<a class="contact-btn btn-email" href="'+safeHtml(commercialHookEmailUrl(l,hookKey))+'">Email</a>':'<button class="contact-btn btn-email" onclick="copyCommercialHookText('+l.id+',\''+hookKey+'\',\'email\')">Copiar email</button>'}
+        ${openAction}
+        ${waAction}
+        ${emailAction}
         <button class="contact-btn btn-maps" onclick="markCommercialHookStatus(${l.id},'${hookKey}','${sentStatus}')">Marcar enviado</button>
-        <button class="contact-btn btn-tel" onclick="markCommercialHookStatus(${l.id},'${hookKey}','${finalStatus}')">${hookKey==='motionBanner'?'Marcar interesado':'Marcar respondido'}</button>
+        <button class="contact-btn btn-tel" onclick="markCommercialHookStatus(${l.id},'${hookKey}','${finalStatus}')">${key==='visualExperience'?'Marcar interesado':'Marcar respondido'}</button>
       </div>
     </div>`;
 }
@@ -3446,7 +3570,7 @@ function renderCommercialHooksBlock(l){
       <div class="commercial-hooks-panel">
         <div class="commercial-hooks-head">
           <div>
-            <div class="commercial-hooks-kicker">Casas y Mar · Fase 4A.6</div>
+            <div class="commercial-hooks-kicker">${safeHtml(l.empresa||'Lead')} · Fase 4A.6.2</div>
             <div class="commercial-hooks-title">Dos impactos, una conversación comercial</div>
           </div>
           <span class="tag est-visual">Activo en CRM</span>
@@ -3459,7 +3583,7 @@ function renderCommercialHooksBlock(l){
           <div class="commercial-next-text">${safeHtml(commercialHooksNextAction(l))}</div>
         </div>
         <div class="commercial-hooks-grid">
-          ${renderCommercialHookCard(l,'motionBanner')}
+          ${renderCommercialHookCard(l,'visualExperience')}
           ${renderCommercialHookCard(l,'premiumDemo')}
         </div>
       </div>
@@ -5566,7 +5690,7 @@ function calcAlertas(){
     const hooks=ensureCommercialHooks(l);
 
     if(hooks){
-      const banner=hooks.motionBanner.status||'pending';
+      const banner=(hooks.visualExperience&&hooks.visualExperience.status)||'pending';
       const demo=hooks.premiumDemo.status||'pending';
       if(!['interested'].includes(banner)||!['responded'].includes(demo)){
         alertas.push({
