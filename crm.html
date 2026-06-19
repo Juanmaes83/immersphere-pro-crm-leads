@@ -98,6 +98,8 @@ nav{background:var(--bg2);border-bottom:1px solid var(--border);padding:0 20px;d
 .est-no{background:rgba(239,68,68,.1);color:var(--red);border:1px solid rgba(239,68,68,.3)}
 .card-dolor{font-size:12px;color:var(--text2);line-height:1.5;margin-bottom:8px}
 .card-prox{display:flex;align-items:center;gap:5px;background:rgba(59,130,246,.08);border:1px solid rgba(59,130,246,.2);border-radius:6px;padding:5px 9px;margin-bottom:8px;font-size:11px;color:var(--text2)}
+.lead-hook-badges{display:flex;gap:5px;flex-wrap:wrap;margin:8px 0}
+.lead-hook-badges .tag{font-size:9px;padding:2px 6px}
 .prox-text{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .prox-vencida{flex-shrink:0;background:rgba(239,68,68,.15);color:var(--red);border:1px solid rgba(239,68,68,.3);border-radius:4px;padding:1px 5px;font-size:9px;font-weight:700}
 .card-foot{display:flex;gap:6px;align-items:center;font-size:11px;color:var(--text3)}
@@ -147,6 +149,11 @@ nav{background:var(--bg2);border-bottom:1px solid var(--border);padding:0 20px;d
 .hook-card-title{font-size:14px;font-weight:800;color:var(--text)}
 .hook-card-sub,.hook-card-desc{font-size:12px;color:var(--text2);line-height:1.55}
 .hook-card-url{font-size:11px;line-height:1.45;word-break:break-all;background:rgba(0,0,0,.18);border-radius:8px;padding:7px 8px}
+.hook-url-form{display:grid;gap:7px;background:rgba(255,255,255,.035);border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:9px}
+.hook-url-form label{display:grid;gap:4px;font-size:10px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--text3)}
+.hook-url-form input{width:100%;min-width:0;background:rgba(2,6,23,.72);border:1px solid var(--border);border-radius:7px;color:var(--text);padding:7px 8px;font-size:12px;outline:none}
+.hook-url-form input:focus{border-color:var(--accent2);box-shadow:0 0 0 2px rgba(124,58,237,.14)}
+.hook-form-hint{font-size:11px;color:var(--text3);line-height:1.45}
 .hook-card-actions,.hook-card-statuses{display:flex;gap:7px;flex-wrap:wrap}
 .hook-card-preview{position:relative;width:100%;aspect-ratio:9/16;max-height:520px;border:1px solid var(--border);border-radius:8px;overflow:hidden;background:#080706;margin-top:6px}
 .hook-card-preview iframe{position:absolute;inset:0;width:100%;height:100%;border:0;display:block}
@@ -3050,16 +3057,16 @@ function tempBadge(l){
 
 // ── Doble gancho comercial (Experiencia Visual de Propiedad + Web Premium Demo) ──
 function hookStatusLabel(key,status){
-  const m1={pending:'Pendiente',sent:'Enviado',opened:'Abierto',interested:'Interesado'};
-  const m2={pending:'Pendiente',sent:'Enviada',viewed:'Vista',responded:'Respondido'};
+  const m1={pending:'Pendiente',briefing_ready:'Briefing',in_production:'Producción',generated:'Generada',sent:'Enviado',opened:'Abierto',interested:'Interesado'};
+  const m2={pending:'Pendiente',briefing_ready:'Briefing',in_production:'Producción',generated:'Generada',sent:'Enviada',viewed:'Vista',responded:'Respondido'};
   return (key==='premiumDemo'?m2:m1)[status]||'Pendiente';
 }
 function hookStatusClass(status){
-  const m={pending:'est-sin',sent:'est-contactado',opened:'est-visual',viewed:'est-visual',interested:'est-cerrado',responded:'est-cerrado'};
+  const m={pending:'est-sin',briefing_ready:'est-propuesta',in_production:'est-demo',generated:'est-visual',sent:'est-contactado',opened:'est-visual',viewed:'est-visual',interested:'est-cerrado',responded:'est-cerrado'};
   return m[status]||'est-sin';
 }
 function hookStatusBtnClass(status){
-  const m={pending:'sbtn-sin',sent:'sbtn-contactado',opened:'sbtn-visual',viewed:'sbtn-visual',interested:'sbtn-cerrado',responded:'sbtn-cerrado'};
+  const m={pending:'sbtn-sin',briefing_ready:'sbtn-propuesta',in_production:'sbtn-demo',generated:'sbtn-visual',sent:'sbtn-contactado',opened:'sbtn-visual',viewed:'sbtn-visual',interested:'sbtn-cerrado',responded:'sbtn-cerrado'};
   return m[status]||'sbtn-sin';
 }
 function getHookNBA(l){
@@ -3108,8 +3115,8 @@ function setHookStatus(id,key,status){
 }
 function renderCommercialHookBlock(l){
   const h=ensureLeadCommercialHooks(l); if(!h) return '';
-  const bannerStatuses=[{v:'pending',t:'Pendiente'},{v:'sent',t:'Enviado'},{v:'opened',t:'Abierto'},{v:'interested',t:'Interesado'}];
-  const demoStatuses=[{v:'pending',t:'Pendiente'},{v:'sent',t:'Enviada'},{v:'viewed',t:'Vista'},{v:'responded',t:'Respondido'}];
+  const bannerStatuses=[{v:'pending',t:'Pendiente'},{v:'briefing_ready',t:'Briefing'},{v:'in_production',t:'Producción'},{v:'generated',t:'Generada'},{v:'sent',t:'Enviado'},{v:'opened',t:'Abierto'},{v:'interested',t:'Interesado'}];
+  const demoStatuses=[{v:'pending',t:'Pendiente'},{v:'briefing_ready',t:'Briefing'},{v:'in_production',t:'Producción'},{v:'generated',t:'Generada'},{v:'sent',t:'Enviada'},{v:'viewed',t:'Vista'},{v:'responded',t:'Respondido'}];
   function card(key,badge,sub,statuses){
     const hook=getCommercialHook(l,key); if(!hook) return '';
     const url=hook.url||'';
@@ -3126,6 +3133,12 @@ function renderCommercialHookBlock(l){
     const pendingLabel=isVisual?'Pendiente de generar':'Pendiente de preparar';
     const prepareLabel=isVisual?'Preparar experiencia visual':'Preparar Web Demo';
     const iframeHtml=embedUrl?('<div class="hook-card-preview"><iframe src="'+safeEmbed+'" title="Preview '+safeHtml(hook.label||'')+' '+safeHtml(l.empresa||'')+'" loading="lazy" allow="autoplay; fullscreen" referrerpolicy="no-referrer-when-downgrade"></iframe></div>'):'';
+    const formHtml=`<div class="hook-url-form">
+      <label>URL pública final<input id="${hookFieldId(l.id,key,'url')}" type="url" value="${safeUrl}" placeholder="https://..."></label>
+      ${isVisual?`<label>URL embed preview<input id="${hookFieldId(l.id,key,'embed')}" type="url" value="${safeEmbed}" placeholder="https://...?embed=1"></label>`:''}
+      <div class="hook-form-hint">No acepta /gesture-lab/, editores internos ni URLs aprobadas de Casas y Mar en otros leads.</div>
+      <button class="tpl-btn tpl-link" type="button" onclick="saveLeadHookUrl(${l.id},'${canonicalHookKey(key)}')">Registrar URL</button>
+    </div>`;
     const activeActions=url?`
         <a href="${safeUrl}" target="_blank" rel="noopener noreferrer" class="tpl-btn tpl-link">↗ ${safeHtml(openLabel)}</a>
         <button class="tpl-btn tpl-copy" type="button" onclick="copyHookLink('${safeUrlJs}')">📋 Copiar enlace</button>
@@ -3133,7 +3146,8 @@ function renderCommercialHookBlock(l){
         ${mail?'<a href="'+mail+'" class="tpl-btn tpl-mail">📧 Email</a>':''}
       `:`
         <button class="tpl-btn tpl-link" type="button" onclick="markHookPreparation(${l.id},'${canonicalHookKey(key)}')">${safeHtml(prepareLabel)}</button>
-        <button class="tpl-btn tpl-copy" type="button" onclick="copyLeadHookBriefing(${l.id})">📋 Copiar briefing base</button>
+        <button class="tpl-btn tpl-copy" type="button" onclick="copySpecificHookBriefing(${l.id},'${canonicalHookKey(key)}')">📋 ${isVisual?'Copiar briefing EV':'Copiar briefing Demo'}</button>
+        <button class="tpl-btn tpl-mail" type="button" onclick="setHookProduction(${l.id},'${canonicalHookKey(key)}')">Marcar en producción</button>
         <button class="tpl-btn tpl-mail" type="button" onclick="setHookStatus(${l.id},'${canonicalHookKey(key)}','pending')">Marcar pendiente</button>
       `;
     return `<div class="hook-card">
@@ -3146,6 +3160,7 @@ function renderCommercialHookBlock(l){
       ${iframeHtml}
       ${url?'<div class="hook-card-url"><a href="'+safeUrl+'" target="_blank" rel="noopener noreferrer">'+visibleUrl+'</a></div>':'<div class="hook-card-url">Sin URL generada todavía</div>'}
       <div class="hook-card-desc">${safeHtml(hook.description||'')}</div>
+      ${formHtml}
       <div class="hook-card-actions">
         ${activeActions}
       </div>
@@ -3212,7 +3227,7 @@ function statusBtnClass(s){
 function safeHtml(s){return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 
 // ── Doble Gancho Comercial ───────────────────────────────────────────────────
-const COMMERCIAL_HOOKS_VERSION='4A.6.2';
+const COMMERCIAL_HOOKS_VERSION='4A.6.4';
 const DEFAULT_LEAD_COMMERCIAL_HOOKS={
   visualExperience:{
     id:'visualExperience',
@@ -3224,6 +3239,10 @@ const DEFAULT_LEAD_COMMERCIAL_HOOKS={
     url:'',
     embedUrl:'',
     status:'pending',
+    assetStatus:'pending',
+    briefingStatus:'pending',
+    lastUpdate:'',
+    notes:'',
     order:1
   },
   premiumDemo:{
@@ -3236,6 +3255,10 @@ const DEFAULT_LEAD_COMMERCIAL_HOOKS={
     url:'',
     embedUrl:'',
     status:'pending',
+    assetStatus:'pending',
+    briefingStatus:'pending',
+    lastUpdate:'',
+    notes:'',
     order:2
   }
 };
@@ -3250,6 +3273,10 @@ const CASAS_Y_MAR_COMMERCIAL_HOOKS={
     url:'https://rubik-sota-director-de-orquesta.vercel.app/dynamic-motion-banner/casas-y-mar-visita-propiedad/',
     embedUrl:'https://rubik-sota-director-de-orquesta.vercel.app/dynamic-motion-banner/casas-y-mar-visita-propiedad/?embed=1',
     status:'pending',
+    assetStatus:'pending',
+    briefingStatus:'pending',
+    lastUpdate:'',
+    notes:'',
     order:1
   },
   premiumDemo:{
@@ -3261,6 +3288,10 @@ const CASAS_Y_MAR_COMMERCIAL_HOOKS={
     description:'Segundo impacto comercial: propuesta web premium para enseñar diferenciación, captación y experiencia de propiedad.',
     url:'https://aurum-properties-boutique.vercel.app/casas-y-mar',
     status:'pending',
+    assetStatus:'pending',
+    briefingStatus:'pending',
+    lastUpdate:'',
+    notes:'',
     order:2
   }
 };
@@ -3287,7 +3318,10 @@ function getCommercialHook(l,key){
 function normalizeHookWithDefaults(previous,defaults){
   const hook={...defaults,...(previous||{})};
   if(previous&&previous.status!==undefined) hook.status=previous.status;
+  if(previous&&previous.assetStatus!==undefined) hook.assetStatus=previous.assetStatus;
+  if(previous&&previous.briefingStatus!==undefined) hook.briefingStatus=previous.briefingStatus;
   if(previous&&previous.lastUpdate!==undefined) hook.lastUpdate=previous.lastUpdate;
+  if(previous&&previous.notes!==undefined) hook.notes=previous.notes;
   if(previous&&previous._hookHistory!==undefined) hook._hookHistory=previous._hookHistory;
   return hook;
 }
@@ -3359,16 +3393,16 @@ function ensureCommercialHooks(l){
 
 function commercialHookStatusLabel(hookKey,status){
   const labels={
-    visualExperience:{pending:'Pendiente',sent:'Enviado',opened:'Abierto',interested:'Interesado'},
-    motionBanner:{pending:'Pendiente',sent:'Enviado',opened:'Abierto',interested:'Interesado'},
-    premiumDemo:{pending:'Pendiente',sent:'Enviada',viewed:'Vista',responded:'Respondido'}
+    visualExperience:{pending:'Pendiente',briefing_ready:'Briefing listo',in_production:'En producción',generated:'Generada',sent:'Enviado',opened:'Abierto',interested:'Interesado'},
+    motionBanner:{pending:'Pendiente',briefing_ready:'Briefing listo',in_production:'En producción',generated:'Generada',sent:'Enviado',opened:'Abierto',interested:'Interesado'},
+    premiumDemo:{pending:'Pendiente',briefing_ready:'Briefing listo',in_production:'En producción',generated:'Generada',sent:'Enviada',viewed:'Vista',responded:'Respondido'}
   };
   const key=canonicalHookKey(hookKey);
   return (labels[key]&&labels[key][status])||'Pendiente';
 }
 
 function commercialHookStatusClass(status){
-  const map={pending:'est-sin',sent:'est-propuesta',opened:'est-demo',viewed:'est-demo',interested:'est-cerrado',responded:'est-cerrado'};
+  const map={pending:'est-sin',briefing_ready:'est-propuesta',in_production:'est-demo',generated:'est-visual',sent:'est-propuesta',opened:'est-demo',viewed:'est-demo',interested:'est-cerrado',responded:'est-cerrado'};
   return map[status]||'est-sin';
 }
 
@@ -3379,10 +3413,10 @@ function commercialHooksNextAction(l){
   const demo=hooks.premiumDemo||{};
   const visualStatus=visual.status||'pending';
   const demoStatus=demo.status||'pending';
-  if(!visual.url) return 'Preparar Experiencia Visual de Propiedad para abrir conversación.';
-  if(visual.url&&visualStatus==='pending') return 'Enviar primero la Experiencia Visual de Propiedad para abrir conversación.';
-  if(['sent','opened','interested'].includes(visualStatus)&&!demo.url) return 'Preparar Web Premium Demo como segundo impacto.';
-  if(demo.url&&demoStatus==='pending') return 'Enviar Web Premium Demo como segundo impacto.';
+  if(!visual.url) return visualStatus==='in_production'?'Completar producción y registrar la URL final de la Experiencia Visual.':'Preparar Experiencia Visual de Propiedad para abrir conversación.';
+  if(visual.url&&['pending','briefing_ready','in_production','generated'].includes(visualStatus)) return 'Enviar primero la Experiencia Visual de Propiedad para abrir conversación.';
+  if(['sent','opened','interested'].includes(visualStatus)&&!demo.url) return demoStatus==='in_production'?'Completar producción y registrar la URL final de la Web Premium Demo.':'Preparar Web Premium Demo como segundo impacto.';
+  if(demo.url&&['pending','briefing_ready','in_production','generated'].includes(demoStatus)) return 'Enviar Web Premium Demo como segundo impacto.';
   if(visualStatus==='interested'||demoStatus==='responded') return 'Preparar propuesta piloto y cerrar una llamada corta para aplicar la demo a una propiedad real.';
   if(demoStatus==='viewed'||demoStatus==='sent') return 'Hacer follow-up consultivo: preguntar qué parte encaja mejor para captar propietarios o compradores.';
   return 'Revisar respuesta del cliente y proponer siguiente paso comercial.';
@@ -3428,6 +3462,83 @@ function copyCommercialHookText(id,hookKey,kind){
   const text=kind==='email'?('Asunto: '+msg.emailSubject+'\n\n'+msg.emailBody):msg.whatsapp;
   navigator.clipboard.writeText(text).catch(()=>{const ta=document.createElement('textarea');ta.value=text;document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta);});
   _showToast((kind==='email'?'Email':'WhatsApp')+' del gancho copiado.','var(--accent2)');
+}
+
+
+function hookFieldId(id,key,field){return 'hook-'+field+'-'+id+'-'+canonicalHookKey(key);}
+function trimHookUrl(v){return String(v||'').trim();}
+function isCasasApprovedHookUrl(url){
+  const u=trimHookUrl(url);
+  return u==='https://rubik-sota-director-de-orquesta.vercel.app/dynamic-motion-banner/casas-y-mar-visita-propiedad/'||
+    u==='https://rubik-sota-director-de-orquesta.vercel.app/dynamic-motion-banner/casas-y-mar-visita-propiedad/?embed=1'||
+    u==='https://aurum-properties-boutique.vercel.app/casas-y-mar';
+}
+function hookUrlValidationError(l,key,url,field){
+  const u=trimHookUrl(url);
+  if(!u) return 'Introduce una URL real antes de activar este gancho.';
+  let parsed;
+  try{parsed=new URL(u);}catch(e){return 'La URL debe empezar por http:// o https:// y ser válida.';}
+  if(!/^https?:$/.test(parsed.protocol)) return 'Solo se aceptan URLs http o https.';
+  const lower=u.toLowerCase();
+  if(lower.includes('/gesture-lab/')) return 'Bloqueado: /gesture-lab/ es una ruta interna, no cliente-facing.';
+  if(/editor|localhost|127\.0\.0\.1|file:\/\//i.test(u)) return 'Bloqueado: no uses editor, localhost ni archivos internos como URL cliente.';
+  if(!isCasasYMarLead(l)&&isCasasApprovedHookUrl(u)) return 'Bloqueado: la URL aprobada de Casas y Mar no se puede copiar a otro lead.';
+  if(field==='embedUrl'&&canonicalHookKey(key)!=='visualExperience') return 'Solo la Experiencia Visual admite embed preview.';
+  return '';
+}
+function setHookProduction(id,hookKey){
+  const l=leads.find(x=>x.id===id);if(!l) return;
+  const key=canonicalHookKey(hookKey);
+  const hook=getCommercialHook(l,key);if(!hook) return;
+  hook.status='in_production';
+  hook.assetStatus='in_production';
+  hook.lastUpdate=new Date().toISOString();
+  if(!Array.isArray(l._hookHistory)) l._hookHistory=[];
+  l._hookHistory.push({hook:key,status:'in_production',at:hook.lastUpdate});
+  l._proxAccion=key==='visualExperience'?'Producir Experiencia Visual de Propiedad y registrar URL final.':'Producir Web Premium Demo y registrar URL final.';
+  saveState();renderAll();openModal(id);_showToast('Gancho marcado en producción.','var(--gold)');
+}
+function saveLeadHookUrl(id,hookKey){
+  const l=leads.find(x=>x.id===id);if(!l) return;
+  const key=canonicalHookKey(hookKey);
+  const hook=getCommercialHook(l,key);if(!hook) return;
+  const urlEl=document.getElementById(hookFieldId(id,key,'url'));
+  const embedEl=document.getElementById(hookFieldId(id,key,'embed'));
+  const url=trimHookUrl(urlEl&&urlEl.value);
+  const embedUrl=trimHookUrl(embedEl&&embedEl.value);
+  const urlErr=hookUrlValidationError(l,key,url,'url');
+  if(urlErr){_showToast(urlErr,'var(--red)');return;}
+  if(embedUrl){
+    const embedErr=hookUrlValidationError(l,key,embedUrl,'embedUrl');
+    if(embedErr){_showToast(embedErr,'var(--red)');return;}
+  }
+  hook.url=url;
+  if(key==='visualExperience') hook.embedUrl=embedUrl;
+  hook.assetStatus='generated';
+  hook.lastUpdate=new Date().toISOString();
+  if(['pending','briefing_ready','in_production',''].includes(hook.status||'')) hook.status='generated';
+  if(!Array.isArray(l._hookHistory)) l._hookHistory=[];
+  l._hookHistory.push({hook:key,status:hook.status,action:'url_registered',at:hook.lastUpdate});
+  l._proxAccion=commercialHooksNextAction(l);
+  saveState();renderAll();openModal(id);_showToast('URL registrada y gancho activado.','var(--green)');
+}
+function hookBriefingText(l,hookKey){
+  const key=canonicalHookKey(hookKey);
+  const pending='pendiente';
+  const val=v=>{const s=String(v||'').trim();return s&&s!=='No localizado'&&s!=='Pendiente'?s:pending;};
+  const base=['Lead: '+val(l.empresa),'Sector: '+val(l.sector),'Zona: '+val(l.zona),'Web actual: '+val(l.web),'Teléfono: '+val(l.telefono||l.whatsapp),'Email: '+val(l.email),'Dirección: '+val(l.direccion),'Auditoría / dolor: '+val(l.auditPain||l.dolor),'Oportunidad: '+val(l.auditOpportunity||l.motivo),'Score: '+val(l.score),'Estado comercial: '+val(l.estado)];
+  if(key==='visualExperience'){
+    return ['BRIEFING GANCHO 1 — EXPERIENCIA VISUAL DE PROPIEDAD','',...base,'','Fotos/assets disponibles: '+val(l.assets||l.fotos||l.demo),'Propuesta visual: '+val(l.servGancho||l.demo||'Pieza visual cliente-facing con CTA y continuidad móvil.'),'CTA sugerido: '+val(l.cta||l.cierre),'Objetivo comercial: abrir conversación con impacto visual y registrar interés cualificado.','Próximo paso: producir la experiencia visual, publicar URL final y registrar embed si existe.'].join('\n');
+  }
+  return ['BRIEFING GANCHO 2 — WEB PREMIUM DEMO','',...base,'','Problemas detectados: '+val(l.dolor||l.objecion),'Oportunidad comercial: '+val(l.upsell||l.motivo),'Secciones recomendadas: hero premium, propuesta de valor, experiencia/servicios, prueba visual, CTA de contacto.','Fotos/assets necesarios: '+val(l.assets||l.fotos||l.demo),'CTA: '+val(l.cta||l.cierre),'Próximo paso: preparar demo web premium, publicar URL final y registrar enlace en CRM.'].join('\n');
+}
+function copySpecificHookBriefing(id,hookKey){
+  const l=leads.find(x=>x.id===id);if(!l) return;
+  const key=canonicalHookKey(hookKey);
+  const hook=getCommercialHook(l,key);if(hook){hook.briefingStatus='briefing_ready';if((hook.status||'pending')==='pending') hook.status='briefing_ready';hook.lastUpdate=new Date().toISOString();}
+  const text=hookBriefingText(l,key);
+  navigator.clipboard.writeText(text).catch(()=>{const ta=document.createElement('textarea');ta.value=text;document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta);});
+  saveState();renderAll();openModal(id);_showToast(key==='visualExperience'?'Briefing EV copiado':'Briefing Demo copiado','var(--accent2)');
 }
 
 function leadValueOrDash(v){
@@ -4139,6 +4250,16 @@ function renderVerticalFilter(){
   filters.vertical=sel.value;
 }
 
+function hookListBadges(l){
+  const hooks=ensureLeadCommercialHooks(l)||{};
+  const visual=hooks.visualExperience||{};
+  const demo=hooks.premiumDemo||{};
+  const label=(key,status)=>key==='visualExperience'?('EV '+hookStatusLabel(key,status).toLowerCase()):('Demo '+hookStatusLabel(key,status).toLowerCase());
+  const vStatus=visual.url?(visual.status||'generated'):(visual.status||'pending');
+  const dStatus=demo.url?(demo.status||'generated'):(demo.status||'pending');
+  return '<div class="lead-hook-badges"><span class="tag '+hookStatusClass(vStatus)+'">'+safeHtml(label('visualExperience',vStatus))+'</span><span class="tag '+hookStatusClass(dStatus)+'">'+safeHtml(label('premiumDemo',dStatus))+'</span></div>';
+}
+
 function renderLeads(){
   renderVerticalFilter();
   const filtered=getFiltered();
@@ -4152,6 +4273,7 @@ function renderLeads(){
         <div class="score-circle ${scoreClass(l.score)}">${l.score}</div>
       </div>
       <div class="card-tags">${priTag(l.prioridad)}${estadoTag(l.estado)}${tempBadge(l)}${l.source==='room-designer'?'<span class="tag est-visual">Room Designer</span>':''}${isImportedLead(l)?'<span class="tag est-visual">CSV</span>':''}${websiteAuditCardBadge(l)}${l._possibleDuplicate?'<span class="tag est-pendiente">Revisar duplicado</span>':''}</div>
+      ${hookListBadges(l)}
       <div class="card-dolor">${l.dolor}</div>
       ${isImportedLead(l)?'<div style="font-size:11px;color:var(--text3);display:flex;gap:8px;flex-wrap:wrap;margin-top:8px"><span>⭐ '+safeHtml(l.rating||'—')+'</span><span>💬 '+safeHtml(l.reviewCount||0)+'</span>'+(l.web?'<span>🌐 web</span>':'')+(l.googleMapsUrl?'<span>📍 Maps</span>':'')+'</div>':''}
       ${(l._proxAccion||l._proxFecha)?'<div class="card-prox"><span>📅</span><span class="prox-text">'+(l._proxAccion||'Próxima acción')+(l._proxFecha?' · <strong>'+formatFecha(l._proxFecha)+'</strong>':'')+'</span>'+(isVencida(l._proxFecha)?'<span class="prox-vencida">VENCIDA</span>':'')+'</div>':''}
