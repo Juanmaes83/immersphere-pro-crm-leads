@@ -35,6 +35,14 @@ INTERNAL_API_TOKEN=change-me-local-only
 
 `INTERNAL_API_TOKEN` queda reservado para una fase posterior. No se usan tokens reales en v0.1.
 
+En despliegue Railway v0.1.2 se recomienda activar `INTERNAL_API_TOKEN` como variable de entorno. Si el valor existe y no es `change-me-local-only`, los endpoints `POST` exigen el header:
+
+```text
+x-internal-api-token: <valor-configurado-en-railway>
+```
+
+`GET /health` queda publico para healthcheck.
+
 ## Endpoint dry-run
 
 ```bash
@@ -94,6 +102,63 @@ Landing y Web Completa:
 - Web Completa exige `heroVideoMotion: true`, hero video/motion AURUM, GSAP + SplitType en h1, minimo 8 secciones, `VisualExperienceBannerSection`, CTA principal y cero contenido cruzado.
 
 La respuesta incluye `plannedTemplates`, `plannedFiles`, `mediaPlan` y `visualRisks`. No se crea ningun archivo real en Rubik o AURUM en v0.1.
+
+## Railway Dry-Run Deployment v0.1.2
+
+Estado de esta fase: preparado para despliegue manual en Railway. El CLI `railway` no estaba disponible localmente, por lo que no se hizo deploy real desde Codex.
+
+Configuracion esperada en Railway:
+
+- Root directory: `automation-backend/`
+- Build command: `npm install && npm run build`
+- Start command: `npm start`
+- Healthcheck path: `/health`
+- Node: `24`, via `nixpacks.toml`
+
+Variables:
+
+```text
+NODE_ENV=production
+DRY_RUN_ONLY=true
+ALLOWED_ORIGINS=https://juanmaes83.github.io,http://localhost:5500,http://127.0.0.1:5500
+INTERNAL_API_TOKEN=<crear-en-railway-no-en-git>
+```
+
+No configurar `GITHUB_TOKEN`, `VERCEL_TOKEN`, PATs, claves privadas ni API keys reales.
+
+Auth elegida: token manual temporal. Es la opcion mas prudente para un endpoint online aunque siga siendo dry-run. El CRM no se conecta todavia y el token no debe ponerse en frontend.
+
+Comandos de smoke test, sustituyendo `RAILWAY_URL` y el token:
+
+```bash
+curl https://RAILWAY_URL/health
+
+curl -X POST https://RAILWAY_URL/api/production/dry-run \
+  -H "Content-Type: application/json" \
+  -H "x-internal-api-token: $INTERNAL_API_TOKEN" \
+  --data @production-package.json
+
+curl -X POST https://RAILWAY_URL/api/github/dispatch-production \
+  -H "Content-Type: application/json" \
+  -H "x-internal-api-token: $INTERNAL_API_TOKEN" \
+  --data "{}"
+```
+
+`dispatch-production` debe seguir respondiendo:
+
+```json
+{
+  "ok": false,
+  "reason": "disabled_in_v0_1_until_security_review"
+}
+```
+
+Rollback/apagado:
+
+- Railway dashboard -> servicio -> Deployments -> Rollback al deploy anterior, o
+- Railway dashboard -> servicio -> Settings -> Stop/Delete service si solo era una prueba.
+
+Siguiente fase recomendada: GitHub PR Automation v0.2, todavia con PR y revision humana antes de produccion real.
 
 ## Limites
 

@@ -67,6 +67,16 @@ function isRateLimited(req) {
   return bucket.count > 60;
 }
 
+function isTokenRequired() {
+  const token = String(process.env.INTERNAL_API_TOKEN || "").trim();
+  return Boolean(token) && token !== "change-me-local-only";
+}
+
+function isAuthorized(req) {
+  if (!isTokenRequired()) return true;
+  return req.headers["x-internal-api-token"] === process.env.INTERNAL_API_TOKEN;
+}
+
 function readJsonBody(req) {
   return new Promise((resolve, reject) => {
     let total = 0;
@@ -98,6 +108,11 @@ export function createRequestHandler() {
     if (req.method === "OPTIONS") {
       res.writeHead(204, headers);
       res.end();
+      return;
+    }
+
+    if (req.method === "POST" && !isAuthorized(req)) {
+      sendJson(res, 401, { ok: false, error: "unauthorized" }, headers);
       return;
     }
 
@@ -144,7 +159,7 @@ export function createRequestHandler() {
 
 export function startServer(options = {}) {
   const port = Number(options.port ?? process.env.PORT ?? 8787);
-  const host = options.host ?? "127.0.0.1";
+  const host = options.host ?? process.env.HOST ?? "0.0.0.0";
   const server = http.createServer(createRequestHandler());
   return new Promise((resolve) => {
     server.listen(port, host, () => {

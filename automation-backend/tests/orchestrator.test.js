@@ -122,6 +122,15 @@ async function postJson(baseUrl, path, payload) {
   return { status: res.status, body: await res.json() };
 }
 
+async function postJsonWithHeaders(baseUrl, path, payload, headers = {}) {
+  const res = await fetch(`${baseUrl}${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...headers },
+    body: JSON.stringify(payload),
+  });
+  return { status: res.status, body: await res.json() };
+}
+
 test("/health devuelve ok", async () => {
   await withServer(async (baseUrl) => {
     const res = await fetch(`${baseUrl}/health`);
@@ -230,6 +239,30 @@ test("no hay secretos hardcodeados en fuentes del backend", async () => {
   assert.doesNotMatch(joined, /=\s*["']github_pat_[A-Za-z0-9_]+["']/);
   assert.doesNotMatch(joined, /=\s*["']sk-[A-Za-z0-9_]+["']/);
   assert.doesNotMatch(joined, /BEGIN PRIVATE KEY[\s\S]+END PRIVATE KEY/);
+});
+
+test("POST exige token si INTERNAL_API_TOKEN esta configurado", async () => {
+  const previous = process.env.INTERNAL_API_TOKEN;
+  process.env.INTERNAL_API_TOKEN = "local-test-token";
+  try {
+    await withServer(async (baseUrl) => {
+      const denied = await postJsonWithHeaders(baseUrl, "/api/production/dry-run", validPayload());
+      assert.equal(denied.status, 401);
+      assert.equal(denied.body.error, "unauthorized");
+
+      const allowed = await postJsonWithHeaders(baseUrl, "/api/production/dry-run", validPayload(), {
+        "x-internal-api-token": "local-test-token",
+      });
+      assert.equal(allowed.status, 200);
+      assert.equal(allowed.body.ok, true);
+    });
+  } finally {
+    if (previous === undefined) {
+      delete process.env.INTERNAL_API_TOKEN;
+    } else {
+      process.env.INTERNAL_API_TOKEN = previous;
+    }
+  }
 });
 
 test("acepta payload completo con mediaAssets", async () => {

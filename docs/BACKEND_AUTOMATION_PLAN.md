@@ -289,6 +289,103 @@ INTERNAL_API_TOKEN=change-me-local-only
 
 No se usan `GITHUB_TOKEN`, `VERCEL_TOKEN`, PATs, claves privadas ni API keys reales.
 
+## Railway Dry-Run Deployment v0.1.2
+
+Estado: preparado para despliegue manual en Railway. En la maquina local de auditoria el CLI `railway` no estaba disponible (`railway --version` y `railway whoami` fallaron porque el comando no existe), por lo que no se hizo deploy real ni se simulo una URL.
+
+Configuracion Railway:
+
+- Root directory: `automation-backend/`
+- Build command: `npm install && npm run build`
+- Start command: `npm start`
+- Healthcheck path: `/health`
+- Node runtime: `24`, fijado en `nixpacks.toml`
+- El servidor escucha `0.0.0.0` y usa `PORT` inyectado por Railway.
+
+Variables recomendadas:
+
+```text
+NODE_ENV=production
+DRY_RUN_ONLY=true
+ALLOWED_ORIGINS=https://juanmaes83.github.io,http://localhost:5500,http://127.0.0.1:5500
+INTERNAL_API_TOKEN=<crear-en-railway-no-en-git>
+```
+
+No configurar:
+
+```text
+GITHUB_TOKEN
+VERCEL_TOKEN
+PAT
+RESEND_API_KEY
+GOOGLE_CLIENT_SECRET
+PRIVATE KEY
+API_KEY real
+```
+
+Auth elegida: **Opcion B - token manual temporal**.
+
+Motivo: aunque el backend no escribe, no usa tokens de terceros, tiene rate limit y dispatch real bloqueado, un endpoint online no debe aceptar paquetes de produccion sin una barrera minima. El token vive solo en Railway y se envia en pruebas manuales con `x-internal-api-token`. El CRM no se conecta todavia y el token no debe ir en frontend.
+
+Endpoints:
+
+- `GET /health`: publico para healthcheck.
+- `POST /api/production/dry-run`: exige `x-internal-api-token` si `INTERNAL_API_TOKEN` esta configurado.
+- `POST /api/github/dispatch-production`: exige token y sigue bloqueado.
+
+Comandos curl:
+
+```bash
+curl https://RAILWAY_URL/health
+
+curl -X POST https://RAILWAY_URL/api/production/dry-run \
+  -H "Content-Type: application/json" \
+  -H "x-internal-api-token: $INTERNAL_API_TOKEN" \
+  --data @production-package.json
+
+curl -X POST https://RAILWAY_URL/api/github/dispatch-production \
+  -H "Content-Type: application/json" \
+  -H "x-internal-api-token: $INTERNAL_API_TOKEN" \
+  --data "{}"
+```
+
+Ejemplo response health:
+
+```json
+{
+  "ok": true,
+  "service": "immersphere-production-orchestrator",
+  "version": "0.1.0",
+  "mode": "dry-run"
+}
+```
+
+Ejemplo response dispatch bloqueado:
+
+```json
+{
+  "ok": false,
+  "reason": "disabled_in_v0_1_until_security_review"
+}
+```
+
+Que sigue desactivado:
+
+- Creacion de archivos.
+- Commits.
+- Push.
+- Vercel API.
+- GitHub tokens.
+- Registro de URLs reales en CRM.
+- Conexion del CRM al backend.
+
+Rollback/apagado:
+
+- Railway dashboard -> servicio -> Deployments -> Rollback, o
+- Railway dashboard -> servicio -> Settings -> Stop/Delete service si era un entorno temporal.
+
+Siguiente fase: **GitHub PR Automation v0.2**, con GitHub App/token minimo en backend, rama por lead, PR y revision humana. No debe escribir en `main`.
+
 ## Seguridad
 
 - CORS allowlist.
