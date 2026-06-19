@@ -2993,6 +2993,355 @@ function websiteAuditCardBadge(l){
   const c=a.status==='success'?'est-visual':(a.status==='failed'?'est-pendiente':'est-pendiente');
   return '<span class="tag '+c+'">Web '+score+'/100'+safeHtml(alert)+'</span>';
 }
+// ── Production Brief ──────────────────────────────────────────────────────────
+function toLeadSlug(empresa){
+  return (empresa||'').toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+    .replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'');
+}
+function capFirst(s){
+  return (s||'').replace(/-([a-z])/g,(_,c)=>c.toUpperCase()).replace(/^[a-z]/,c=>c.toUpperCase());
+}
+function buildProductionBrief(l){
+  const a=l.websiteAudit||{};
+  const H=ensureLeadCommercialHooks(l)||{};
+  const ev=H.visualExperience||{};
+  const lp=H.landingPage||{};
+  const fw=H.fullWebDemo||{};
+  const bp=H.bannerPack||{};
+  const s=a.signals||{};
+  const slug=toLeadSlug(l.empresa);
+  return {
+    lead:{empresa:l.empresa||'—',sector:l.sector||l.vertical||'—',score:l.score||0,priority:l.priority||'—',ciudad:l.ciudad||l.zona||l.city||'—',slug,contacto:l.contacto||'—'},
+    web:{url:a.finalUrl||a.website||l.web||'—',score:a.websiteOpportunityScore||0,weaknesses:(a.weaknesses||[]).slice(0,5),opportunities:(a.opportunities||[]).slice(0,5),signals:{hasPhone:!!s.hasPhone,hasEmail:!!s.hasEmail,hasWhatsapp:!!s.hasWhatsapp,hasForm:!!s.hasContactForm,hasCTA:!!s.hasClearCTA,hasListings:!!s.hasPropertyListings,hasVirtualTour:!!s.hasVirtualTourSignals,hasVideo:!!s.hasVideoSignals},recommendedService:a.recommendedService||'—',nextAction:a.recommendedNextAction||'—'},
+    hooks:{ev:{status:ev.status||'pending',url:ev.url||''},landing:{status:lp.status||'pending',url:lp.url||''},webCompleta:{status:fw.status||'pending',url:fw.url||''},banners:{status:bp.status||'pending',packUrl:bp.packUrl||''}},
+    context:{vertical:a.verticalProfile||'real_estate',title:a.title||'—',technology:(a.technologySignals||[]).join(', ')||'—'},
+    generatedAt:new Date().toISOString()
+  };
+}
+function productionBriefText(l){
+  const b=buildProductionBrief(l);
+  const yn=v=>v?'Sí':'No';
+  return [
+    '=== BASE DE PRODUCCIÓN IA ===',
+    `Cliente: ${b.lead.empresa}`,
+    `Sector: ${b.lead.sector}`,
+    `Score: ${b.lead.score}/100 · Prioridad: ${b.lead.priority}`,
+    `Ciudad: ${b.lead.ciudad}`,
+    `Slug: ${b.lead.slug}`,
+    `Contacto: ${b.lead.contacto}`,
+    '',
+    '--- WEB ACTUAL ---',
+    `URL: ${b.web.url}`,
+    `Score oportunidad: ${b.web.score}/100`,
+    `Teléfono: ${yn(b.web.signals.hasPhone)} | Email: ${yn(b.web.signals.hasEmail)} | WhatsApp: ${yn(b.web.signals.hasWhatsapp)}`,
+    `Formulario: ${yn(b.web.signals.hasForm)} | CTA claro: ${yn(b.web.signals.hasCTA)}`,
+    `Listings: ${yn(b.web.signals.hasListings)} | Tour virtual: ${yn(b.web.signals.hasVirtualTour)} | Vídeo: ${yn(b.web.signals.hasVideo)}`,
+    b.web.weaknesses.length?`Debilidades: ${b.web.weaknesses.join(' / ')}`:null,
+    b.web.opportunities.length?`Oportunidades: ${b.web.opportunities.join(' / ')}`:null,
+    `Servicio recomendado: ${b.web.recommendedService}`,
+    '',
+    '--- ESTADO GANCHOS ---',
+    `G1 EV: ${b.hooks.ev.status}${b.hooks.ev.url?' · '+b.hooks.ev.url:''}`,
+    `G2 Landing: ${b.hooks.landing.status}${b.hooks.landing.url?' · '+b.hooks.landing.url:''}`,
+    `G3 Web Completa: ${b.hooks.webCompleta.status}${b.hooks.webCompleta.url?' · '+b.hooks.webCompleta.url:''}`,
+    `G4 Banners: ${b.hooks.banners.status}${b.hooks.banners.packUrl?' · '+b.hooks.banners.packUrl:''}`,
+    '',
+    `Generado: ${new Date().toLocaleString('es-ES')}`,
+  ].filter(x=>x!=null).join('\n');
+}
+function prompt4GanchosText(l){
+  const b=buildProductionBrief(l);
+  const yn=v=>v?'Sí':'No';
+  const C=capFirst(b.lead.slug);
+  return [
+    `# System prompt — 4 Ganchos Comerciales · ${b.lead.empresa}`,
+    '',
+    '## Cliente',
+    `Empresa: ${b.lead.empresa}`,
+    `Sector: ${b.lead.sector} | Vertical CRM: ${b.context.vertical}`,
+    `Score CRM: ${b.lead.score}/100 | Prioridad: ${b.lead.priority}`,
+    `Ciudad/Mercado: ${b.lead.ciudad}`,
+    `Slug URL: ${b.lead.slug}`,
+    '',
+    '## Web actual del cliente',
+    `URL: ${b.web.url}`,
+    `Score oportunidad web: ${b.web.score}/100`,
+    b.web.weaknesses.length?`Debilidades: ${b.web.weaknesses.join('; ')}`:null,
+    b.web.opportunities.length?`Oportunidades: ${b.web.opportunities.join('; ')}`:null,
+    `Teléfono: ${yn(b.web.signals.hasPhone)} | Email: ${yn(b.web.signals.hasEmail)} | WhatsApp: ${yn(b.web.signals.hasWhatsapp)} | CTA claro: ${yn(b.web.signals.hasCTA)}`,
+    `Listings: ${yn(b.web.signals.hasListings)} | Tour virtual: ${yn(b.web.signals.hasVirtualTour)} | Vídeo: ${yn(b.web.signals.hasVideo)}`,
+    `Tecnología web: ${b.context.technology}`,
+    `Título detectado: ${b.context.title}`,
+    '',
+    '## Estado actual de ganchos',
+    `G1 Experiencia Visual (EV): ${b.hooks.ev.status}`,
+    `G2 Landing Comercial: ${b.hooks.landing.status}`,
+    `G3 Web Desarrollada Completa: ${b.hooks.webCompleta.status}`,
+    `G4 Pack Banners: ${b.hooks.banners.status}`,
+    '',
+    '## Rutas AURUM a generar',
+    `G1 EV: /visual-experience/${b.lead.slug}`,
+    `G2 Landing: /${b.lead.slug}`,
+    `G3 Web Completa: /${b.lead.slug}-web-completa`,
+    `G4 Banners: /banners/${b.lead.slug}`,
+    '',
+    '## Componentes React a crear (AURUM)',
+    `G1: ${C}VisualExperience.tsx`,
+    `G2: ${C}Demo.tsx`,
+    `G3: ${C}WebCompleta.tsx`,
+    `G4: ${C}BannerPack.tsx + ${C}BannerVertical.tsx + ${C}BannerHorizontal.tsx`,
+    '',
+    '## Instrucciones generales',
+    '- Seguir el patrón validado con Costa Invest / Casas y Mar',
+    '- Web Completa: hero video/motion AURUM obligatorio (/VIDEO_AURUM_HEROWEB.mp4 + GSAP + SplitType)',
+    '- Web Completa: mínimo 8 secciones (hero, diagnóstico, before/after, EV embed, galería, servicios, proceso, contacto)',
+    '- EV: iframe a Rubik con ?embed=1',
+    '- Banners: iframe a .html directo (no rewrite URL)',
+    '- Sin mezclar contenido de otros clientes',
+    '- Sin placeholders críticos visibles',
+    '- Responsive mobile-first Tailwind',
+    '- <Helmet> noindex, nofollow',
+    '- URL principal siempre AURUM, embedUrl puede ser Rubik',
+  ].filter(x=>x!=null).join('\n');
+}
+function promptEVText(l){
+  const b=buildProductionBrief(l);
+  const C=capFirst(b.lead.slug);
+  return [
+    `# G1 — Experiencia Visual de Propiedad · ${b.lead.empresa}`,
+    '',
+    `Crear componente React: ${C}VisualExperience.tsx`,
+    `Ruta AURUM: /visual-experience/${b.lead.slug}`,
+    `Ruta Rubik (iframe): /dynamic-motion-banner/${b.lead.slug}/?embed=1`,
+    '',
+    '## Patrón técnico (obligatorio)',
+    '```tsx',
+    `export function ${C}VisualExperience() {`,
+    `  return (`,
+    `    <div style={{ position: 'fixed', inset: 0, background: '#0d0b09' }}>`,
+    `      <iframe`,
+    `        src="https://rubik-sota-director-de-orquesta.vercel.app/dynamic-motion-banner/${b.lead.slug}/?embed=1"`,
+    `        title="Experiencia Visual · ${b.lead.empresa}"`,
+    `        style={{ width: '100%', height: '100%', border: 'none' }}`,
+    `        allow="autoplay"`,
+    `      />`,
+    `    </div>`,
+    `  );`,
+    `}`,
+    '```',
+    '',
+    '## Registro en CRM (después de validar 200 en prod)',
+    `visualExperience.url = https://aurum-properties-boutique.vercel.app/visual-experience/${b.lead.slug}`,
+    `visualExperience.embedUrl = https://rubik-sota-director-de-orquesta.vercel.app/dynamic-motion-banner/${b.lead.slug}/?embed=1`,
+    `Imágenes del cliente en: /public/${b.lead.slug}/`,
+  ].join('\n');
+}
+function promptLandingText(l){
+  const b=buildProductionBrief(l);
+  const C=capFirst(b.lead.slug);
+  const yn=v=>v?'Sí':'No';
+  return [
+    `# G2 — Landing Comercial Personalizada · ${b.lead.empresa}`,
+    '',
+    `Crear componente React: ${C}Demo.tsx`,
+    `Ruta AURUM: /${b.lead.slug}`,
+    '',
+    '## Datos del cliente para el copy',
+    `Empresa: ${b.lead.empresa}`,
+    `Sector: ${b.lead.sector} | Ciudad: ${b.lead.ciudad}`,
+    `Score CRM: ${b.lead.score}/100`,
+    b.web.opportunities.length?`Oportunidades: ${b.web.opportunities.join('; ')}`:null,
+    `Web actual: ${b.web.url}`,
+    `Recomendación AURUM: ${b.web.recommendedService}`,
+    '',
+    '## Secciones mínimas',
+    '1. Hero — titular orientado al cliente + CTA WhatsApp',
+    '2. Score diagnóstico + fortalezas + oportunidades',
+    '3. Qué ofrecemos (servicios AURUM)',
+    '4. Embed Experiencia Visual (iframe EV)',
+    '5. Testimonial / proceso / credibilidad',
+    '6. CTA final alta intención',
+    '',
+    '## Señales actuales web',
+    `WhatsApp: ${yn(b.web.signals.hasWhatsapp)} | CTA: ${yn(b.web.signals.hasCTA)} | Listings: ${yn(b.web.signals.hasListings)}`,
+    '',
+    '## Instrucciones',
+    '- Tailwind + Framer Motion para scroll reveal',
+    '- Colores AURUM: #0d0b09 fondo, #c4a96a dorado, serif para headings',
+    '- Sin copiar contenido de otros clientes',
+    `- Registrar en CRM: landingPage.url = https://aurum-properties-boutique.vercel.app/${b.lead.slug}`,
+  ].filter(x=>x!=null).join('\n');
+}
+function promptWebCompletaText(l){
+  const b=buildProductionBrief(l);
+  const C=capFirst(b.lead.slug);
+  return [
+    `# G3 — Web Desarrollada Completa · ${b.lead.empresa}`,
+    '',
+    `Crear componente React: ${C}WebCompleta.tsx`,
+    `Ruta AURUM: /${b.lead.slug}-web-completa`,
+    '',
+    '## OBLIGATORIO — Hero video/motion AURUM',
+    '```tsx',
+    "import { useRef, useEffect } from 'react';",
+    "import { gsap } from 'gsap';",
+    "import SplitType from 'split-type';",
+    '',
+    'const headlineRef = useRef<HTMLHeadingElement>(null);',
+    'useEffect(() => {',
+    '  if (!headlineRef.current) return;',
+    "  const text = new SplitType(headlineRef.current, { types: 'words' });",
+    '  const ctx = gsap.context(() => {',
+    '    gsap.from(text.words ?? [], {',
+    '      yPercent: 100, rotate: 4, opacity: 0,',
+    "      duration: 1.4, stagger: 0.05, ease: 'expo.out', delay: 0.4,",
+    '    });',
+    '  });',
+    '  return () => { text.revert(); ctx.revert(); };',
+    '}, []);',
+    '',
+    `<video autoPlay muted loop playsInline preload="auto" className="absolute inset-0 w-full h-full object-cover" style={{ opacity: 0.42 }}>`,
+    `  <source src="/VIDEO_AURUM_HEROWEB.mp4" type="video/mp4" />`,
+    `</video>`,
+    `<img src="/${b.lead.slug}/place-to-live.jpg" aria-hidden="true" className="absolute inset-0 w-full h-full object-cover opacity-35" style={{ zIndex: -1 }} />`,
+    `<h1 ref={headlineRef} className="... overflow-hidden">Titular del cliente</h1>`,
+    '```',
+    '',
+    '## 8 secciones obligatorias',
+    '1. Hero video/motion (ver arriba)',
+    `2. Diagnóstico / Score CRM — score: ${b.lead.score}/100`,
+    '3. Before/After — comparativa web actual vs AURUM',
+    `4. Experiencia Visual — iframe /visual-experience/${b.lead.slug}`,
+    `5. Galería — imágenes desde /public/${b.lead.slug}/`,
+    '6. Servicios internacionales / mercados',
+    '7. Proceso AURUM — 4-5 pasos',
+    '8. Contacto alta intención — WhatsApp primario',
+    '',
+    '## Datos del cliente',
+    `Empresa: ${b.lead.empresa} | Sector: ${b.lead.sector}`,
+    `Ciudad: ${b.lead.ciudad} | Score: ${b.lead.score}/100`,
+    b.web.weaknesses.length?`Debilidades web actual: ${b.web.weaknesses.join('; ')}`:null,
+    b.web.opportunities.length?`Oportunidades: ${b.web.opportunities.join('; ')}`:null,
+    '',
+    '## Instrucciones',
+    '- Copiar patrón técnico de CostaInvestWebCompleta.tsx (NO de Casas y Mar directamente)',
+    '- <Helmet> noindex, nofollow',
+    '- Sin overflow horizontal',
+    '- Sin contenido cruzado de otros clientes',
+    `- Registrar en CRM: fullWebDemo.url = https://aurum-properties-boutique.vercel.app/${b.lead.slug}-web-completa`,
+  ].filter(x=>x!=null).join('\n');
+}
+function promptBannersText(l){
+  const b=buildProductionBrief(l);
+  const C=capFirst(b.lead.slug);
+  return [
+    `# G4 — Pack de Banners · ${b.lead.empresa}`,
+    '',
+    '## Componentes a crear (AURUM)',
+    `- ${C}BannerPack.tsx → ruta /banners/${b.lead.slug}`,
+    `- ${C}BannerVertical.tsx → ruta /banners/${b.lead.slug}/vertical`,
+    `- ${C}BannerHorizontal.tsx → ruta /banners/${b.lead.slug}/horizontal`,
+    '',
+    '## Motor Rubik (dynamic-motion-banner)',
+    `Directorio: dynamic-motion-banner/${b.lead.slug}/`,
+    `Banner vertical src: https://rubik-sota-director-de-orquesta.vercel.app/dynamic-motion-banner/${b.lead.slug}/banner-vertical.html`,
+    `Banner horizontal src: https://rubik-sota-director-de-orquesta.vercel.app/dynamic-motion-banner/${b.lead.slug}/banner-horizontal.html`,
+    '',
+    '## CRÍTICO — URL de iframe',
+    '```',
+    '// CORRECTO — .html directo (imports ES module resuelven bien)',
+    `src="https://rubik-sota-director-de-orquesta.vercel.app/dynamic-motion-banner/${b.lead.slug}/banner-vertical.html"`,
+    '// INCORRECTO — rewrite URL → imports relativos fallan → 404',
+    `// src="https://rubik-sota-director-de-orquesta.vercel.app/banner-pack/${b.lead.slug}/vertical/"`,
+    '```',
+    '',
+    '## Especificaciones',
+    '- Vertical: 1080 × 1920 · Stories · Reels',
+    '- Horizontal: 1920 × 1080 · Display · YouTube',
+    `- Imágenes en: dynamic-motion-banner/${b.lead.slug}/images/`,
+    '',
+    '## Registro en CRM (solo si responden 200 en producción)',
+    `bannerPack.packUrl = https://aurum-properties-boutique.vercel.app/banners/${b.lead.slug}`,
+    `bannerPack.verticalUrl = https://aurum-properties-boutique.vercel.app/banners/${b.lead.slug}/vertical`,
+    `bannerPack.horizontalUrl = https://aurum-properties-boutique.vercel.app/banners/${b.lead.slug}/horizontal`,
+  ].join('\n');
+}
+function copyProductionBrief(id){
+  const l=leads.find(x=>x.id===id);if(!l) return;
+  navigator.clipboard.writeText(productionBriefText(l))
+    .then(()=>_showToast('✓ Production Brief copiado','var(--accent2)'))
+    .catch(()=>_showToast('Error al copiar','var(--red)'));
+}
+function copyPrompt4Ganchos(id){
+  const l=leads.find(x=>x.id===id);if(!l) return;
+  navigator.clipboard.writeText(prompt4GanchosText(l))
+    .then(()=>_showToast('✓ Prompt 4 Ganchos copiado','var(--accent2)'))
+    .catch(()=>_showToast('Error al copiar','var(--red)'));
+}
+function copyPromptEV(id){
+  const l=leads.find(x=>x.id===id);if(!l) return;
+  navigator.clipboard.writeText(promptEVText(l))
+    .then(()=>_showToast('✓ Prompt G1 EV copiado','var(--accent2)'))
+    .catch(()=>_showToast('Error al copiar','var(--red)'));
+}
+function copyPromptLanding(id){
+  const l=leads.find(x=>x.id===id);if(!l) return;
+  navigator.clipboard.writeText(promptLandingText(l))
+    .then(()=>_showToast('✓ Prompt G2 Landing copiado','var(--accent2)'))
+    .catch(()=>_showToast('Error al copiar','var(--red)'));
+}
+function copyPromptWebCompleta(id){
+  const l=leads.find(x=>x.id===id);if(!l) return;
+  navigator.clipboard.writeText(promptWebCompletaText(l))
+    .then(()=>_showToast('✓ Prompt G3 Web Completa copiado','var(--accent2)'))
+    .catch(()=>_showToast('Error al copiar','var(--red)'));
+}
+function copyPromptBanners(id){
+  const l=leads.find(x=>x.id===id);if(!l) return;
+  navigator.clipboard.writeText(promptBannersText(l))
+    .then(()=>_showToast('✓ Prompt G4 Banners copiado','var(--accent2)'))
+    .catch(()=>_showToast('Error al copiar','var(--red)'));
+}
+function renderProductionBase(l){
+  const b=buildProductionBrief(l);
+  const hks=[b.hooks.ev,b.hooks.landing,b.hooks.webCompleta,b.hooks.banners];
+  const gen=hks.filter(h=>h.status==='generated').length;
+  const pend=4-gen;
+  return `
+    <div class="modal-section" style="border-top:1px solid rgba(196,169,106,0.15);margin-top:4px">
+      <div class="modal-section-title" style="color:var(--accent2)">Base de Producción IA</div>
+      <div style="font-size:11px;color:var(--text3);margin-bottom:10px">
+        Ganchos generados: <strong style="color:var(--accent2)">${gen}/4</strong>
+        · Pendientes: <strong style="color:var(--red)">${pend}</strong>
+        · Slug: <code style="background:var(--bg3);padding:2px 6px;border-radius:4px;font-size:10px">${safeHtml(b.lead.slug)}</code>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:6px">
+        <button class="contact-btn btn-email" onclick="copyProductionBrief(${l.id})" style="text-align:left">
+          Copiar Production Brief completo
+        </button>
+        <button class="contact-btn btn-email" onclick="copyPrompt4Ganchos(${l.id})" style="text-align:left">
+          Copiar Prompt 4 Ganchos (sistema completo)
+        </button>
+        <button class="contact-btn btn-web" onclick="copyPromptEV(${l.id})" style="text-align:left;background:rgba(196,169,106,0.08)">
+          Copiar Prompt G1 — Experiencia Visual
+        </button>
+        <button class="contact-btn btn-web" onclick="copyPromptLanding(${l.id})" style="text-align:left;background:rgba(196,169,106,0.08)">
+          Copiar Prompt G2 — Landing Comercial
+        </button>
+        <button class="contact-btn btn-web" onclick="copyPromptWebCompleta(${l.id})" style="text-align:left;background:rgba(196,169,106,0.08)">
+          Copiar Prompt G3 — Web Completa
+        </button>
+        <button class="contact-btn btn-web" onclick="copyPromptBanners(${l.id})" style="text-align:left;background:rgba(196,169,106,0.08)">
+          Copiar Prompt G4 — Pack Banners
+        </button>
+      </div>
+      <div style="font-size:10px;color:var(--text3);margin-top:8px;text-align:right">
+        Brief generado al vuelo · No persiste · Actualizar auditando web
+      </div>
+    </div>`;
+}
+// ── End Production Brief ───────────────────────────────────────────────────────
 function renderWebsiteAudit(l){
   const safeWeb=nbeSafeUrl(l.web||l.website);
   const a=normalizeWebsiteAudit(l.websiteAudit||(safeWeb?{status:'pending',website:safeWeb,signals:{},weaknesses:[],opportunities:[],websiteOpportunityScore:0}:websiteAuditSkipped(l)),l);
@@ -3051,7 +3400,8 @@ function renderWebsiteAudit(l){
         <button class="contact-btn btn-web" id="audit-web-btn-${l.id}" onclick="auditLeadWebsite(${l.id})">${a.status==='success'?'Reauditar web':'Auditar web'}</button>
         <button class="contact-btn btn-email" onclick="copyWebsiteAuditSummary(${l.id})">Copiar resumen de oportunidad</button>
       </div>
-    </div>`;
+    </div>
+    ${renderProductionBase(l)}`;
 }
 
 // ── Temperature ───────────────────────────────────────────────────────────────
