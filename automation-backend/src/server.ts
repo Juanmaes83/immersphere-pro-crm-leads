@@ -248,10 +248,12 @@ export function createRequestHandler() {
 
     const url = new URL(req.url || "/", "http://127.0.0.1");
 
-    // Operator auth endpoints are exempt from the internal-token gate — the browser
-    // console has no way to supply INTERNAL_API_TOKEN.
-    const isOperatorAuthEndpoint = url.pathname === "/api/operator/login" || url.pathname === "/api/operator/logout";
-    if (req.method === "POST" && !isOperatorAuthEndpoint && !isAuthorized(req)) {
+    // All /api/operator/* endpoints are exempt from the internal-token gate.
+    // The browser console has no way to supply INTERNAL_API_TOKEN; operator
+    // endpoints are protected by OPERATOR_ADMIN_TOKEN (login) and session+CSRF
+    // (all other operator POSTs).
+    const isOperatorEndpoint = url.pathname.startsWith("/api/operator/");
+    if (req.method === "POST" && !isOperatorEndpoint && !isAuthorized(req)) {
       sendJson(res, 401, { ok: false, error: "unauthorized" }, headers);
       return;
     }
