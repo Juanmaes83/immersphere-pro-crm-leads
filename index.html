@@ -2289,6 +2289,9 @@ function loadState(){
         if(r.auditPain!==undefined) l.auditPain=r.auditPain;
         if(r.auditNextBestAction!==undefined) l.auditNextBestAction=r.auditNextBestAction;
         if(r.previewEngine!==undefined) l.previewEngine=r.previewEngine;
+        if(r.commercialHooks!==undefined) l.commercialHooks=r.commercialHooks;
+        if(r.hookHistory!==undefined) l._hookHistory=r.hookHistory;
+        if(r._hookHistory!==undefined) l._hookHistory=r._hookHistory;
         ensureVisualPipeline(l);
         if(r.edits) { Object.assign(l, r.edits); l._edits=r.edits; }
         if(r.comercial){
@@ -2305,17 +2308,22 @@ function loadState(){
       const customs=JSON.parse(cl);
       customs.forEach(c=>{ leads.push(c); if(c.id<=_nextCustomId) _nextCustomId=c.id-1; });
     }
+    if(migrateCasasYMarCommercialHooks()){
+      saveState();
+    }
   }catch(e){}
 }
 function saveState(){
   const st={};
   leads.filter(l=>l.id>0).forEach(l=>{
     ensureVisualPipeline(l);
+    const commercialHooks=ensureCommercialHooks(l);
     st[l.id]={
       estado:l.estado,notas:l._notas||'',proxAccion:l._proxAccion||'',proxFecha:l._proxFecha||'',
       temp:l._temp||'',actividad:l._actividad||[],edits:l._edits||{},
       fechaEstado:l._fechaEstado||'',objecionAsignada:l._objecionAsignada||'',cierreAsignado:l._cierreAsignado||'',presupuestos:l._presupuestos||[],propuestas:l._propuestas||[],admin:l._admin||_emptyAdmin(),
       websiteAudit:l.websiteAudit||null,auditOpportunity:l.auditOpportunity||'',auditPain:l.auditPain||'',auditNextBestAction:l.auditNextBestAction||'',previewEngine:l.previewEngine||null,
+      commercialHooks:commercialHooks||null,hookHistory:l._hookHistory||[],
       comercial:{valorPotencial:l._valorPotencial||0,probabilidad:l._probabilidad||10,presupuesto:l._presupuesto||'',packRec:l._packRec||'',ultimoContacto:l._ultimoContacto||''}
     };
   });
@@ -3259,8 +3267,51 @@ function cloneCommercialHooks(){
   return JSON.parse(JSON.stringify(CASAS_Y_MAR_COMMERCIAL_HOOKS));
 }
 
+function normalizeCasasYMarCommercialHooks(l){
+  if(!isCasasYMarLead(l)) return false;
+  const before=JSON.stringify(l.commercialHooks||{});
+  const beforeNextAction=String(l._proxAccion||'');
+  const defaults=cloneCommercialHooks();
+  const current=l.commercialHooks||{};
+  const previousMotion=current.motionBanner||{};
+  const previousDemo=current.premiumDemo||{};
+  const motionBanner={...previousMotion,...defaults.motionBanner};
+  const premiumDemo={...previousDemo,...defaults.premiumDemo};
+  if(previousMotion.status!==undefined) motionBanner.status=previousMotion.status;
+  if(previousMotion.lastUpdate!==undefined) motionBanner.lastUpdate=previousMotion.lastUpdate;
+  if(previousMotion._hookHistory!==undefined) motionBanner._hookHistory=previousMotion._hookHistory;
+  if(previousDemo.status!==undefined) premiumDemo.status=previousDemo.status;
+  if(previousDemo.lastUpdate!==undefined) premiumDemo.lastUpdate=previousDemo.lastUpdate;
+  if(previousDemo._hookHistory!==undefined) premiumDemo._hookHistory=previousDemo._hookHistory;
+  l.commercialHooks={
+    ...current,
+    version:COMMERCIAL_HOOKS_VERSION,
+    motionBanner,
+    premiumDemo
+  };
+  if(l._edits&&l._edits.commercialHooks){
+    l._edits={...l._edits,commercialHooks:JSON.parse(JSON.stringify(l.commercialHooks))};
+  }
+  if(/Motion Banner|impacto visual corto/i.test(String(l._proxAccion||''))){
+    l._proxAccion='Enviar primero la Experiencia Visual de Propiedad: pieza animada para abrir conversación sin fricción.';
+  }
+  return before!==JSON.stringify(l.commercialHooks)||beforeNextAction!==String(l._proxAccion||'');
+}
+
+function migrateCasasYMarCommercialHooks(){
+  let changed=false;
+  leads.forEach(l=>{
+    if(normalizeCasasYMarCommercialHooks(l)) changed=true;
+  });
+  return changed;
+}
+
 function ensureCommercialHooks(l){
   if(!l||(!isCasasYMarLead(l)&&!l.commercialHooks)) return null;
+  if(isCasasYMarLead(l)){
+    normalizeCasasYMarCommercialHooks(l);
+    return l.commercialHooks;
+  }
   const defaults=cloneCommercialHooks();
   l.commercialHooks={
     version:COMMERCIAL_HOOKS_VERSION,
@@ -5215,7 +5266,7 @@ function openModal(id){
       </div>
     </div>`:''}
 
-    ${renderCommercialHooksBlock(l)}
+    ${renderCommercialHookBlock(l)}
     ${renderPreviewEngineBlock(l)}
     ${renderOutreachAssistantBlock(l)}
     ${renderPremiumProposalBlock(l)}
