@@ -29,6 +29,45 @@ function validPayload(overrides = {}) {
       video: null,
       status: "candidate",
     },
+    mediaAssets: {
+      logo: {
+        url: "https://cdn.example.com/torrevieja-sur/logo.png",
+        source: "manual",
+        status: "approved",
+      },
+      favicon: {
+        url: "https://cdn.example.com/torrevieja-sur/favicon.ico",
+        status: "candidate",
+      },
+      heroImage: {
+        url: "https://cdn.example.com/torrevieja-sur/hero.jpg",
+        status: "approved",
+      },
+      propertyImages: [
+        {
+          url: "https://cdn.example.com/torrevieja-sur/gallery-1.jpg",
+          source: "manual",
+          status: "approved",
+          recommendedUse: "hero",
+        },
+        {
+          url: "https://cdn.example.com/torrevieja-sur/banner-1.jpg",
+          source: "manual",
+          status: "candidate",
+          recommendedUse: "banner",
+        },
+      ],
+      videos: [
+        {
+          url: "/VIDEO_AURUM_HEROWEB.mp4",
+          source: "aurum_default",
+          status: "candidate",
+          recommendedUse: "hero",
+        },
+      ],
+      brandColors: ["#111111", "#d8b46a"],
+      notes: ["Assets require final rights review before production."],
+    },
     targetRoutes: {
       visualExperience: `https://aurum-properties-boutique.vercel.app/visual-experience/${slug}`,
       landing: `https://aurum-properties-boutique.vercel.app/${slug}`,
@@ -40,7 +79,7 @@ function validPayload(overrides = {}) {
     hooks: {
       visualExperience: {},
       landingPage: {},
-      fullWebDemo: {},
+      fullWebDemo: { heroVideoMotion: true },
       bannerPack: {},
     },
     rules: {
@@ -191,4 +230,114 @@ test("no hay secretos hardcodeados en fuentes del backend", async () => {
   assert.doesNotMatch(joined, /=\s*["']github_pat_[A-Za-z0-9_]+["']/);
   assert.doesNotMatch(joined, /=\s*["']sk-[A-Za-z0-9_]+["']/);
   assert.doesNotMatch(joined, /BEGIN PRIVATE KEY[\s\S]+END PRIVATE KEY/);
+});
+
+test("acepta payload completo con mediaAssets", async () => {
+  await withServer(async (baseUrl) => {
+    const { body } = await postJson(baseUrl, "/api/production/dry-run", validPayload());
+    assert.equal(body.ok, true);
+    assert.equal(body.mediaPlan.logo.status, "approved");
+    assert.equal(body.mediaPlan.heroImage.status, "approved");
+  });
+});
+
+test("devuelve warnings si falta logo", async () => {
+  await withServer(async (baseUrl) => {
+    const { body } = await postJson(baseUrl, "/api/production/dry-run", validPayload({
+      patch: { mediaAssets: { logo: { url: null, source: "placeholder", status: "missing" } } },
+    }));
+    assert.equal(body.ok, true);
+    assert.match(body.mediaPlan.warnings.join(" "), /logo: missing/);
+  });
+});
+
+test("devuelve warnings si falta heroImage", async () => {
+  await withServer(async (baseUrl) => {
+    const { body } = await postJson(baseUrl, "/api/production/dry-run", validPayload({
+      patch: { mediaAssets: { heroImage: { url: null, status: "missing" } } },
+    }));
+    assert.equal(body.ok, true);
+    assert.match(body.mediaPlan.warnings.join(" "), /heroImage: missing/);
+  });
+});
+
+test("devuelve warning si usa VIDEO_AURUM_HEROWEB.mp4 como fallback", async () => {
+  await withServer(async (baseUrl) => {
+    const { body } = await postJson(baseUrl, "/api/production/dry-run", validPayload());
+    assert.equal(body.ok, true);
+    assert.match(body.mediaPlan.warnings.join(" "), /VIDEO_AURUM_HEROWEB/);
+  });
+});
+
+test("devuelve error si webCompleta no contempla hero video motion", async () => {
+  await withServer(async (baseUrl) => {
+    const { body } = await postJson(baseUrl, "/api/production/dry-run", validPayload({
+      patch: { hooks: { fullWebDemo: { heroVideoMotion: false } } },
+    }));
+    assert.equal(body.ok, false);
+    assert.match(body.validation.errors.join(" "), /heroVideoMotion/);
+  });
+});
+
+test("planifica template dynamic-motion-banner para G1", async () => {
+  await withServer(async (baseUrl) => {
+    const { body } = await postJson(baseUrl, "/api/production/dry-run", validPayload());
+    assert.equal(body.plannedTemplates.visualExperience, "dynamic-motion-banner");
+    assert.ok(body.plannedFiles.some((file) => file.template === "dynamic-motion-banner"));
+  });
+});
+
+test("planifica banner-vertical.html y banner-horizontal.html para G4", async () => {
+  await withServer(async (baseUrl) => {
+    const { body } = await postJson(baseUrl, "/api/production/dry-run", validPayload());
+    const files = body.plannedFiles.map((file) => file.path).join(" ");
+    assert.match(files, /banner-vertical\.html/);
+    assert.match(files, /banner-horizontal\.html/);
+  });
+});
+
+test("plannedFiles contiene Rubik y AURUM", async () => {
+  await withServer(async (baseUrl) => {
+    const { body } = await postJson(baseUrl, "/api/production/dry-run", validPayload());
+    const repos = new Set(body.plannedFiles.map((file) => file.repo));
+    assert.equal(repos.has("Rubik"), true);
+    assert.equal(repos.has("AURUM"), true);
+  });
+});
+
+test("plannedTemplates contiene los 4 ganchos", async () => {
+  await withServer(async (baseUrl) => {
+    const { body } = await postJson(baseUrl, "/api/production/dry-run", validPayload());
+    assert.deepEqual(Object.keys(body.plannedTemplates).sort(), ["bannerPack", "landing", "visualExperience", "webCompleta"].sort());
+  });
+});
+
+test("rechaza media URL con localhost", async () => {
+  await withServer(async (baseUrl) => {
+    const { body } = await postJson(baseUrl, "/api/production/dry-run", validPayload({
+      patch: { mediaAssets: { heroImage: { url: "https://localhost/hero.jpg", status: "candidate" } } },
+    }));
+    assert.equal(body.ok, false);
+    assert.match(body.validation.errors.join(" "), /media_url_localhost/);
+  });
+});
+
+test("rechaza media URL con file://", async () => {
+  await withServer(async (baseUrl) => {
+    const { body } = await postJson(baseUrl, "/api/production/dry-run", validPayload({
+      patch: { mediaAssets: { heroImage: { url: "file:///tmp/hero.jpg", status: "candidate" } } },
+    }));
+    assert.equal(body.ok, false);
+    assert.match(body.validation.errors.join(" "), /media_url_file_scheme/);
+  });
+});
+
+test("rechaza media URL con /gesture-lab/ si se propone como cliente-facing", async () => {
+  await withServer(async (baseUrl) => {
+    const { body } = await postJson(baseUrl, "/api/production/dry-run", validPayload({
+      patch: { mediaAssets: { heroImage: { url: "https://aurum-properties-boutique.vercel.app/gesture-lab/torrevieja-sur/hero.jpg", status: "candidate" } } },
+    }));
+    assert.equal(body.ok, false);
+    assert.match(body.validation.errors.join(" "), /media_url_gesture_lab/);
+  });
 });

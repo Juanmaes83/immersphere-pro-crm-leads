@@ -64,6 +64,58 @@ Campos minimos:
 - `hooks`: `visualExperience`, `landingPage`, `fullWebDemo`, `bannerPack`.
 - `rules`: dominios permitidos y `noGeneratedWithout200`.
 
+### `mediaAssets`
+
+`mediaAssets` es la fuente principal para planificar los 4 ganchos. `assets` se mantiene como compatibilidad legacy.
+
+```json
+{
+  "mediaAssets": {
+    "logo": {
+      "url": "https://cdn.example.com/torrevieja-sur/logo.png",
+      "source": "manual",
+      "status": "approved"
+    },
+    "favicon": {
+      "url": "https://cdn.example.com/torrevieja-sur/favicon.ico",
+      "status": "candidate"
+    },
+    "heroImage": {
+      "url": "https://cdn.example.com/torrevieja-sur/hero.jpg",
+      "status": "approved"
+    },
+    "propertyImages": [
+      {
+        "url": "https://cdn.example.com/torrevieja-sur/gallery-1.jpg",
+        "source": "manual",
+        "status": "approved",
+        "recommendedUse": "hero"
+      }
+    ],
+    "videos": [
+      {
+        "url": "/VIDEO_AURUM_HEROWEB.mp4",
+        "source": "aurum_default",
+        "status": "candidate",
+        "recommendedUse": "hero"
+      }
+    ],
+    "brandColors": ["#111111", "#d8b46a"],
+    "notes": ["Validar derechos antes de produccion."]
+  }
+}
+```
+
+Validaciones:
+
+- Warning si falta logo, hero image, property images o video propio.
+- Warning si se usa `/VIDEO_AURUM_HEROWEB.mp4`.
+- Warning si hay assets `candidate` o `pending_validation`.
+- Warning si no hay assets `approved`.
+- Error si una media URL usa `localhost`, `127.0.0.1`, `file://` o `/gesture-lab/`.
+- Warning si hay riesgo de derechos de uso por `stock`, `placeholder` o asset detectado por scraping publico.
+- Error si Web Completa no declara `hooks.fullWebDemo.heroVideoMotion: true`.
+
 ## Ejemplo request Torrevieja Sur
 
 ```json
@@ -104,11 +156,44 @@ Campos minimos:
     "visualExperience": {},
     "landingPage": {},
     "fullWebDemo": {},
-    "bannerPack": {}
-  },
-  "rules": {
-    "clientFacingDomain": "aurum-properties-boutique.vercel.app",
-    "internalEngine": "rubik-sota-director-de-orquesta.vercel.app",
+      "bannerPack": {}
+    },
+    "mediaAssets": {
+      "logo": {
+        "url": "https://cdn.example.com/torrevieja-sur/logo.png",
+        "source": "manual",
+        "status": "approved"
+      },
+      "favicon": {
+        "url": "https://cdn.example.com/torrevieja-sur/favicon.ico",
+        "status": "candidate"
+      },
+      "heroImage": {
+        "url": "https://cdn.example.com/torrevieja-sur/hero.jpg",
+        "status": "approved"
+      },
+      "propertyImages": [
+        {
+          "url": "https://cdn.example.com/torrevieja-sur/gallery-1.jpg",
+          "source": "manual",
+          "status": "approved",
+          "recommendedUse": "hero"
+        }
+      ],
+      "videos": [
+        {
+          "url": "/VIDEO_AURUM_HEROWEB.mp4",
+          "source": "aurum_default",
+          "status": "candidate",
+          "recommendedUse": "hero"
+        }
+      ],
+      "brandColors": ["#111111", "#d8b46a"],
+      "notes": ["Validar derechos antes de produccion."]
+    },
+    "rules": {
+      "clientFacingDomain": "aurum-properties-boutique.vercel.app",
+      "internalEngine": "rubik-sota-director-de-orquesta.vercel.app",
     "noGeneratedWithout200": true
   }
 }
@@ -127,6 +212,12 @@ Campos minimos:
     "warnings": [],
     "errors": []
   },
+  "plannedTemplates": {
+    "visualExperience": "dynamic-motion-banner",
+    "landing": "aurum-landing",
+    "webCompleta": "aurum-web-completa-blueprint",
+    "bannerPack": "dynamic-motion-banner-pack"
+  },
   "plannedRepos": {
     "rubik": {
       "needed": true,
@@ -143,8 +234,42 @@ Campos minimos:
       "reason": "CRM update only after URLs are real and validated"
     }
   },
-  "plannedFiles": [],
+  "plannedFiles": [
+    {
+      "repo": "Rubik",
+      "path": "dynamic-motion-banner/torrevieja-sur/index.html",
+      "purpose": "Experiencia Visual / Banderola",
+      "template": "dynamic-motion-banner",
+      "requiresAssets": ["logo", "heroImage", "brandColors"],
+      "risk": "requires media validation"
+    },
+    {
+      "repo": "Rubik",
+      "path": "dynamic-motion-banner/torrevieja-sur/banner-vertical.html",
+      "purpose": "Banner vertical",
+      "template": "dynamic-motion-banner-pack",
+      "requiresAssets": ["logo", "heroImage", "claim", "cta"],
+      "risk": "iframe wrappers must point to direct html when relative imports exist"
+    },
+    {
+      "repo": "AURUM",
+      "path": "src/TorreviejaSurWebCompleta.tsx",
+      "purpose": "Web Completa",
+      "template": "aurum-web-completa-blueprint",
+      "requiresAssets": ["heroVideo", "heroImage", "VisualExperienceBannerSection"],
+      "risk": "must preserve hero video/motion"
+    }
+  ],
   "plannedRoutes": {},
+  "mediaPlan": {
+    "logo": {},
+    "heroImage": {},
+    "videos": [],
+    "warnings": ["mediaPlan.videos: VIDEO_AURUM_HEROWEB.mp4 fallback in use"]
+  },
+  "visualRisks": [
+    "Web completa will use VIDEO_AURUM_HEROWEB.mp4 fallback until own video is approved."
+  ],
   "qaChecklist": [],
   "nextStep": "review_required"
 }
@@ -188,6 +313,56 @@ permissions:
 ```
 
 No crea archivos, no hace commit, no hace push, no despliega y no usa Vercel API.
+
+## Asset & Template Pipeline
+
+El dry-run v0.1.1 ya responde que se usaria antes de crear nada.
+
+Fotos:
+
+- `logo` alimenta banderola, banners y cabeceras.
+- `heroImage` alimenta landing, Web Completa y fondos.
+- `propertyImages` se separa por `recommendedUse`: `hero`, `gallery`, `banner`, `background`.
+- Si faltan imagenes, se devuelve warning y riesgo visual.
+
+Videos:
+
+- El video propio se prioriza para hero/background.
+- `/VIDEO_AURUM_HEROWEB.mp4` se acepta como fallback premium AURUM, pero nunca como validacion final de video propio.
+- El fallback genera warning para que la revision humana lo vea.
+
+Banderola dinamica:
+
+- G1 usa template `dynamic-motion-banner`.
+- Rubik planifica `dynamic-motion-banner/[slug]/index.html`, `config.js`, assets del cliente y modo embed.
+- AURUM planifica wrapper publico `/visual-experience/[slug]`.
+- Rubik es motor interno; AURUM es URL publica.
+
+Banners vertical/horizontal:
+
+- AURUM planifica `/banners/[slug]`, `/banners/[slug]/vertical` y `/banners/[slug]/horizontal`.
+- Rubik planifica `banner-vertical.html`, `banner-horizontal.html`, `config.js` y `banner-engine.js`.
+- Si las piezas HTML usan imports relativos, el iframe debe apuntar al HTML directo.
+
+Landing Comercial:
+
+- Usa template `aurum-landing`.
+- Planifica componente landing, ruta `/[slug]`, copy comercial, CTA, assets candidatos y fallback premium.
+- Landing no equivale a Web Completa.
+
+Web Desarrollada Completa:
+
+- Usa template `aurum-web-completa-blueprint`.
+- Planifica `src/[ComponentName]WebCompleta.tsx` y ruta `/[slug]-web-completa`.
+- Exige hero video/motion AURUM, `/VIDEO_AURUM_HEROWEB.mp4` como fallback si falta video propio, GSAP + SplitType en h1, minimo 8 secciones, `VisualExperienceBannerSection`, CTA principal, responsive, cero contenido cruzado y cero placeholders criticos.
+
+Que no crea todavia:
+
+- No genera HTML/TSX real.
+- No copia assets.
+- No modifica Rubik.
+- No modifica AURUM.
+- No abre PRs.
 
 ## Que no hace todavia
 

@@ -120,6 +120,31 @@ export function validatePublicRoute(route, slug) {
   return null;
 }
 
+export function validateMediaUrl(url, slug) {
+  if (url === null || url === undefined || url === "") return null;
+  if (typeof url !== "string") return "media_url_must_be_string_or_null";
+  const raw = url.trim();
+  if (SCRIPT_RE.test(raw)) return "media_url_contains_script";
+  if (/^file:\/\//i.test(raw)) return "media_url_file_scheme_blocked";
+  if (raw.includes("/gesture-lab/")) return "media_url_gesture_lab_blocked";
+  if (raw === "/VIDEO_AURUM_HEROWEB.mp4") return null;
+
+  let parsed;
+  try {
+    parsed = new URL(raw);
+  } catch {
+    return "media_url_invalid";
+  }
+
+  const host = parsed.hostname.toLowerCase();
+  const path = decodeURIComponent(parsed.pathname.toLowerCase());
+  if (parsed.protocol !== "https:") return "media_url_must_be_https";
+  if (host === "localhost" || host === "127.0.0.1") return "media_url_localhost_blocked";
+  if (path.includes("/gesture-lab/")) return "media_url_gesture_lab_blocked";
+  if (host === CLIENT_FACING_DOMAIN && slug && !path.includes(slug)) return "media_url_may_belong_to_other_lead";
+  return null;
+}
+
 export function validateRules(rules, errors) {
   if (!isPlainObject(rules)) {
     errors.push("rules: required_object");
