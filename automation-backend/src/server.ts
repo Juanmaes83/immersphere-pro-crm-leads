@@ -1,12 +1,35 @@
+import crypto from "node:crypto";
 import http from "node:http";
 import { URL } from "node:url";
 import { buildPrAutomationPlan } from "./buildPrAutomationPlan.ts";
 import { buildDryRunPlan } from "./buildDryRunPlan.ts";
-import { allowedRepos, createBranch, createPullRequest, getBranchHeadSha, putFile, sanitizeGithubError } from "./githubClient.ts";
+import {
+  allowedRepos,
+  branchExists,
+  createBranch,
+  createPullRequest,
+  findOpenPullRequestByHead,
+  getBranchHeadSha,
+  getFileInfo,
+  putFile,
+  sanitizeGithubError,
+} from "./githubClient.ts";
 import { logInfo, logWarn } from "./logger.ts";
 import { MAX_BODY_BYTES, MODE, SERVICE_NAME, SERVICE_VERSION } from "./schemas.ts";
 import { buildProposalPackage } from "./proposalPackage.ts";
 import { validateProductionPackage } from "./validateProductionPackage.ts";
+import {
+  buildClearCookieHeader,
+  buildSetCookieHeader,
+  createSession,
+  getSession,
+  invalidateSession,
+  isOperatorConsoleEnabled,
+  parseSessionCookie,
+  validateOperatorCredential,
+} from "./operatorSession.ts";
+import { buildOperatorConsoleHtml } from "./operatorConsoleHtml.ts";
+import { sanitizeLog } from "./security.ts";
 
 const DEFAULT_ALLOWED_ORIGINS = [
   "http://localhost:5500",
@@ -39,6 +62,20 @@ function sendJson(res, statusCode, payload, extraHeaders = {}) {
   res.end(body);
 }
 
+function sendHtml(res, statusCode, html, extraHeaders = {}) {
+  const body = html;
+  res.writeHead(statusCode, {
+    "Content-Type": "text/html; charset=utf-8",
+    "Content-Length": Buffer.byteLength(body),
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "SAMEORIGIN",
+    "Referrer-Policy": "same-origin",
+    "Cache-Control": "no-store",
+    ...extraHeaders,
+  });
+  res.end(body);
+}
+
 function corsHeaders(req) {
   const origin = req.headers.origin || "";
   const allowed = getAllowedOrigins();
@@ -47,14 +84,15 @@ function corsHeaders(req) {
       "Access-Control-Allow-Origin": origin,
       "Vary": "Origin",
       "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
-      "Access-Control-Allow-Headers": "Content-Type,Authorization",
+      "Access-Control-Allow-Headers": "Content-Type,Authorization,X-Internal-Api-Token,X-Csrf-Token",
+      "Access-Control-Allow-Credentials": "true",
     };
   }
   return {
     "Access-Control-Allow-Origin": "null",
     "Vary": "Origin",
     "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type,Authorization",
+    "Access-Control-Allow-Headers": "Content-Type,Authorization,X-Internal-Api-Token,X-Csrf-Token",
   };
 }
 
@@ -89,6 +127,10 @@ function proposalPackageEnabled() {
   return String(process.env.PROPOSAL_PACKAGE_ENABLED || "true").toLowerCase() !== "false";
 }
 
+function crmIntakeEnabled() {
+  return String(process.env.CRM_INTAKE_ENABLED || "false").toLowerCase() === "true";
+}
+
 function hasGithubToken() {
   return Boolean(String(process.env.GITHUB_SERVER_TOKEN || "").trim());
 }
@@ -116,6 +158,83 @@ function readJsonBody(req) {
     });
     req.on("error", reject);
   });
+}
+
+function getOperatorSession(req) {
+  const sessionId = parseSessionCookie(req.headers.cookie);
+  return { sessionId, session: getSession(sessionId) };
+}
+
+function isOperatorCsrfValid(req, session) {
+  if (!session) return false;
+  const provided = req.headers["x-csrf-token"] || "";
+  return provided === session.csrfToken;
+}
+
+async function runGithubPreflight(plan) {
+  const blockers = [];
+  const warnings = [];
+  const repoStatus = {};
+
+  if (!hasGithubToken()) {
+    blockers.push("missing_github_token");
+    return {
+      ok: false,
+      mode: "github-preflight",
+      canCreatePRs: false,
+      blockers,
+      warnings,
+      repos: {},
+      branches: plan.branches,
+      nextStep: "configure_github_server_token",
+    };
+  }
+
+  for (const key of ["rubik", "aurum"]) {
+    const target = plan.targetPRs[key];
+    if (!target) continue;
+    const { repo, headBranch } = target;
+    const repoEntry = { repo, headBranch, branchExists: false, existingPR: null, fileStatuses: [] };
+
+    try {
+      repoEntry.branchExists = await branchExists(repo, headBranch);
+      if (repoEntry.branchExists) {
+        warnings.push(`${key}_branch_already_exists:${headBranch}`);
+      }
+
+      const existingPR = await findOpenPullRequestByHead(repo, headBranch);
+      if (existingPR) {
+        repoEntry.existingPR = { number: existingPR.number, url: existingPR.html_url };
+        warnings.push(`${key}_existing_pr_detected:#${existingPR.number}`);
+      }
+
+      if (repoEntry.branchExists) {
+        const keyFiles = (plan.generatedFiles || []).filter((f) => f.repo === repo).slice(0, 3);
+        for (const file of keyFiles) {
+          const info = await getFileInfo(repo, file.path, headBranch);
+          repoEntry.fileStatuses.push({ path: file.path, exists: info.exists });
+          if (info.exists) warnings.push(`${key}_file_already_exists:${file.path}`);
+        }
+      }
+    } catch (err) {
+      blockers.push(`${key}_github_check_failed:${sanitizeLog(err?.message || "unknown")}`);
+    }
+
+    repoStatus[key] = repoEntry;
+  }
+
+  const canCreatePRs = blockers.length === 0;
+  return {
+    ok: canCreatePRs,
+    mode: "github-preflight",
+    canCreatePRs,
+    blockers,
+    warnings,
+    repos: repoStatus,
+    branches: plan.branches,
+    files: (plan.filesToCreate || []).map(({ repo, path }) => ({ repo, path })),
+    nextStep: canCreatePRs ? "ready_to_create_prs" : "resolve_blockers",
+  };
 }
 
 export function createRequestHandler() {
@@ -155,6 +274,8 @@ export function createRequestHandler() {
         prAutomationEnabled: enabled,
         proposalPackageEnabled: proposalPackageEnabled(),
         crmDirectConnection: false,
+        operatorConsoleAvailable: isOperatorConsoleEnabled(),
+        crmIntakeEnabled: crmIntakeEnabled(),
         writeMode: enabled ? "enabled" : "disabled",
         allowedRepos: allowedRepos(),
       }, headers);
@@ -210,6 +331,7 @@ export function createRequestHandler() {
             status: plan.ok ? "planned" : "blocked",
             warnings: plan.validation?.warnings?.length || 0,
             errors: plan.validation?.errors?.length || 0,
+            timestamp: Date.now(),
           });
         }
         logInfo("pr-plan requested", { leadSlug: payload?.lead?.slug || "missing", ok: plan.ok });
@@ -245,6 +367,42 @@ export function createRequestHandler() {
       return;
     }
 
+    if (req.method === "POST" && url.pathname === "/api/production/github-preflight") {
+      try {
+        const payload = await readJsonBody(req);
+        const validation = validateProductionPackage(payload);
+        if (!validation.passed) {
+          sendJson(res, 400, {
+            ok: false,
+            mode: "github-preflight",
+            canCreatePRs: false,
+            blockers: validation.errors,
+            warnings: validation.warnings,
+            validation,
+          }, headers);
+          return;
+        }
+        const plan = buildPrAutomationPlan(payload, validation);
+        if (!plan.ok) {
+          sendJson(res, 400, {
+            ok: false,
+            mode: "github-preflight",
+            canCreatePRs: false,
+            blockers: plan.validation?.errors || [],
+            warnings: plan.validation?.warnings || [],
+          }, headers);
+          return;
+        }
+        const preflight = await runGithubPreflight(plan);
+        logInfo("github-preflight requested", { leadSlug: plan.leadSlug, canCreatePRs: preflight.canCreatePRs });
+        sendJson(res, preflight.ok ? 200 : 200, preflight, headers);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "request_failed";
+        sendJson(res, 400, { ok: false, mode: "github-preflight", canCreatePRs: false, blockers: [message] }, headers);
+      }
+      return;
+    }
+
     if (req.method === "POST" && url.pathname === "/api/production/create-prs") {
       if (!prAutomationEnabled()) {
         sendJson(res, 200, { ok: false, reason: "disabled_until_security_flags_enabled", writeAttempted: false }, headers);
@@ -262,13 +420,26 @@ export function createRequestHandler() {
           sendJson(res, 400, { ...plan, writeAttempted: false }, headers);
           return;
         }
-        const result = await createProductionPullRequests(plan);
+        const preflight = await runGithubPreflight(plan);
+        if (!preflight.canCreatePRs) {
+          sendJson(res, 400, {
+            ok: false,
+            mode: "create-prs",
+            reason: "preflight_blocked",
+            blockers: preflight.blockers,
+            warnings: preflight.warnings,
+            writeAttempted: false,
+          }, headers);
+          return;
+        }
+        const result = await createProductionPullRequests(plan, preflight);
         jobs.set(plan.jobId, {
           ok: true,
           jobId: plan.jobId,
           leadSlug: plan.leadSlug,
           status: "prs_created",
           pullRequests: result.pullRequests,
+          timestamp: Date.now(),
         });
         sendJson(res, 200, {
           ok: true,
@@ -277,6 +448,7 @@ export function createRequestHandler() {
           leadSlug: plan.leadSlug,
           writeAttempted: true,
           pullRequests: result.pullRequests,
+          idempotencyNotes: result.idempotencyNotes,
           nextStep: "human_review_required",
         }, headers);
       } catch (error) {
@@ -286,30 +458,271 @@ export function createRequestHandler() {
       return;
     }
 
+    if (req.method === "POST" && url.pathname === "/api/crm/intake") {
+      if (!crmIntakeEnabled()) {
+        sendJson(res, 200, { ok: false, reason: "crm_intake_disabled", hint: "Set CRM_INTAKE_ENABLED=true to enable" }, headers);
+        return;
+      }
+      try {
+        const payload = await readJsonBody(req);
+        const validation = validateProductionPackage(payload);
+        const plan = buildDryRunPlan(payload, validation);
+        const intakeId = crypto.randomBytes(8).toString("hex");
+        const jobId = plan.jobId || `intake_${Date.now()}`;
+        jobs.set(jobId, {
+          ok: validation.passed,
+          jobId,
+          intakeId,
+          leadSlug: plan.leadSlug || "unknown",
+          status: validation.passed ? "intake_received" : "intake_blocked",
+          warnings: validation.warnings?.length || 0,
+          errors: validation.errors?.length || 0,
+          timestamp: Date.now(),
+          source: "crm_intake",
+        });
+        logInfo("crm-intake received", { leadSlug: plan.leadSlug || "missing", valid: validation.passed });
+        sendJson(res, 200, {
+          ok: validation.passed,
+          intakeId,
+          jobId,
+          leadSlug: plan.leadSlug,
+          validation: { passed: validation.passed, warnings: validation.warnings?.length || 0, errors: validation.errors?.length || 0 },
+          nextStep: "operator_review_required",
+        }, headers);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "request_failed";
+        sendJson(res, 400, { ok: false, error: message }, headers);
+      }
+      return;
+    }
+
+    // ── Operator Console ──
+
+    if (req.method === "GET" && url.pathname === "/operator") {
+      if (!isOperatorConsoleEnabled()) {
+        sendJson(res, 404, { ok: false, error: "operator_console_disabled" });
+        return;
+      }
+      sendHtml(res, 200, buildOperatorConsoleHtml(SERVICE_VERSION));
+      return;
+    }
+
+    if (req.method === "POST" && url.pathname === "/api/operator/login") {
+      if (!isOperatorConsoleEnabled()) {
+        sendJson(res, 404, { ok: false, error: "operator_console_disabled" }, headers);
+        return;
+      }
+      try {
+        const body = await readJsonBody(req);
+        const provided = String(body.token || "").trim();
+        if (!validateOperatorCredential(provided)) {
+          sendJson(res, 401, { ok: false, error: "invalid_operator_token" }, headers);
+          return;
+        }
+        const { sessionId, csrfToken, expiresAt } = createSession();
+        sendJson(res, 200, { ok: true, csrfToken, expiresAt }, {
+          ...headers,
+          "Set-Cookie": buildSetCookieHeader(sessionId, expiresAt),
+        });
+      } catch (error) {
+        sendJson(res, 400, { ok: false, error: "request_failed" }, headers);
+      }
+      return;
+    }
+
+    if (req.method === "POST" && url.pathname === "/api/operator/logout") {
+      const { sessionId } = getOperatorSession(req);
+      if (sessionId) invalidateSession(sessionId);
+      sendJson(res, 200, { ok: true }, {
+        ...headers,
+        "Set-Cookie": buildClearCookieHeader(),
+      });
+      return;
+    }
+
+    if (req.method === "GET" && url.pathname === "/api/operator/session") {
+      if (!isOperatorConsoleEnabled()) {
+        sendJson(res, 200, { ok: true, authenticated: false }, headers);
+        return;
+      }
+      const { session } = getOperatorSession(req);
+      if (!session) {
+        sendJson(res, 200, { ok: true, authenticated: false }, headers);
+        return;
+      }
+      sendJson(res, 200, { ok: true, authenticated: true, csrfToken: session.csrfToken, expiresAt: session.expiresAt }, headers);
+      return;
+    }
+
+    if (url.pathname.startsWith("/api/operator/") && req.method === "POST") {
+      if (!isOperatorConsoleEnabled()) {
+        sendJson(res, 404, { ok: false, error: "operator_console_disabled" }, headers);
+        return;
+      }
+      const { session } = getOperatorSession(req);
+      if (!session) {
+        sendJson(res, 401, { ok: false, error: "operator_session_required" }, headers);
+        return;
+      }
+      if (!isOperatorCsrfValid(req, session)) {
+        sendJson(res, 403, { ok: false, error: "csrf_token_invalid" }, headers);
+        return;
+      }
+
+      if (url.pathname === "/api/operator/pr-plan") {
+        try {
+          const payload = await readJsonBody(req);
+          const validation = validateProductionPackage(payload);
+          const plan = buildPrAutomationPlan(payload, validation);
+          logInfo("operator pr-plan requested", { leadSlug: payload?.lead?.slug || "missing", ok: plan.ok });
+          sendJson(res, plan.ok ? 200 : 400, plan, headers);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "request_failed";
+          sendJson(res, 400, { ok: false, error: message }, headers);
+        }
+        return;
+      }
+
+      if (url.pathname === "/api/operator/github-preflight") {
+        try {
+          const payload = await readJsonBody(req);
+          const validation = validateProductionPackage(payload);
+          if (!validation.passed) {
+            sendJson(res, 400, { ok: false, mode: "github-preflight", canCreatePRs: false, blockers: validation.errors }, headers);
+            return;
+          }
+          const plan = buildPrAutomationPlan(payload, validation);
+          if (!plan.ok) {
+            sendJson(res, 400, { ok: false, mode: "github-preflight", canCreatePRs: false, blockers: plan.validation?.errors || [] }, headers);
+            return;
+          }
+          const preflight = await runGithubPreflight(plan);
+          logInfo("operator github-preflight", { leadSlug: plan.leadSlug, canCreatePRs: preflight.canCreatePRs });
+          sendJson(res, 200, preflight, headers);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "request_failed";
+          sendJson(res, 400, { ok: false, mode: "github-preflight", canCreatePRs: false, blockers: [message] }, headers);
+        }
+        return;
+      }
+
+      if (url.pathname === "/api/operator/create-prs") {
+        if (!prAutomationEnabled()) {
+          sendJson(res, 200, { ok: false, reason: "disabled_until_security_flags_enabled", writeAttempted: false }, headers);
+          return;
+        }
+        if (!hasGithubToken()) {
+          sendJson(res, 200, { ok: false, reason: "missing_server_side_github_token", writeAttempted: false }, headers);
+          return;
+        }
+        try {
+          const payload = await readJsonBody(req);
+          const validation = validateProductionPackage(payload);
+          const plan = buildPrAutomationPlan(payload, validation);
+          if (!plan.ok) {
+            sendJson(res, 400, { ...plan, writeAttempted: false }, headers);
+            return;
+          }
+          const preflight = await runGithubPreflight(plan);
+          if (!preflight.canCreatePRs) {
+            sendJson(res, 400, {
+              ok: false,
+              reason: "preflight_blocked",
+              blockers: preflight.blockers,
+              warnings: preflight.warnings,
+              writeAttempted: false,
+            }, headers);
+            return;
+          }
+          const result = await createProductionPullRequests(plan, preflight);
+          jobs.set(plan.jobId, {
+            ok: true,
+            jobId: plan.jobId,
+            leadSlug: plan.leadSlug,
+            status: "prs_created",
+            pullRequests: result.pullRequests,
+            timestamp: Date.now(),
+            source: "operator",
+          });
+          logInfo("operator create-prs success", { leadSlug: plan.leadSlug });
+          sendJson(res, 200, {
+            ok: true,
+            mode: "create-prs",
+            jobId: plan.jobId,
+            leadSlug: plan.leadSlug,
+            writeAttempted: true,
+            pullRequests: result.pullRequests,
+            idempotencyNotes: result.idempotencyNotes,
+            nextStep: "human_review_required",
+          }, headers);
+        } catch (error) {
+          const safeError = sanitizeGithubError(error);
+          sendJson(res, 500, { ok: false, mode: "create-prs", writeAttempted: true, status: "error", error: safeError }, headers);
+        }
+        return;
+      }
+
+      sendJson(res, 404, { ok: false, error: "not_found" }, headers);
+      return;
+    }
+
     sendJson(res, 404, { ok: false, error: "not_found" }, headers);
   };
 }
 
-async function createProductionPullRequests(plan) {
-  const grouped = Map.groupBy(plan.generatedFiles, (file) => file.repo);
+function groupByRepo(files) {
+  const map = new Map();
+  for (const file of files) {
+    const list = map.get(file.repo) || [];
+    list.push(file);
+    map.set(file.repo, list);
+  }
+  return map;
+}
+
+async function createProductionPullRequests(plan, preflight = {}) {
+  const grouped = groupByRepo(plan.generatedFiles);
   const pullRequests = {};
+  const idempotencyNotes = [];
+  const repoStatus = preflight.repos || {};
+
   for (const [repo, files] of grouped.entries()) {
     const target = Object.values(plan.targetPRs).find((item) => item.repo === repo);
-    const fromSha = await getBranchHeadSha(repo, "main");
-    await createBranch(repo, target.headBranch, fromSha);
-    for (const file of files) {
-      await putFile(repo, target.headBranch, file.path, file.content, file.message);
+    if (!target) continue;
+
+    const alreadyExists = repoStatus[Object.keys(plan.targetPRs).find((k) => plan.targetPRs[k].repo === repo)]?.branchExists;
+
+    if (!alreadyExists) {
+      const fromSha = await getBranchHeadSha(repo, "main");
+      await createBranch(repo, target.headBranch, fromSha);
+    } else {
+      idempotencyNotes.push(`branch_reused:${target.headBranch}`);
     }
-    const pr = await createPullRequest(
-      repo,
-      target.headBranch,
-      "main",
-      `Production draft for ${plan.leadSlug}`,
-      "Automated v0.2 production draft. Human review required. No auto-merge.",
-    );
-    pullRequests[repo] = { url: pr.html_url, number: pr.number, branch: target.headBranch };
+
+    for (const file of files) {
+      const info = await getFileInfo(repo, file.path, target.headBranch);
+      await putFile(repo, target.headBranch, file.path, file.content, file.message, info.sha || undefined);
+      if (info.exists) idempotencyNotes.push(`file_updated:${file.path}`);
+    }
+
+    const repoKey = Object.keys(plan.targetPRs).find((k) => plan.targetPRs[k].repo === repo);
+    const existingPR = repoStatus[repoKey]?.existingPR;
+
+    if (existingPR) {
+      pullRequests[repo] = { url: existingPR.url, number: existingPR.number, branch: target.headBranch, reused: true };
+      idempotencyNotes.push(`pr_reused:#${existingPR.number}`);
+    } else {
+      const pr = await createPullRequest(
+        repo,
+        target.headBranch,
+        "main",
+        `Production draft for ${plan.leadSlug}`,
+        "Automated v0.3 production draft. Human review required. No auto-merge.",
+      );
+      pullRequests[repo] = { url: pr.html_url, number: pr.number, branch: target.headBranch };
+    }
   }
-  return { pullRequests };
+  return { pullRequests, idempotencyNotes };
 }
 
 export function startServer(options = {}) {

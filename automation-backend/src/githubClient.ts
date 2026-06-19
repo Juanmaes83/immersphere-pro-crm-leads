@@ -62,14 +62,46 @@ export async function createBranch(repo, newBranch, fromSha) {
   });
 }
 
-export async function putFile(repo, branch, path, content, message) {
+export async function branchExists(repo, branch) {
+  try {
+    await githubFetch(`${repoPath(repo)}/git/ref/heads/${encodeURIComponent(branch)}`);
+    return true;
+  } catch (error) {
+    if (error.status === 404) return false;
+    throw error;
+  }
+}
+
+export async function getFileInfo(repo, filePath, branch) {
+  try {
+    const res = await githubFetch(
+      `${repoPath(repo)}/contents/${filePath.split("/").map(encodeURIComponent).join("/")}?ref=${encodeURIComponent(branch)}`,
+    );
+    return { sha: res.sha || null, exists: true };
+  } catch (error) {
+    if (error.status === 404) return { sha: null, exists: false };
+    throw error;
+  }
+}
+
+export async function findOpenPullRequestByHead(repo, headBranch) {
+  const owner = repo.split("/")[0];
+  const items = await githubFetch(
+    `${repoPath(repo)}/pulls?state=open&head=${encodeURIComponent(owner)}:${encodeURIComponent(headBranch)}&per_page=1`,
+  );
+  return Array.isArray(items) && items.length > 0 ? items[0] : null;
+}
+
+export async function putFile(repo, branch, path, content, message, sha = undefined) {
+  const bodyData = {
+    message,
+    content: Buffer.from(content, "utf8").toString("base64"),
+    branch,
+  };
+  if (sha) bodyData.sha = sha;
   return githubFetch(`${repoPath(repo)}/contents/${path.split("/").map(encodeURIComponent).join("/")}`, {
     method: "PUT",
-    body: JSON.stringify({
-      message,
-      content: Buffer.from(content, "utf8").toString("base64"),
-      branch,
-    }),
+    body: JSON.stringify(bodyData),
   });
 }
 

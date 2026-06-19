@@ -3474,7 +3474,53 @@ function renderProductionLauncher(l){
     +pb('Copiar mensaje cierre sprint','copyCierreSprint',l.id,'btn-maps')
     +'</div>'
     +'</div>';
-  return step1+step2+step3+step4+step5+step6;
+  // BACKEND BRIDGE (v0.4)
+  const step3b='<div class="pl-step"><div class="pl-step-num">BACKEND</div><div class="pl-step-title">Consola operador (automatización segura)</div>'
+    +'<div style="background:rgba(99,102,241,0.06);border:1px solid rgba(99,102,241,0.2);border-radius:6px;padding:8px;margin-bottom:8px;font-size:10px;color:var(--text3);line-height:1.5">'
+    +'🔒 Por seguridad, el CRM no envía tokens ni crea PRs directamente.<br>Copia el paquete y pégalo en la consola operador para revisar y crear los PRs con revisión humana.'
+    +'</div>'
+    +'<div id="prod-backend-status-'+l.id+'" style="font-size:10px;color:var(--text3);margin-bottom:8px">Backend: no comprobado</div>'
+    +'<div style="display:grid;grid-template-columns:1fr;gap:5px">'
+    +pb('🔍 Comprobar estado del backend','checkBackendStatus',l.id,'btn-maps')
+    +pb('📦 Preparar paquete para operador','prepareOperatorPackage',l.id,'btn-email')
+    +pb('⚙ Abrir consola operador','openOperatorConsole',l.id,'btn-web')
+    +'</div>'
+    +'</div>';
+  return step1+step2+step3+step3b+step4+step5+step6;
+}
+const IMMERSPHERE_BACKEND_URL='https://automation-backend-production-02e5.up.railway.app';
+async function checkBackendStatus(id){
+  const el=document.getElementById('prod-backend-status-'+id);
+  if(!el)return;
+  el.textContent='Comprobando…';
+  try{
+    const res=await fetch(IMMERSPHERE_BACKEND_URL+'/api/production/capabilities');
+    const data=await res.json();
+    if(data.ok){
+      el.innerHTML='<span style="color:var(--green,#10b981)">✓ Backend online v'+safeHtml(data.version||'?')+'</span>'
+        +' · PR automation: <strong>'+(data.prAutomationEnabled?'✓ activa':'⚠ desactivada')+'</strong>'
+        +' · Consola: '+(data.operatorConsoleAvailable?'✓ disponible':'—')
+        +' · CRM directo: '+(data.crmDirectConnection?'⚠ SÍ':'✓ NO');
+    }else{
+      el.innerHTML='<span style="color:var(--red,#ef4444)">Error: '+safeHtml(String(data.error||'desconocido'))+'</span>';
+    }
+  }catch(e){
+    el.innerHTML='<span style="color:var(--text3)">Sin conexión con el backend</span>';
+  }
+}
+function prepareOperatorPackage(id){
+  const l=leads.find(x=>x.id===id);if(!l)return;
+  const slug=toLeadSlug(l.empresa||'');
+  try{localStorage.setItem('immersphere_crm_slug',slug);}catch(e){}
+  navigator.clipboard.writeText(productionPackageJSONText(l))
+    .then(()=>_showToast('Paquete copiado — ábrelo en la consola operador','var(--accent2)'))
+    .catch(()=>_showToast('Error al copiar el paquete','var(--red)'));
+}
+function openOperatorConsole(id){
+  const l=leads.find(x=>x.id===id);if(!l)return;
+  const slug=toLeadSlug(l.empresa||'');
+  try{localStorage.setItem('immersphere_crm_slug',slug);localStorage.setItem('immersphere_crm_console_ts',String(Date.now()));}catch(e){}
+  window.open(IMMERSPHERE_BACKEND_URL+'/operator','_blank','noopener,noreferrer');
 }
 function renderProductionBase(l){
   try{
