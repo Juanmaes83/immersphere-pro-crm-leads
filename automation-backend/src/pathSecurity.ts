@@ -53,8 +53,10 @@ export function validateRepoPath(repo, filePath, slug) {
 
   const aurumAllowed = new Set([
     `production-manifests/${safeSlug}.json`,
+    `production-manifests/${safeSlug}-premium-specs.json`,
     `src/generated/${componentBase}ProductionPlan.ts`,
     `src/generated/${componentBase}ProposalPackage.ts`,
+    `src/generated/${componentBase}FourHookSpecs.ts`,
   ]);
 
   if (repo === RUBIK_REPO) return rubikAllowed.has(filePath) ? null : "rubik_path_not_allowed";

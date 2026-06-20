@@ -1,4 +1,5 @@
 import { sanitizeSlug } from "./security.ts";
+import { buildPremiumFourHookSpecs } from "./fourHookSpecs.ts";
 
 export function buildProposalPackage(payload, plan = {}) {
   const lead = payload.lead || {};
@@ -48,7 +49,7 @@ export function buildProposalPackage(payload, plan = {}) {
   const callScript = `Abrir con el dolor detectado: ${painDetected}. Presentar la oportunidad como showroom comercial revisable: ${opportunityDetected}. Cerrar proponiendo revisar los 4 ganchos antes de publicar.`;
   const followUpMessage = `Te dejo preparada la propuesta visual de ${clientName}. Cuando quieras, revisamos juntos que piezas priorizar para la primera version.`;
 
-  return {
+  const basePackage = {
     clientName,
     slug,
     sector,
@@ -77,4 +78,8 @@ export function buildProposalPackage(payload, plan = {}) {
     plannedBranches: plan.branches || {},
     targetPRs: plan.targetPRs || {},
   };
+
+  const premiumSpecs = buildPremiumFourHookSpecs(payload, basePackage, plan);
+
+  return { ...basePackage, premiumSpecs };
 }
