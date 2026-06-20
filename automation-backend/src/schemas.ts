@@ -1,6 +1,6 @@
 export const SERVICE_NAME = "immersphere-production-orchestrator";
-export const SERVICE_VERSION = "0.1.0";
-export const MODE = "dry-run";
+export const SERVICE_VERSION = "0.3.0";
+export const MODE = "operator";
 
 export const CLIENT_FACING_DOMAIN = "aurum-properties-boutique.vercel.app";
 export const INTERNAL_ENGINE_DOMAIN = "rubik-sota-director-de-orquesta.vercel.app";
