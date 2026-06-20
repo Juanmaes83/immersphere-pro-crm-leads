@@ -232,7 +232,11 @@ test("no hay secretos hardcodeados en fuentes del backend", async () => {
   const fs = await import("node:fs/promises");
   const path = await import("node:path");
   const root = path.resolve("src");
-  const files = ["schemas.ts", "security.ts", "logger.ts", "validateProductionPackage.ts", "buildDryRunPlan.ts", "server.ts", "index.ts"];
+  const files = [
+    "schemas.ts", "security.ts", "logger.ts", "validateProductionPackage.ts",
+    "buildDryRunPlan.ts", "server.ts", "index.ts",
+    "fileGenerators.ts", "buildPrAutomationPlan.ts",
+  ];
   const contents = await Promise.all(files.map((file) => fs.readFile(path.join(root, file), "utf8")));
   const joined = contents.join("\n");
   assert.doesNotMatch(joined, /=\s*["']ghp_[A-Za-z0-9_]+["']/);
@@ -372,5 +376,168 @@ test("rechaza media URL con /gesture-lab/ si se propone como cliente-facing", as
     }));
     assert.equal(body.ok, false);
     assert.match(body.validation.errors.join(" "), /media_url_gesture_lab/);
+  });
+});
+
+// ── v0.3.0 operator/create-prs tests ─────────────────────────────────────────
+
+test("operator/create-prs acepta payload valido y devuelve responseBundle", async () => {
+  await withServer(async (baseUrl) => {
+    const { status, body } = await postJson(baseUrl, "/api/operator/create-prs", validPayload());
+    assert.equal(status, 200);
+    assert.equal(body.ok, true);
+    assert.ok(body.jobId, "jobId debe existir");
+    assert.ok(body.responseBundle, "responseBundle debe existir");
+    assert.equal(body.responseBundle.schemaVersion, "operator-response-bundle/1.0");
+    assert.equal(body.responseBundle.source, "railway-operator-create-prs");
+    assert.ok(body.responseBundle.plannedPublicRoutes, "plannedPublicRoutes debe existir");
+    assert.ok(body.responseBundle.plannedPublicRoutes.visualExperience, "visualExperience route debe existir");
+    assert.ok(body.responseBundle.plannedPublicRoutes.landing, "landing route debe existir");
+    assert.ok(body.responseBundle.plannedPublicRoutes.webCompleta, "webCompleta route debe existir");
+    assert.ok(body.responseBundle.plannedPublicRoutes.bannerPack, "bannerPack route debe existir");
+  });
+});
+
+test("operator/create-prs genera archivos AURUM y Rubik", async () => {
+  await withServer(async (baseUrl) => {
+    const { body } = await postJson(baseUrl, "/api/operator/create-prs", validPayload());
+    assert.equal(body.ok, true);
+    const prs = body.pullRequests;
+    assert.ok(Array.isArray(prs), "pullRequests debe ser array");
+    const aurumPr = prs.find((pr) => pr.repo === "aurum");
+    const rubikPr = prs.find((pr) => pr.repo === "rubik");
+    assert.ok(aurumPr, "debe haber PR de aurum");
+    assert.ok(rubikPr, "debe haber PR de rubik");
+    assert.ok(aurumPr.fileCount >= 3, "AURUM debe tener al menos 3 archivos");
+    assert.ok(rubikPr.fileCount >= 5, "Rubik debe tener al menos 5 archivos");
+  });
+});
+
+test("operator/create-prs rechaza payload invalido", async () => {
+  await withServer(async (baseUrl) => {
+    const { status, body } = await postJson(baseUrl, "/api/operator/create-prs", { lead: { slug: "bad/slug" } });
+    assert.equal(status, 400);
+    assert.equal(body.ok, false);
+  });
+});
+
+test("response-bundle endpoint devuelve bundle almacenado", async () => {
+  await withServer(async (baseUrl) => {
+    // First create a job
+    const { body: createBody } = await postJson(baseUrl, "/api/operator/create-prs", validPayload());
+    assert.equal(createBody.ok, true);
+    const jobId = createBody.jobId;
+
+    // Then retrieve it
+    const res = await fetch(`${baseUrl}/api/operator/response-bundle/${jobId}`);
+    const body = await res.json();
+    assert.equal(res.status, 200);
+    assert.equal(body.ok, true);
+    assert.equal(body.jobId, jobId);
+    assert.ok(body.responseBundle, "responseBundle debe existir");
+    assert.equal(body.responseBundle.schemaVersion, "operator-response-bundle/1.0");
+  });
+});
+
+test("response-bundle devuelve 404 para jobId desconocido", async () => {
+  await withServer(async (baseUrl) => {
+    const res = await fetch(`${baseUrl}/api/operator/response-bundle/prod_0_nonexistent`);
+    const body = await res.json();
+    assert.equal(res.status, 404);
+    assert.equal(body.ok, false);
+    assert.equal(body.error, "job_not_found");
+  });
+});
+
+test("production/create-prs acepta payload valido", async () => {
+  await withServer(async (baseUrl) => {
+    const { status, body } = await postJson(baseUrl, "/api/production/create-prs", validPayload());
+    assert.equal(status, 200);
+    assert.equal(body.ok, true);
+    assert.ok(body.jobId, "jobId debe existir");
+    assert.equal(body.responseBundle.schemaVersion, "operator-response-bundle/1.0");
+  });
+});
+
+test("crm/import-response-bundle acepta bundle valido", async () => {
+  await withServer(async (baseUrl) => {
+    // Create a job first
+    const { body: createBody } = await postJson(baseUrl, "/api/operator/create-prs", validPayload());
+    assert.equal(createBody.ok, true);
+
+    // Import the bundle
+    const { status, body } = await postJson(baseUrl, "/api/crm/import-response-bundle", {
+      leadId: "lead_torrevieja_sur",
+      responseBundle: createBody.responseBundle,
+    });
+    assert.equal(status, 200);
+    assert.equal(body.ok, true);
+    assert.equal(body.imported, true);
+    assert.equal(body.leadId, "lead_torrevieja_sur");
+    assert.ok(["publication_pending", "published"].includes(body.status), "status debe ser valido");
+  });
+});
+
+test("crm/import-response-bundle rechaza sin leadId", async () => {
+  await withServer(async (baseUrl) => {
+    const { status, body } = await postJson(baseUrl, "/api/crm/import-response-bundle", {
+      responseBundle: { status: "dry_run_ok" },
+    });
+    assert.equal(status, 400);
+    assert.equal(body.ok, false);
+    assert.equal(body.error, "leadId_required");
+  });
+});
+
+test("crm/import-response-bundle rechaza sin responseBundle", async () => {
+  await withServer(async (baseUrl) => {
+    const { status, body } = await postJson(baseUrl, "/api/crm/import-response-bundle", {
+      leadId: "lead_test",
+    });
+    assert.equal(status, 400);
+    assert.equal(body.ok, false);
+    assert.equal(body.error, "responseBundle_required_object");
+  });
+});
+
+test("operator/create-prs plannedPublicRoutes contiene slug correcto", async () => {
+  await withServer(async (baseUrl) => {
+    const { body } = await postJson(baseUrl, "/api/operator/create-prs", validPayload());
+    const routes = body.responseBundle.plannedPublicRoutes;
+    assert.match(routes.landing, /torrevieja-sur/);
+    assert.match(routes.webCompleta, /torrevieja-sur/);
+    assert.match(routes.visualExperience, /torrevieja-sur/);
+    assert.match(routes.bannerPack, /torrevieja-sur/);
+    assert.match(routes.bannerVertical, /torrevieja-sur/);
+    assert.match(routes.bannerHorizontal, /torrevieja-sur/);
+  });
+});
+
+test("dry-run sigue funcionando en v0.3.0 (regresion)", async () => {
+  await withServer(async (baseUrl) => {
+    const { status, body } = await postJson(baseUrl, "/api/production/dry-run", validPayload());
+    assert.equal(status, 200);
+    assert.equal(body.ok, true);
+    assert.equal(body.leadSlug, "torrevieja-sur");
+    assert.equal(body.plannedRepos.crm.needed, false);
+  });
+});
+
+test("operator/create-prs assetMode es mixed cuando faltan algunos assets", async () => {
+  await withServer(async (baseUrl) => {
+    const { body } = await postJson(baseUrl, "/api/operator/create-prs", validPayload({
+      patch: {
+        mediaAssets: {
+          logo: { url: null, source: "placeholder", status: "missing" },
+          heroImage: { url: null, status: "missing" },
+        },
+      },
+    }));
+    assert.equal(body.ok, true);
+    const assetMode = body.responseBundle.assetMode;
+    assert.ok(
+      ["fallback_internal_library", "mixed"].includes(assetMode),
+      "assetMode debe ser fallback o mixed cuando faltan assets",
+    );
   });
 });
