@@ -109,7 +109,7 @@ export function buildAurumFiles(payload, proposalPackage, prLinks = {}) {
     status: "review_required",
     note: "v0.2 does not touch App.tsx or create public routes yet.",
   };
-  return [
+  const files = [
     {
       repo: AURUM_REPO,
       path: `production-manifests/${slug}.json`,
@@ -129,6 +129,25 @@ export function buildAurumFiles(payload, proposalPackage, prLinks = {}) {
       message: `Add ${proposalPackage.clientName} proposal package`,
     },
   ];
+
+  if (proposalPackage.premiumSpecs) {
+    files.push(
+      {
+        repo: AURUM_REPO,
+        path: `src/generated/${componentBase}FourHookSpecs.ts`,
+        content: `export const fourHookSpecs = ${tsString(proposalPackage.premiumSpecs)} as const;\n`,
+        message: `Add ${proposalPackage.clientName} premium four hook specs`,
+      },
+      {
+        repo: AURUM_REPO,
+        path: `production-manifests/${slug}-premium-specs.json`,
+        content: json(proposalPackage.premiumSpecs),
+        message: `Add ${proposalPackage.clientName} premium specs manifest`,
+      },
+    );
+  }
+
+  return files;
 }
 
 function buildRubikHtml({ clientName, slug, claim, cta, format }) {
