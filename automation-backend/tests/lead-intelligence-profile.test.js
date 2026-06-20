@@ -340,3 +340,135 @@ test('outreach messages include real AURUM URLs for golden lead', () => {
   assert.ok(pkg.outreachMessages.whatsappMessage.includes('aurum-properties-boutique.vercel.app/costa-invest'));
   assert.ok(pkg.outreachMessages.emailBody.includes('aurum-properties-boutique.vercel.app/costa-invest'));
 });
+
+// ── FASE 5.1 — reviewable four hooks contract ─────────────────────────────────
+
+test('new v5.1 pure functions are exposed in CRM scope', () => {
+  for (const fn of ['classifyFourHookRoutes', 'buildReviewableFourHooksFromProductionPackage', 'isFourHookRoutePublished']) {
+    assert.equal(typeof sandbox[fn], 'function', `${fn} should be defined`);
+  }
+});
+
+test('Embassy Levante generates reviewableFourHooks.length = 4', () => {
+  const lead = { id: 22, empresa: 'Embassy Levante', sector: 'Inmobiliaria', zona: 'Torrevieja', web: 'https://www.embassylevante.com/', telefono: '+34 691 502 743', whatsapp: '+34 691 502 743', email: 'luisiglesias@embassylevante.com' };
+  const pkg = sandbox.buildProductionPackageFromLead(lead);
+  assert.ok(Array.isArray(pkg.reviewableFourHooks), 'reviewableFourHooks must be array');
+  assert.equal(pkg.reviewableFourHooks.length, 4, 'must have 4 reviewable hooks');
+});
+
+test('Embassy Levante generatedReviewCount = 4', () => {
+  const lead = { id: 22, empresa: 'Embassy Levante', sector: 'Inmobiliaria', zona: 'Torrevieja', web: 'https://www.embassylevante.com/', telefono: '+34 691 502 743', whatsapp: '+34 691 502 743', email: 'luisiglesias@embassylevante.com' };
+  const pkg = sandbox.buildProductionPackageFromLead(lead);
+  assert.equal(pkg.generatedReviewCount, 4);
+});
+
+test('Embassy Levante publishedOutputCount = 0 (no registered public routes)', () => {
+  const lead = { id: 22, empresa: 'Embassy Levante', sector: 'Inmobiliaria', zona: 'Torrevieja', web: 'https://www.embassylevante.com/', telefono: '+34 691 502 743', whatsapp: '+34 691 502 743', email: 'luisiglesias@embassylevante.com' };
+  const pkg = sandbox.buildProductionPackageFromLead(lead);
+  assert.equal(pkg.publishedOutputCount, 0, 'no AURUM/Rubik pages registered for embassy-levante yet');
+});
+
+test('Embassy Levante publicationStatus = ready_for_review_pending_publication', () => {
+  const lead = { id: 22, empresa: 'Embassy Levante', sector: 'Inmobiliaria', zona: 'Torrevieja', web: 'https://www.embassylevante.com/', telefono: '+34 691 502 743', whatsapp: '+34 691 502 743', email: 'luisiglesias@embassylevante.com' };
+  const pkg = sandbox.buildProductionPackageFromLead(lead);
+  assert.equal(pkg.publicationStatus, 'ready_for_review_pending_publication');
+});
+
+test('Embassy Levante publicRoutes are all empty, candidateRoutes have projected URLs', () => {
+  const lead = { id: 22, empresa: 'Embassy Levante', sector: 'Inmobiliaria', zona: 'Torrevieja', web: 'https://www.embassylevante.com/', telefono: '+34 691 502 743', whatsapp: '+34 691 502 743', email: 'luisiglesias@embassylevante.com' };
+  const pkg = sandbox.buildProductionPackageFromLead(lead);
+  // publicRoutes: all empty (not registered)
+  const pubKeys = ['visualExperience', 'landing', 'webCompleta', 'bannerPack', 'bannerVertical', 'bannerHorizontal'];
+  for (const k of pubKeys) {
+    assert.equal(pkg.publicRoutes[k], '', `publicRoutes.${k} must be empty for unregistered lead`);
+  }
+  // candidateRoutes: projected AURUM URLs present (not empty)
+  assert.ok(pkg.candidateRoutes.landing.includes('embassy-levante'), 'candidateRoutes.landing must contain projected URL');
+  assert.ok(pkg.candidateRoutes.visualExperience.includes('embassy-levante'), 'candidateRoutes.visualExperience must contain projected URL');
+});
+
+test('Embassy Levante reviewableFourHooks: each hook published=false, status=publication_pending', () => {
+  const lead = { id: 22, empresa: 'Embassy Levante', sector: 'Inmobiliaria', zona: 'Torrevieja', web: 'https://www.embassylevante.com/', telefono: '+34 691 502 743', whatsapp: '+34 691 502 743', email: 'luisiglesias@embassylevante.com' };
+  const pkg = sandbox.buildProductionPackageFromLead(lead);
+  for (const hook of pkg.reviewableFourHooks) {
+    assert.equal(hook.generated, true, `hook ${hook.hookId} must be generated`);
+    assert.equal(hook.published, false, `hook ${hook.hookId} must not be published`);
+    assert.equal(hook.publicUrl, '', `hook ${hook.hookId} publicUrl must be empty`);
+    assert.ok(hook.candidateUrl.length > 0 || hook.hookId === 'banner-pack', `hook ${hook.hookId} must have a candidateUrl or be banner-pack`);
+    assert.ok(['publication_pending', 'not_registered'].includes(hook.publicationStatus), `hook ${hook.hookId} status must be pending/not_registered`);
+  }
+});
+
+test('Embassy Levante WhatsApp message does NOT include projected AURUM paths', () => {
+  const lead = { id: 22, empresa: 'Embassy Levante', sector: 'Inmobiliaria', zona: 'Torrevieja', web: 'https://www.embassylevante.com/', telefono: '+34 691 502 743', whatsapp: '+34 691 502 743', email: 'luisiglesias@embassylevante.com' };
+  const pkg = sandbox.buildProductionPackageFromLead(lead);
+  const wa = pkg.outreachMessages.whatsappMessage;
+  assert.ok(!wa.includes('/embassy-levante'), 'WhatsApp must not include projected URL path /embassy-levante');
+  assert.ok(!wa.includes('aurum-properties-boutique.vercel.app/embassy'), 'WhatsApp must not include unregistered AURUM URL');
+});
+
+test('Embassy Levante email body does NOT include projected AURUM paths', () => {
+  const lead = { id: 22, empresa: 'Embassy Levante', sector: 'Inmobiliaria', zona: 'Torrevieja', web: 'https://www.embassylevante.com/', telefono: '+34 691 502 743', whatsapp: '+34 691 502 743', email: 'luisiglesias@embassylevante.com' };
+  const pkg = sandbox.buildProductionPackageFromLead(lead);
+  const body = pkg.outreachMessages.emailBody;
+  assert.ok(!body.includes('/embassy-levante'), 'Email body must not include projected URL path');
+});
+
+test('Generic new lead without known routes generates 4 hooks and 0 published', () => {
+  const lead = makeLead({ id: 999, empresa: 'Nuevo Lead Sin Publicar', zona: 'Valencia' });
+  const pkg = sandbox.buildProductionPackageFromLead(lead);
+  assert.equal(pkg.generatedReviewCount, 4);
+  assert.equal(pkg.publishedOutputCount, 0);
+  assert.equal(pkg.publicationStatus, 'ready_for_review_pending_publication');
+  assert.equal(pkg.reviewableFourHooks.length, 4);
+  const pubKeys = ['visualExperience', 'landing', 'webCompleta', 'bannerPack'];
+  for (const k of pubKeys) {
+    assert.equal(pkg.publicRoutes[k], '', `publicRoutes.${k} must be empty for unregistered lead`);
+  }
+});
+
+test('Casas y Mar → partially_published (3 hooks public, banner pack not registered)', () => {
+  const lead = makeLead({ id: 1, empresa: 'Casas y Mar', zona: 'Costa Blanca' });
+  const pkg = sandbox.buildProductionPackageFromLead(lead);
+  assert.equal(pkg.generatedReviewCount, 4);
+  assert.equal(pkg.publishedOutputCount, 3, 'casas-y-mar: EV + landing + webCompleta are registered; bannerPack is not');
+  assert.equal(pkg.publicationStatus, 'partially_published');
+  assert.ok(pkg.publicRoutes.visualExperience.includes('casas-y-mar'), 'EV should be public');
+  assert.equal(pkg.publicRoutes.bannerPack, '', 'bannerPack not registered for casas-y-mar');
+});
+
+test('Costa Invest → fully published (4/4 hooks)', () => {
+  const lead = makeLead({ id: 2, empresa: 'Costa Invest', zona: 'Alicante' });
+  const pkg = sandbox.buildProductionPackageFromLead(lead);
+  assert.equal(pkg.generatedReviewCount, 4);
+  assert.equal(pkg.publishedOutputCount, 4);
+  assert.equal(pkg.publicationStatus, 'published');
+  assert.ok(pkg.publicRoutes.visualExperience.includes('costa-invest'));
+  assert.ok(pkg.publicRoutes.bannerPack.includes('costa-invest'));
+  assert.equal(pkg.publicationWarnings.length, 0, 'no publication warnings for fully registered lead');
+});
+
+test('Sandhouse Inmobiliaria → fully published (4/4 hooks)', () => {
+  const lead = makeLead({ id: 3, empresa: 'Sandhouse Inmobiliaria', zona: 'Torrevieja' });
+  const pkg = sandbox.buildProductionPackageFromLead(lead);
+  assert.equal(pkg.generatedReviewCount, 4);
+  assert.equal(pkg.publishedOutputCount, 4);
+  assert.equal(pkg.publicationStatus, 'published');
+  assert.ok(pkg.publicRoutes.landing.includes('sandhouse-inmobiliaria'));
+  assert.equal(pkg.publicationWarnings.length, 0);
+});
+
+test('validateProductionPackageLocal: no errors for package with 0 published routes', () => {
+  const lead = makeLead({ id: 999, empresa: 'Lead Sin Publicar', zona: 'Murcia' });
+  const pkg = sandbox.buildProductionPackageFromLead(lead);
+  const v = sandbox.validateProductionPackageLocal(pkg);
+  assert.equal(v.errors.length, 0, 'publishedOutputCount=0 must not be an error, only a warning');
+  assert.ok(v.warnings.some(w => w.includes('zero_public_outputs')), 'must warn about zero public outputs');
+});
+
+test('validateProductionPackageLocal: accepts reviewableFourHooks array length=4', () => {
+  const lead = makeLead({ id: 1, empresa: 'Casas y Mar' });
+  const pkg = sandbox.buildProductionPackageFromLead(lead);
+  const v = sandbox.validateProductionPackageLocal(pkg);
+  assert.ok(!v.errors.some(e => e.includes('reviewableFourHooks')), 'no errors for valid reviewableFourHooks');
+});
