@@ -574,6 +574,41 @@ export function createRequestHandler() {
         return;
       }
 
+      if (url.pathname === "/api/operator/proposal-package") {
+        try {
+          const payload = await readJsonBody(req);
+          const validation = validateProductionPackage(payload);
+          if (!validation.passed) {
+            sendJson(res, 400, {
+              ok: false,
+              mode: "operator-proposal-package",
+              leadSlug: payload?.lead?.slug || "missing",
+              validation,
+              nextStep: "fix_validation_errors",
+            }, headers);
+            return;
+          }
+          const plan = buildPrAutomationPlan(payload, validation);
+          const proposalPackage = plan.proposalPackage || buildProposalPackage(payload, {
+            branches: plan.branches || {},
+            targetPRs: plan.targetPRs || {},
+          });
+          logInfo("operator proposal-package requested", { leadSlug: payload?.lead?.slug || "missing", ok: plan.ok });
+          sendJson(res, plan.ok ? 200 : 400, {
+            ok: plan.ok,
+            mode: "operator-proposal-package",
+            leadSlug: plan.leadSlug || payload?.lead?.slug || "missing",
+            validation: plan.validation || validation,
+            proposalPackage,
+            nextStep: plan.ok ? "run_pr_plan" : "review_validation_or_path_errors",
+          }, headers);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "request_failed";
+          sendJson(res, 400, { ok: false, mode: "operator-proposal-package", validation: { passed: false, errors: [message], warnings: [] } }, headers);
+        }
+        return;
+      }
+
       if (url.pathname === "/api/operator/pr-plan") {
         try {
           const payload = await readJsonBody(req);
