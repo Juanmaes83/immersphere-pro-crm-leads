@@ -362,56 +362,53 @@ test('Embassy Levante generatedReviewCount = 4', () => {
   assert.equal(pkg.generatedReviewCount, 4);
 });
 
-test('Embassy Levante publishedOutputCount = 0 (no registered public routes)', () => {
+test('Embassy Levante publishedOutputCount = 4 (all public routes registered)', () => {
   const lead = { id: 22, empresa: 'Embassy Levante', sector: 'Inmobiliaria', zona: 'Torrevieja', web: 'https://www.embassylevante.com/', telefono: '+34 691 502 743', whatsapp: '+34 691 502 743', email: 'luisiglesias@embassylevante.com' };
   const pkg = sandbox.buildProductionPackageFromLead(lead);
-  assert.equal(pkg.publishedOutputCount, 0, 'no AURUM/Rubik pages registered for embassy-levante yet');
+  assert.equal(pkg.publishedOutputCount, 4, 'Embassy Levante is fully registered with 4 public routes');
 });
 
-test('Embassy Levante publicationStatus = ready_for_review_pending_publication', () => {
+test('Embassy Levante publicationStatus = published (routes registered)', () => {
   const lead = { id: 22, empresa: 'Embassy Levante', sector: 'Inmobiliaria', zona: 'Torrevieja', web: 'https://www.embassylevante.com/', telefono: '+34 691 502 743', whatsapp: '+34 691 502 743', email: 'luisiglesias@embassylevante.com' };
   const pkg = sandbox.buildProductionPackageFromLead(lead);
-  assert.equal(pkg.publicationStatus, 'ready_for_review_pending_publication');
+  assert.equal(pkg.publicationStatus, 'published');
 });
 
-test('Embassy Levante publicRoutes are all empty, candidateRoutes have projected URLs', () => {
+test('Embassy Levante publicRoutes all populated with real AURUM URLs', () => {
   const lead = { id: 22, empresa: 'Embassy Levante', sector: 'Inmobiliaria', zona: 'Torrevieja', web: 'https://www.embassylevante.com/', telefono: '+34 691 502 743', whatsapp: '+34 691 502 743', email: 'luisiglesias@embassylevante.com' };
   const pkg = sandbox.buildProductionPackageFromLead(lead);
-  // publicRoutes: all empty (not registered)
+  // publicRoutes: all populated (registered in FOUR_HOOKS_KNOWN_ROUTES_V5)
   const pubKeys = ['visualExperience', 'landing', 'webCompleta', 'bannerPack', 'bannerVertical', 'bannerHorizontal'];
   for (const k of pubKeys) {
-    assert.equal(pkg.publicRoutes[k], '', `publicRoutes.${k} must be empty for unregistered lead`);
+    assert.ok(pkg.publicRoutes[k] && pkg.publicRoutes[k].includes('embassy-levante'), `publicRoutes.${k} must contain embassy-levante URL`);
   }
-  // candidateRoutes: projected AURUM URLs present (not empty)
-  assert.ok(pkg.candidateRoutes.landing.includes('embassy-levante'), 'candidateRoutes.landing must contain projected URL');
-  assert.ok(pkg.candidateRoutes.visualExperience.includes('embassy-levante'), 'candidateRoutes.visualExperience must contain projected URL');
+  assert.ok(pkg.publicRoutes.landing.includes('aurum-properties-boutique.vercel.app/embassy-levante'), 'landing route must be AURUM');
+  assert.ok(pkg.publicRoutes.visualExperience.includes('embassy-levante'), 'visualExperience route populated');
 });
 
-test('Embassy Levante reviewableFourHooks: each hook published=false, status=publication_pending', () => {
+test('Embassy Levante reviewableFourHooks: each hook published=true, status=published', () => {
   const lead = { id: 22, empresa: 'Embassy Levante', sector: 'Inmobiliaria', zona: 'Torrevieja', web: 'https://www.embassylevante.com/', telefono: '+34 691 502 743', whatsapp: '+34 691 502 743', email: 'luisiglesias@embassylevante.com' };
   const pkg = sandbox.buildProductionPackageFromLead(lead);
   for (const hook of pkg.reviewableFourHooks) {
     assert.equal(hook.generated, true, `hook ${hook.hookId} must be generated`);
-    assert.equal(hook.published, false, `hook ${hook.hookId} must not be published`);
-    assert.equal(hook.publicUrl, '', `hook ${hook.hookId} publicUrl must be empty`);
-    assert.ok(hook.candidateUrl.length > 0 || hook.hookId === 'banner-pack', `hook ${hook.hookId} must have a candidateUrl or be banner-pack`);
-    assert.ok(['publication_pending', 'not_registered'].includes(hook.publicationStatus), `hook ${hook.hookId} status must be pending/not_registered`);
+    assert.equal(hook.published, true, `hook ${hook.hookId} must be published`);
+    assert.ok(hook.publicUrl && hook.publicUrl.length > 0, `hook ${hook.hookId} publicUrl must be non-empty`);
+    assert.equal(hook.publicationStatus, 'published', `hook ${hook.hookId} status must be published`);
   }
 });
 
-test('Embassy Levante WhatsApp message does NOT include projected AURUM paths', () => {
+test('Embassy Levante WhatsApp message includes real AURUM paths (now registered)', () => {
   const lead = { id: 22, empresa: 'Embassy Levante', sector: 'Inmobiliaria', zona: 'Torrevieja', web: 'https://www.embassylevante.com/', telefono: '+34 691 502 743', whatsapp: '+34 691 502 743', email: 'luisiglesias@embassylevante.com' };
   const pkg = sandbox.buildProductionPackageFromLead(lead);
   const wa = pkg.outreachMessages.whatsappMessage;
-  assert.ok(!wa.includes('/embassy-levante'), 'WhatsApp must not include projected URL path /embassy-levante');
-  assert.ok(!wa.includes('aurum-properties-boutique.vercel.app/embassy'), 'WhatsApp must not include unregistered AURUM URL');
+  assert.ok(wa.includes('embassy-levante'), 'WhatsApp must include real embassy-levante AURUM URL');
 });
 
-test('Embassy Levante email body does NOT include projected AURUM paths', () => {
+test('Embassy Levante email body includes real AURUM paths (now registered)', () => {
   const lead = { id: 22, empresa: 'Embassy Levante', sector: 'Inmobiliaria', zona: 'Torrevieja', web: 'https://www.embassylevante.com/', telefono: '+34 691 502 743', whatsapp: '+34 691 502 743', email: 'luisiglesias@embassylevante.com' };
   const pkg = sandbox.buildProductionPackageFromLead(lead);
   const body = pkg.outreachMessages.emailBody;
-  assert.ok(!body.includes('/embassy-levante'), 'Email body must not include projected URL path');
+  assert.ok(body.includes('embassy-levante'), 'Email body must include real embassy-levante AURUM URL');
 });
 
 test('Generic new lead without known routes generates 4 hooks and 0 published', () => {
