@@ -3586,7 +3586,7 @@ function renderLeadAssetIntakeBlock(l){
   const stateLabel={sin_assets:'Sin assets',pendiente:'Assets pendientes de validar',aprobado:'Assets aprobados'}[s.state]||'Sin assets';
   const stateClass={sin_assets:'est-pendiente',pendiente:'est-visual',aprobado:'est-cerrado'}[s.state]||'est-pendiente';
   const yn=v=>v?'<span style="color:var(--green,#10b981)">sí</span>':'<span style="color:var(--text3)">no</span>';
-  const fld=(label,id,val,type)=>'<div class="edit-field"><label class="edit-label">'+label+'</label><input class="edit-input" id="'+id+'" type="'+(type||'text')+'" value="'+safeHtml(val||'')+'" placeholder="https://..."></div>';
+  const fld=(label,id,val,type,placeholder)=>'<div class="edit-field"><label class="edit-label">'+label+'</label><input class="edit-input" id="'+id+'" type="'+(type||'text')+'" value="'+safeHtml(val||'')+'" placeholder="'+safeHtml(placeholder||'https://...')+'"></div>';
   const txt=(label,id,val,hint)=>'<div class="edit-field full"><label class="edit-label">'+label+(hint?' <span style="text-transform:none;font-weight:400">— '+hint+'</span>':'')+'</label><textarea class="edit-textarea" id="'+id+'">'+safeHtml(val||'')+'</textarea></div>';
   return '<div class="modal-section" data-section="lead-assets" style="border-top:2px solid rgba(196,169,106,0.3)">'
     +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;flex-wrap:wrap;gap:6px">'
@@ -3603,7 +3603,7 @@ function renderLeadAssetIntakeBlock(l){
     +txt('Imágenes de propiedad (hasta 8)','lai-images-'+l.id,m.propertyImages.join('\n'),'una URL por línea o separadas por comas')
     +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:8px 0">'
     +fld('Video URL','lai-video-'+l.id,m.videoUrl,'url')
-    +fld('Colores de marca (HEX)','lai-colors-'+l.id,m.brandColors.join(', '))
+    +fld('Colores de marca (HEX)','lai-colors-'+l.id,m.brandColors.join(', '),'text','#111111, #d4af37')
     +'</div>'
     +txt('Notas visuales','lai-notes-'+l.id,m.assetNotes)
     +'<div style="display:flex;align-items:center;gap:8px;margin:8px 0">'
