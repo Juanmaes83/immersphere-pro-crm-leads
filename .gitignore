@@ -11,3 +11,4 @@ tools/google-maps-scraper/outputs/*
 !tools/google-maps-scraper/outputs/.gitkeep
 sandhouse-payload.json
 sandhouse-payload-dryrun.json
+sandhouse-payload-utf8.json
