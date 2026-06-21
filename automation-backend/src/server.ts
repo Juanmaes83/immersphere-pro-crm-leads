@@ -4,7 +4,12 @@ import { URL } from "node:url";
 import { buildPrAutomationPlan } from "./buildPrAutomationPlan.ts";
 import { buildAurumFiles } from "./fileGenerators.ts";
 import { buildDryRunPlan } from "./buildDryRunPlan.ts";
-import { extractRouteComponentMap } from "./existingOutputReview.ts";
+import {
+  extractExistingDataFileRef,
+  resolveAurumRouteComponents,
+  scanForbiddenGeneratedPatterns,
+  wouldIntroduceDuplicateRoutes,
+} from "./existingOutputReview.ts";
 import {
   allowedRepos,
   branchExists,
@@ -24,7 +29,7 @@ import { reviewExistingOutputsAgainstProductionPackage } from "./existingOutputR
 import { buildProposalPackage } from "./proposalPackage.ts";
 import { sanitizeProductionPackageForPrAutomation } from "./sanitizeProductionPackage.ts";
 import { validateProductionPackage } from "./validateProductionPackage.ts";
-import { RUBIK_REPO } from "./pathSecurity.ts";
+import { AURUM_APP_TSX, AURUM_REPO, RUBIK_REPO } from "./pathSecurity.ts";
 import {
   buildClearCookieHeader,
   buildSetCookieHeader,
@@ -481,6 +486,8 @@ export function createRequestHandler() {
           leadSlug: plan.leadSlug,
           writeAttempted: result.writeAttempted,
           status: result.status,
+          blocked: result.blocked || false,
+          blockers: result.blockers || [],
           existingOutputReview: result.existingOutputReview,
           pullRequests: result.pullRequests,
           responseBundle: result.responseBundle,
@@ -789,6 +796,8 @@ export function createRequestHandler() {
             leadSlug: plan.leadSlug,
             writeAttempted: result.writeAttempted,
             status: result.status,
+            blocked: result.blocked || false,
+            blockers: result.blockers || [],
             existingOutputReview: result.existingOutputReview,
             pullRequests: result.pullRequests,
             responseBundle: result.responseBundle,
@@ -893,42 +902,135 @@ function buildResponseBundle(plan, pullRequestsByRepo: Record<string, { url: str
   };
 }
 
+// Branches are always cut from the *current* main SHA, fetched fresh from
+// GitHub on every call — never from a cached/previous branch's tip. If the
+// SHA can't be confirmed we refuse to create a branch at all rather than
+// silently falling back to some other ref.
 async function ensureUpdateBranch(repo: string, desiredBranch: string, baseBranch = "main") {
+  const fromSha = await getBranchHeadSha(repo, baseBranch);
+  if (!fromSha) {
+    throw new Error(`main_sha_unconfirmed:${repo}`);
+  }
   if (await branchExists(repo, desiredBranch)) {
     const safeBranch = `${desiredBranch}-refresh-${Date.now()}`;
-    const fromSha = await getBranchHeadSha(repo, baseBranch);
     await createBranch(repo, safeBranch, fromSha);
     return { branch: safeBranch, reused: false, refreshed: true };
   }
-  const fromSha = await getBranchHeadSha(repo, baseBranch);
   await createBranch(repo, desiredBranch, fromSha);
   return { branch: desiredBranch, reused: false, refreshed: false };
+}
+
+function blockedResult(blockers: string[], idempotencyNotes: string[], existingOutputReview = null) {
+  return {
+    ok: false,
+    blocked: true,
+    blockers,
+    pullRequests: {},
+    idempotencyNotes,
+    existingOutputReview,
+    status: "blocked",
+    writeAttempted: false,
+    nextStep: "resolve_blocker",
+  };
 }
 
 async function createProductionPullRequests(payload, plan, preflight = {}) {
   const createdAt = new Date().toISOString();
   const idempotencyNotes: string[] = [];
 
+  const aurumMainSha = await getBranchHeadSha(AURUM_REPO, "main").catch(() => null);
+  if (!aurumMainSha) {
+    return blockedResult(["aurum_main_sha_unconfirmed"], idempotencyNotes);
+  }
+
   const existingOutputs = await detectExistingOutputsForPlan(plan, "main");
   const existingOutputReview = await reviewExistingOutputsAgainstProductionPackage(payload, plan, existingOutputs, "main");
 
   const hasExistingOutputs = existingOutputs.overall === "all_exist" || existingOutputs.overall === "partial";
   if (hasExistingOutputs) {
-    let existingAppTsxContent = "";
-    try {
-      const appInfo = await getFileContent(AURUM_REPO, "src/App.tsx", "main");
-      if (appInfo.exists) existingAppTsxContent = appInfo.content || "";
-    } catch {
-      existingAppTsxContent = "";
+    const appInfo = await getFileContent(AURUM_REPO, "src/App.tsx", "main");
+    const existingAppTsxContent = appInfo.exists ? appInfo.content || "" : "";
+
+    const routeResolution = resolveAurumRouteComponents(existingAppTsxContent, plan.leadSlug);
+    if (routeResolution.ambiguousTypes.length > 0) {
+      return blockedResult(
+        routeResolution.ambiguousTypes.map((t) => `aurum_route_component_ambiguous:${t}`),
+        idempotencyNotes,
+        existingOutputReview.overall,
+      );
     }
-    const existingRouteComponentMap = extractRouteComponentMap(existingAppTsxContent, plan.leadSlug);
+
+    // If the reused components already point at a data file (e.g. sandhouse.ts),
+    // reuse that same file/export instead of creating a parallel one keyed off
+    // the incoming slug. Two reused components disagreeing on their data file
+    // is treated as unsafe to auto-resolve.
+    const reusedComponentNames = [...new Set(Object.values(routeResolution.componentByCanonicalRoute))];
+    const dataFileRefs = new Map<string, { path: string; exportName: string }>();
+    for (const componentName of reusedComponentNames) {
+      const componentInfo = await getFileContent(AURUM_REPO, `src/${componentName}.tsx`, "main");
+      if (!componentInfo.exists) continue;
+      const ref = extractExistingDataFileRef(componentInfo.content || "");
+      if (ref) dataFileRefs.set(`${ref.path}::${ref.exportName}`, ref);
+    }
+    if (dataFileRefs.size > 1) {
+      return blockedResult(["aurum_data_file_ambiguous"], idempotencyNotes, existingOutputReview.overall);
+    }
+    const existingDataFile = dataFileRefs.size === 1 ? [...dataFileRefs.values()][0] : undefined;
+
     const reconciledAurum = buildAurumFiles(payload, plan.proposalPackage, {
-      existingRouteComponentMap,
+      existingRouteComponentMap: routeResolution.componentByCanonicalRoute,
       existingAppTsxContent,
+      existingDataFile,
     });
+
+    // Every critical existing output (App.tsx, manifest, the reused Sandhouse*
+    // components, the reused data file) must actually be part of this write
+    // set in stale/update mode — there is no such thing as a legitimate
+    // "skip" for these in that mode. If buildAurumFiles ever fails to cover
+    // one (e.g. a future refactor drops it), block instead of silently
+    // leaving stale content in place.
+    const criticalAurumPaths = [
+      AURUM_APP_TSX,
+      `production-manifests/${plan.leadSlug}.json`,
+      ...reusedComponentNames.map((name) => `src/${name}.tsx`),
+      ...(existingDataFile ? [existingDataFile.path] : []),
+    ];
+    const reconciledAurumPaths = new Set(reconciledAurum.files.map((f) => f.path));
+    const unupdatedCriticalAurumFiles = criticalAurumPaths.filter((p) => !reconciledAurumPaths.has(p));
+    if (unupdatedCriticalAurumFiles.length > 0) {
+      return blockedResult(
+        unupdatedCriticalAurumFiles.map((p) => `aurum_critical_file_not_updated:${p}`),
+        idempotencyNotes,
+        existingOutputReview.overall,
+      );
+    }
+
+    const forbiddenPatternViolations = scanForbiddenGeneratedPatterns(reconciledAurum.files);
+    if (forbiddenPatternViolations.length > 0) {
+      return blockedResult(forbiddenPatternViolations, idempotencyNotes, existingOutputReview.overall);
+    }
+
+    const appTsxPatchFile = reconciledAurum.files.find((f) => f.path === AURUM_APP_TSX && f.isPatchTarget);
+    if (appTsxPatchFile) {
+      const patch = JSON.parse(String(appTsxPatchFile.content));
+      const newPaths = (patch.routes || [])
+        .map((r: string) => r.match(/path="([^"]+)"/)?.[1])
+        .filter((p): p is string => Boolean(p));
+      const duplicateRoutes = wouldIntroduceDuplicateRoutes(existingAppTsxContent, newPaths);
+      if (duplicateRoutes.length > 0) {
+        return blockedResult(
+          duplicateRoutes.map((p) => `aurum_duplicate_routes_detected:${p}`),
+          idempotencyNotes,
+          existingOutputReview.overall,
+        );
+      }
+    }
+
     const rubikFiles = plan.generatedFiles.filter((f) => f.repo === RUBIK_REPO);
     plan.generatedFiles = [...rubikFiles, ...reconciledAurum.files];
     idempotencyNotes.push("aurum_files_reconciled_with_existing_app_tsx");
+    idempotencyNotes.push("aurum_refresh_based_on_main");
+    if (routeResolution.reusedTypes.length > 0) idempotencyNotes.push("aurum_reused_existing_components");
   }
 
   if (existingOutputs.overall === "all_exist" && existingOutputReview.overall.passed) {
@@ -975,8 +1077,26 @@ async function createProductionPullRequests(payload, plan, preflight = {}) {
       continue;
     }
 
-    for (const skipped of existing.skippedFiles) {
-      idempotencyNotes.push(`skipped_existing_file:${repo}:${skipped}`);
+    if (hasExistingOutputs) {
+      // In stale/update mode `files` is the full unfiltered set (nothing is
+      // dropped — see the ternary above), so every file GitHub already has
+      // is about to be overwritten with fresh content. Labeling that
+      // "skipped" is actively misleading. Instead, verify it really is in
+      // the write set and block if a critical file would otherwise be left
+      // stale.
+      const writePaths = new Set(files.map((f) => String(f.path)));
+      const unupdatedCriticalFiles = existing.skippedFiles.filter((p) => !writePaths.has(p));
+      if (unupdatedCriticalFiles.length > 0) {
+        return blockedResult(
+          unupdatedCriticalFiles.map((p) => `${repoKey}_critical_file_not_updated:${p}`),
+          idempotencyNotes,
+          existingOutputReview.overall,
+        );
+      }
+    } else {
+      for (const skipped of existing.skippedFiles) {
+        idempotencyNotes.push(`skipped_existing_file:${repo}:${skipped}`);
+      }
     }
 
     const branchInfo = await ensureUpdateBranch(repo, target.headBranch, "main");

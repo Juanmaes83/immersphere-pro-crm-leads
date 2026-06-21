@@ -6,7 +6,7 @@
   "description": "Dry-run production orchestrator foundation for Immersphere CRM.",
   "scripts": {
     "dev": "node src/server.ts",
-    "build": "node --check src/schemas.ts && node --check src/security.ts && node --check src/logger.ts && node --check src/validateProductionPackage.ts && node --check src/buildDryRunPlan.ts && node --check src/pathSecurity.ts && node --check src/fourHookSpecs.ts && node --check src/proposalPackage.ts && node --check src/fileGenerators.ts && node --check src/buildPrAutomationPlan.ts && node --check src/githubClient.ts && node --check src/operatorSession.ts && node --check src/operatorConsoleHtml.ts && node --check src/server.ts && node --check src/index.ts",
+    "build": "node --check src/schemas.ts && node --check src/security.ts && node --check src/logger.ts && node --check src/validateProductionPackage.ts && node --check src/buildDryRunPlan.ts && node --check src/pathSecurity.ts && node --check src/fourHookSpecs.ts && node --check src/proposalPackage.ts && node --check src/fileGenerators.ts && node --check src/buildPrAutomationPlan.ts && node --check src/githubClient.ts && node --check src/outputIdempotency.ts && node --check src/existingOutputReview.ts && node --check src/operatorSession.ts && node --check src/operatorConsoleHtml.ts && node --check src/server.ts && node --check src/index.ts",
     "start": "node src/index.ts",
     "test": "node --test tests/*.test.js"
   },

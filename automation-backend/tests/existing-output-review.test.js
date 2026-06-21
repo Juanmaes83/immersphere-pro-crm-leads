@@ -3,7 +3,13 @@ import test from "node:test";
 import { buildAurumFiles, buildRubikFiles } from "../src/fileGenerators.ts";
 import { startServer } from "../src/server.ts";
 import { SERVICE_VERSION } from "../src/schemas.ts";
-import { extractRouteComponentMap } from "../src/existingOutputReview.ts";
+import {
+  extractExistingDataFileRef,
+  extractRouteComponentMap,
+  resolveAurumRouteComponents,
+  scanForbiddenGeneratedPatterns,
+  wouldIntroduceDuplicateRoutes,
+} from "../src/existingOutputReview.ts";
 
 function validPayload(overrides = {}) {
   const slug = overrides.slug || "torrevieja-sur";
@@ -557,4 +563,122 @@ export function App() {
   assert.ok(newComponent, "crea componente nuevo para ruta faltante");
   const reusedLanding = aurumFiles.files.find((f) => f.path === "src/SandhouseLanding.tsx");
   assert.ok(reusedLanding, "mantiene componente existente");
+});
+
+// ─── Bug raíz: no doblar sufijos en el nombre exportado ───────────────────────
+
+test("buildAurumFiles no dobla sufijos en el nombre de función exportado (reuso)", () => {
+  const slug = "sandhouse-inmobiliaria";
+  const existingApp = `
+import { SandhouseLanding } from "./SandhouseLanding";
+import { SandhouseWebCompleta } from "./SandhouseWebCompleta";
+import { SandhouseVisualExperience } from "./SandhouseVisualExperience";
+import { SandhouseBannerPack } from "./SandhouseBannerPack";
+import { SandhouseBannerVertical } from "./SandhouseBannerVertical";
+import { SandhouseBannerHorizontal } from "./SandhouseBannerHorizontal";
+
+export function App() {
+  return (
+    <Routes>
+      <Route path="/${slug}" element={<SandhouseLanding />} />
+      <Route path="/${slug}-web-completa" element={<SandhouseWebCompleta />} />
+      <Route path="/visual-experience/${slug}" element={<SandhouseVisualExperience />} />
+      <Route path="/banners/${slug}" element={<SandhouseBannerPack />} />
+      <Route path="/banners/${slug}/vertical" element={<SandhouseBannerVertical />} />
+      <Route path="/banners/${slug}/horizontal" element={<SandhouseBannerHorizontal />} />
+    </Routes>
+  );
+}
+`;
+  const existingRouteComponentMap = extractRouteComponentMap(existingApp, slug);
+  const payload = validPayload({ slug });
+  const aurumFiles = buildAurumFiles(payload, undefined, { existingRouteComponentMap, existingAppTsxContent: existingApp });
+
+  const byPath = Object.fromEntries(aurumFiles.files.map((f) => [f.path, f.content]));
+  assert.match(byPath["src/SandhouseLanding.tsx"], /export function SandhouseLanding\(\)/);
+  assert.match(byPath["src/SandhouseWebCompleta.tsx"], /export function SandhouseWebCompleta\(\)/);
+  assert.match(byPath["src/SandhouseVisualExperience.tsx"], /export function SandhouseVisualExperience\(\)/);
+  assert.match(byPath["src/SandhouseBannerPack.tsx"], /export function SandhouseBannerPack\(\)/);
+  assert.match(byPath["src/SandhouseBannerVertical.tsx"], /export function SandhouseBannerVertical\(\)/);
+  assert.match(byPath["src/SandhouseBannerHorizontal.tsx"], /export function SandhouseBannerHorizontal\(\)/);
+
+  for (const content of Object.values(byPath)) {
+    assert.doesNotMatch(content, /BannerPackBannerPack|BannerVerticalBannerVertical|BannerHorizontalBannerHorizontal|LandingLanding|WebCompletaWebCompleta|VisualExperienceVisualExperience/);
+  }
+});
+
+test("buildAurumFiles no dobla sufijos en el nombre de función exportado (fallback, lead nuevo)", () => {
+  const slug = "nuevo-lead-qa";
+  const payload = validPayload({ slug });
+  const aurumFiles = buildAurumFiles(payload);
+  const byPath = Object.fromEntries(aurumFiles.files.map((f) => [f.path, f.content]));
+  assert.match(byPath["src/NuevoLeadQaLanding.tsx"], /export function NuevoLeadQaLanding\(\)/);
+  assert.match(byPath["src/NuevoLeadQaBannerPack.tsx"], /export function NuevoLeadQaBannerPack\(\)/);
+  for (const content of Object.values(byPath)) {
+    assert.doesNotMatch(content, /LandingLanding|WebCompletaWebCompleta|VisualExperienceVisualExperience|BannerPackBannerPack|BannerVerticalBannerVertical|BannerHorizontalBannerHorizontal/);
+  }
+});
+
+test("buildAurumFiles reutiliza el data file existente en vez de crear uno nuevo por slug", () => {
+  const slug = "sandhouse-inmobiliaria";
+  const payload = validPayload({ slug });
+  const aurumFiles = buildAurumFiles(payload, undefined, {
+    existingDataFile: { path: "src/data/clientDemos/sandhouse.ts", exportName: "sandhouse" },
+  });
+  const paths = aurumFiles.files.map((f) => f.path);
+  assert.ok(paths.includes("src/data/clientDemos/sandhouse.ts"), "escribe en el data file existente");
+  assert.ok(!paths.includes("src/data/clientDemos/sandhouseInmobiliaria.ts"), "no crea un data file paralelo");
+
+  const landing = aurumFiles.files.find((f) => f.path.endsWith("Landing.tsx"));
+  assert.match(landing.content, /import \{ sandhouse \} from "@\/data\/clientDemos\/sandhouse"/);
+});
+
+// ─── Resolución de rutas alias y ambigüedad ────────────────────────────────────
+
+test("resolveAurumRouteComponents reutiliza componente vía ruta alias cuando la canónica no existe", () => {
+  const slug = "sandhouse-inmobiliaria";
+  const appContent = `
+    <Route path="/${slug}/web-completa" element={<SandhouseWebCompleta />} />
+  `;
+  const resolution = resolveAurumRouteComponents(appContent, slug);
+  assert.equal(resolution.componentByCanonicalRoute[`/${slug}-web-completa`], "SandhouseWebCompleta");
+  assert.ok(resolution.reusedTypes.includes("webCompleta"));
+  assert.equal(resolution.ambiguousTypes.length, 0);
+});
+
+test("resolveAurumRouteComponents marca ambigüedad cuando canónica y alias difieren", () => {
+  const slug = "sandhouse-inmobiliaria";
+  const appContent = `
+    <Route path="/${slug}-web-completa" element={<SandhouseWebCompleta />} />
+    <Route path="/${slug}/web-completa" element={<LegacyWebCompletaDraft />} />
+  `;
+  const resolution = resolveAurumRouteComponents(appContent, slug);
+  assert.ok(resolution.ambiguousTypes.includes("webCompleta"));
+  assert.equal(resolution.componentByCanonicalRoute[`/${slug}-web-completa`], undefined);
+});
+
+test("wouldIntroduceDuplicateRoutes detecta rutas existentes con comillas simples", () => {
+  const slug = "sandhouse-inmobiliaria";
+  const existingApp = `<Route path='/${slug}' element={<SandhouseLanding />} />`;
+  const dups = wouldIntroduceDuplicateRoutes(existingApp, [`/${slug}`, `/${slug}-web-completa`]);
+  assert.deepEqual(dups, [`/${slug}`]);
+});
+
+test("scanForbiddenGeneratedPatterns detecta nombres doblados y gesture-lab fuera de dominio interno", () => {
+  const violations = scanForbiddenGeneratedPatterns([
+    { path: "src/SandhouseInmobiliariaBannerPack.tsx", content: "export function SandhouseInmobiliariaBannerPackBannerPack() {}" },
+    { path: "src/Clean.tsx", content: "const url = 'https://aurum-properties-boutique.vercel.app/gesture-lab/leak';" },
+  ]);
+  assert.ok(violations.some((v) => v.includes("BannerPackBannerPack")));
+  assert.ok(violations.some((v) => v.includes("gesture_lab_leak_in_client_facing_output")));
+});
+
+test("extractExistingDataFileRef lee el import real de un componente existente", () => {
+  const content = `import { sandhouse } from "@/data/clientDemos/sandhouse";\nexport function SandhouseLanding() { return null; }`;
+  const ref = extractExistingDataFileRef(content);
+  assert.deepEqual(ref, { path: "src/data/clientDemos/sandhouse.ts", exportName: "sandhouse" });
+});
+
+test("extractExistingDataFileRef devuelve null si no hay import de clientDemos", () => {
+  assert.equal(extractExistingDataFileRef("export function X() { return null; }"), null);
 });
