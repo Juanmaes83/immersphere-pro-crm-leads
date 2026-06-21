@@ -9,3 +9,5 @@ __pycache__/
 *.pyc
 tools/google-maps-scraper/outputs/*
 !tools/google-maps-scraper/outputs/.gitkeep
+sandhouse-payload.json
+sandhouse-payload-dryrun.json

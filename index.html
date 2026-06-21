@@ -3094,9 +3094,19 @@ function productionBriefText(l){
       +'RIESGOS: '+(b.validationRisks.length?b.validationRisks.join(' | '):'ninguno');
   }catch(e){return 'Error al generar Production Brief: '+String(e);}
 }
+function sanitizeProductionPackageForRailway(payload){
+  if(!payload||typeof payload!=='object')return payload;
+  const clean=JSON.parse(JSON.stringify(payload));
+  delete clean.publicationStatus;
+  delete clean.publishedOutputCount;
+  delete clean.generatedReviewCount;
+  delete clean.publicationWarnings;
+  delete clean.reviewableFourHooks;
+  return clean;
+}
 function productionPackageJSONText(l){
   try{
-    if(typeof buildProductionPackageFromLead==='function') return JSON.stringify(buildProductionPackageFromLead(l),null,2);
+    if(typeof buildProductionPackageFromLead==='function') return JSON.stringify(sanitizeProductionPackageForRailway(buildProductionPackageFromLead(l)),null,2);
     const b=buildProductionBrief(l);
     const li=b.leadIdentity;const wa=b.websiteAudit;const det=b.detectedAssets;const t=b.targetRoutes;
     const H=(typeof ensureLeadCommercialHooks==='function'?ensureLeadCommercialHooks(l):l.commercialHooks)||{};
@@ -3520,7 +3530,8 @@ function prepareOperatorPackage(id){
 function openOperatorConsole(id){
   const l=leads.find(x=>x.id===id);if(!l)return;
   const slug=toLeadSlug(l.empresa||'');
-  const pkg=getStoredFourHooksPayload(l)||buildProductionPackageFromLead(l);
+  const rawPkg=getStoredFourHooksPayload(l)||buildProductionPackageFromLead(l);
+  const pkg=sanitizeProductionPackageForRailway(rawPkg);
   try{localStorage.setItem('immersphere_crm_slug',slug);localStorage.setItem('immersphere_crm_console_ts',String(Date.now()));}catch(e){}
   const pkgJson=JSON.stringify(pkg,null,2);
   navigator.clipboard.writeText(pkgJson).then(()=>{_showToast('Paquete copiado — pégalo en Operator Console al abrirse.','var(--accent2)');}).catch(()=>{});
