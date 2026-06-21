@@ -2317,6 +2317,7 @@ function loadState(){
         if(r.auditNextBestAction!==undefined) l.auditNextBestAction=r.auditNextBestAction;
         if(r.previewEngine!==undefined) l.previewEngine=r.previewEngine;
         if(r.commercialHooks!==undefined) l.commercialHooks=r.commercialHooks;
+        if(r.mediaAssetsManual!==undefined) l.mediaAssetsManual=r.mediaAssetsManual;
         if(r.hookHistory!==undefined) l._hookHistory=r.hookHistory;
         if(r._hookHistory!==undefined) l._hookHistory=r._hookHistory;
         ensureVisualPipeline(l);
@@ -2352,6 +2353,7 @@ function saveState(){
       fechaEstado:l._fechaEstado||'',objecionAsignada:l._objecionAsignada||'',cierreAsignado:l._cierreAsignado||'',presupuestos:l._presupuestos||[],propuestas:l._propuestas||[],admin:l._admin||_emptyAdmin(),
       websiteAudit:l.websiteAudit||null,auditOpportunity:l.auditOpportunity||'',auditPain:l.auditPain||'',auditNextBestAction:l.auditNextBestAction||'',previewEngine:l.previewEngine||null,
       commercialHooks:commercialHooks||null,hookHistory:l._hookHistory||[],
+      mediaAssetsManual:l.mediaAssetsManual||null,
       comercial:{valorPotencial:l._valorPotencial||0,probabilidad:l._probabilidad||10,presupuesto:l._presupuesto||'',packRec:l._packRec||'',ultimoContacto:l._ultimoContacto||''}
     };
   });
@@ -3576,6 +3578,88 @@ function renderProductionBase(l){
   }
 }
 // ── End Production Brief v3.0 ─────────────────────────────────────────────────
+
+// ── Lead Visual Asset Intake (Microfase 6 — URL-only) ──────────────────────────
+function renderLeadAssetIntakeBlock(l){
+  const s=summarizeLeadAssets(l);
+  const m=s.manual;
+  const stateLabel={sin_assets:'Sin assets',pendiente:'Assets pendientes de validar',aprobado:'Assets aprobados'}[s.state]||'Sin assets';
+  const stateClass={sin_assets:'est-pendiente',pendiente:'est-visual',aprobado:'est-cerrado'}[s.state]||'est-pendiente';
+  const yn=v=>v?'<span style="color:var(--green,#10b981)">sí</span>':'<span style="color:var(--text3)">no</span>';
+  const fld=(label,id,val,type,placeholder)=>'<div class="edit-field"><label class="edit-label">'+label+'</label><input class="edit-input" id="'+id+'" type="'+(type||'text')+'" value="'+safeHtml(val||'')+'" placeholder="'+safeHtml(placeholder||'https://...')+'"></div>';
+  const txt=(label,id,val,hint)=>'<div class="edit-field full"><label class="edit-label">'+label+(hint?' <span style="text-transform:none;font-weight:400">— '+hint+'</span>':'')+'</label><textarea class="edit-textarea" id="'+id+'">'+safeHtml(val||'')+'</textarea></div>';
+  return '<div class="modal-section" data-section="lead-assets" style="border-top:2px solid rgba(196,169,106,0.3)">'
+    +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;flex-wrap:wrap;gap:6px">'
+    +'<div class="modal-section-title" style="margin:0">🖼 Assets visuales</div>'
+    +'<span class="tag '+stateClass+'">'+stateLabel+'</span>'
+    +'</div>'
+    +'<div style="font-size:10px;color:var(--text3);background:rgba(196,169,106,0.06);border-radius:6px;padding:6px 10px;margin-bottom:10px">'
+    +'Solo URLs ya alojadas. Esta versión no sube archivos.'
+    +'</div>'
+    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">'
+    +fld('Logo URL','lai-logo-'+l.id,m.logoUrl,'url')
+    +fld('Hero image URL','lai-hero-'+l.id,m.heroImage,'url')
+    +'</div>'
+    +txt('Imágenes de propiedad (hasta 8)','lai-images-'+l.id,m.propertyImages.join('\n'),'una URL por línea o separadas por comas')
+    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:8px 0">'
+    +fld('Video URL','lai-video-'+l.id,m.videoUrl,'url')
+    +fld('Colores de marca (HEX)','lai-colors-'+l.id,m.brandColors.join(', '),'text','#111111, #d4af37')
+    +'</div>'
+    +txt('Notas visuales','lai-notes-'+l.id,m.assetNotes)
+    +'<div style="display:flex;align-items:center;gap:8px;margin:8px 0">'
+    +'<label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text2);cursor:pointer">'
+    +'<input type="checkbox" id="lai-approved-'+l.id+'" '+(m.assetsApproved?'checked':'')+'> Assets aprobados'
+    +'</label>'
+    +'</div>'
+    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">'
+    +'<button class="contact-btn btn-email" onclick="saveLeadAssetIntakeForm('+l.id+')" style="text-align:center;font-weight:700">💾 Guardar assets</button>'
+    +'<button class="contact-btn btn-maps" onclick="clearLeadAssetIntakeForm('+l.id+')" style="text-align:center">🗑 Limpiar assets</button>'
+    +'</div>'
+    +'<div style="background:var(--bg2);border-radius:6px;padding:8px;font-size:11px;color:var(--text2)">'
+    +'<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px;margin-bottom:'+(s.warnings.length?'6px':'0')+'">'
+    +'<div>Logo: '+yn(s.hasLogo)+'</div>'
+    +'<div>Hero: '+yn(s.hasHero)+'</div>'
+    +'<div>Imágenes: '+s.imageCount+'</div>'
+    +'<div>Vídeo: '+yn(s.hasVideo)+'</div>'
+    +'<div>Colores: '+s.colorCount+'</div>'
+    +'<div>Estado: '+stateLabel+'</div>'
+    +'</div>'
+    +(s.warnings.length?'<div style="color:var(--text3);font-size:10px">⚠ '+s.warnings.map(safeHtml).join(' · ')+'</div>':'')
+    +'</div>'
+    +'</div>';
+}
+function saveLeadAssetIntakeForm(leadId){
+  const g=id=>{const el=document.getElementById(id);return el?el.value:'';};
+  const approvedEl=document.getElementById('lai-approved-'+leadId);
+  const report=saveLeadManualAssets(leadId,{
+    logoUrl:g('lai-logo-'+leadId),
+    heroImage:g('lai-hero-'+leadId),
+    propertyImages:g('lai-images-'+leadId),
+    videoUrl:g('lai-video-'+leadId),
+    brandColors:g('lai-colors-'+leadId),
+    assetNotes:g('lai-notes-'+leadId),
+    assetsApproved:!!(approvedEl&&approvedEl.checked)
+  });
+  if(!report){ _showToast('No se pudo guardar: lead no encontrado','var(--red)'); return; }
+  const rejected=[];
+  if(report.logoInvalid) rejected.push('logo');
+  if(report.heroInvalid) rejected.push('hero');
+  if(report.videoInvalid) rejected.push('vídeo');
+  if(report.imagesInvalidCount) rejected.push(report.imagesInvalidCount+' imagen(es)');
+  if(report.colorsInvalidCount) rejected.push(report.colorsInvalidCount+' color(es)');
+  if(report.imagesTruncated) rejected.push('exceso de imágenes recortado a 8');
+  if(rejected.length) _showToast('Assets guardados. Descartado por inválido: '+rejected.join(', '),'var(--accent2)');
+  else _showToast('Assets guardados','var(--green)');
+  renderAll();
+  openModal(leadId);
+}
+function clearLeadAssetIntakeForm(leadId){
+  if(!confirm('¿Borrar los assets visuales guardados para este lead?')) return;
+  clearLeadManualAssets(leadId);
+  _showToast('Assets limpiados','var(--accent2)');
+  renderAll();
+  openModal(leadId);
+}
 
 function renderWebsiteAudit(l){
   const safeWeb=nbeSafeUrl(l.web||l.website);
@@ -6063,6 +6147,7 @@ function openModal(id){
 
     ${safeRenderSection('Auditoría Web',()=>renderWebsiteAudit(l))}
     ${safeRenderSection('Base de Producción IA',()=>renderProductionBase(l))}
+    ${safeRenderSection('Assets Visuales',()=>renderLeadAssetIntakeBlock(l))}
 
     <!-- INTELIGENCIA -->
     <div class="modal-section">
@@ -10241,7 +10326,141 @@ function fourHooksText(v,fallback){const s=String(v||'').trim();return s&&s!=='N
 function fourHooksList(values){const out=[];(values||[]).forEach(v=>{if(Array.isArray(v)){fourHooksList(v).forEach(x=>out.push(x));return;}const s=fourHooksText(v,'');if(s&&!out.includes(s))out.push(s);});return out;}
 function normalizeLeadForFourHooks(lead){const l=lead||{},slug=toLeadSlug(l.empresa||l.name||l.businessName||('lead-'+l.id)),phones=fourHooksList([l.telefono,l.phone,l.whatsapp]),audit=l.websiteAudit?normalizeWebsiteAudit(l.websiteAudit,l):null;return{id:String(l.id||slug),name:fourHooksText(l.empresa||l.name||l.businessName,'Lead sin nombre'),slug,sector:fourHooksText(l.sector||l.vertical,'Inmobiliaria'),zone:fourHooksText(l.zona||l.city||l.province,'Zona por confirmar'),website:fourHooksText(l.web||l.website,''),phone:fourHooksText(l.telefono||l.phone||l.whatsapp,''),phones,whatsapp:fourHooksText(l.whatsapp||l.telefono,''),email:fourHooksText(l.email,''),address:fourHooksText(l.direccion||l.address,''),schedule:fourHooksText(l.horario||l.schedule,''),claim:fourHooksText(l.gancho||l.claim||l.tagline||l.motivo,''),services:fourHooksList([l.servicio,l.servGancho,l.servPrincipal,l.pack,l.upsell,audit&&audit.recommendedService]),audience:fourHooksText(l.audience||l.subsector,'Compradores y propietarios con intencion alta'),propertyTypes:fourHooksList([l.propertyTypes,l.demo,l.subsector,l.zona]),differentiators:fourHooksList([l.motivo,l.senales,l.gancho,l.respuesta]),sourceUrls:fourHooksList([l.web,l.googleMapsUrl,audit&&audit.finalUrl,audit&&audit.baseUrl]),confidence:audit&&audit.status==='success'?'media-alta':'media',raw:l};}
 function buildAuditFromLead(lead){const l=lead||{},a=l.websiteAudit?normalizeWebsiteAudit(l.websiteAudit,l):null,pages=(a&&(a.auditedUrls||a.pagesReviewed||a.pages||[]))||[],signals=(a&&a.signals)||{};return{status:a&&a.status==='success'?'complete':(a?'partial':'missing'),pagesReviewed:pages.map(p=>typeof p==='string'?p:(p.finalUrl||p.url||'')).filter(Boolean),signals:{score:Number((a&&(a.websiteOpportunityScore||a.score))||l.score||0),hasWebsite:!!(l.web||l.website),hasPhone:!!(l.telefono||signals.hasPhone),hasEmail:!!(l.email||signals.hasEmail),hasWhatsapp:!!(l.whatsapp||signals.hasWhatsapp),hasClearCTA:!!signals.hasClearCTA,hasPropertyListings:!!signals.hasPropertyListings,hasVirtualTourSignals:!!signals.hasVirtualTourSignals,hasVideoSignals:!!signals.hasVideoSignals,hasContactForm:!!signals.hasContactForm,verticalProfile:(a&&a.verticalProfile)||'real_estate'},opportunities:fourHooksList([(a&&a.opportunities)||[],l.auditOpportunity,l.motivo,l.gancho]),weaknesses:fourHooksList([(a&&a.weaknesses)||[],l.auditPain,l.dolor,l.objecion]),evidence:(a&&a.evidence)||{},raw:a||null};}
-function buildMediaAssetsFromLead(lead){const l=lead||{},a=l.websiteAudit?normalizeWebsiteAudit(l.websiteAudit,l):null,detectedImages=fourHooksList([l.logoUrl,l.heroImage,l.image,l.foto,l.fotos,l.assets&&l.assets.images]),logo=fourHooksText(l.logoUrl||l.logo||(l.assets&&l.assets.logo),''),favicon=fourHooksText(l.favicon||(l.assets&&l.assets.favicon),''),video=fourHooksText(l.videoUrl||l.video||(l.assets&&l.assets.video),'');const propertyImages=detectedImages.filter(u=>u!==logo).slice(0,8).map((url,i)=>({url,source:'manual',status:'candidate',recommendedUse:i===0?'hero':'gallery'}));const videos=video?[{url:video,source:'manual',status:'candidate',recommendedUse:'hero'}]:[{url:'/VIDEO_AURUM_HEROWEB.mp4',source:'aurum_default',status:'pending_validation',recommendedUse:'hero'}];const mediaAssets={logo:{url:logo||null,source:logo?'manual':'placeholder',status:logo?'candidate':'missing'},favicon:{url:favicon||null,status:favicon?'candidate':'missing'},heroImage:{url:propertyImages[0]?.url||null,status:propertyImages[0]?'candidate':'missing'},propertyImages,videos,brandColors:Array.isArray(l.brandColors)?l.brandColors:[],notes:['Assets generated from CRM fields and local audit context.','Public or scraped assets remain candidate/pending_validation until manual approval.',a&&a.status==='success'?'Website audit available.':'Website audit missing or partial.']};return{assets:{logo:logo||null,favicon:favicon||null,images:propertyImages.map(x=>x.url),video:video||null,status:(logo||propertyImages.length||video)?'candidate':'missing'},mediaAssets};}
+// ── Lead Visual Asset Intake (Microfase 6 — URL-only) ─────────────────────────
+// Manual, URL-only asset association. No file upload, no backend call, no new
+// top-level storage key: mediaAssetsManual lives inside the existing per-lead
+// overlay in localStorage, alongside websiteAudit/previewEngine/commercialHooks.
+function emptyLeadManualAssets(){
+  return {logoUrl:'',heroImage:'',propertyImages:[],videoUrl:'',brandColors:[],assetNotes:'',assetsApproved:false,updatedAt:''};
+}
+function getLeadManualAssets(lead){
+  const l=lead||{},m=l.mediaAssetsManual;
+  if(!m||typeof m!=='object') return emptyLeadManualAssets();
+  return {
+    logoUrl:typeof m.logoUrl==='string'?m.logoUrl:'',
+    heroImage:typeof m.heroImage==='string'?m.heroImage:'',
+    propertyImages:Array.isArray(m.propertyImages)?m.propertyImages.filter(u=>typeof u==='string'):[],
+    videoUrl:typeof m.videoUrl==='string'?m.videoUrl:'',
+    brandColors:Array.isArray(m.brandColors)?m.brandColors.filter(c=>typeof c==='string'):[],
+    assetNotes:typeof m.assetNotes==='string'?m.assetNotes:'',
+    assetsApproved:m.assetsApproved===true,
+    updatedAt:typeof m.updatedAt==='string'?m.updatedAt:''
+  };
+}
+// Only http(s) URLs are accepted. javascript:/data:/file: and anything else
+// non-http(s) is silently rejected (returns ''), never thrown.
+function validateAssetUrl(url){
+  const s=String(url||'').trim();
+  if(!s) return '';
+  if(!/^https?:\/\//i.test(s)) return '';
+  if(/^\s*javascript:/i.test(s)||/^\s*data:/i.test(s)||/^\s*file:/i.test(s)) return '';
+  return s;
+}
+// Splits on newlines and/or commas, validates each as a URL, dedupes, caps at `max`.
+function normalizeManualAssetUrls(value,max){
+  const raw=String(value||'').split(/[\n,]+/).map(s=>s.trim()).filter(Boolean);
+  const out=[];let invalidCount=0;
+  raw.forEach(u=>{const v=validateAssetUrl(u);if(v){if(!out.includes(v))out.push(v);}else invalidCount++;});
+  const limit=typeof max==='number'?max:out.length;
+  return {urls:out.slice(0,limit),invalidCount,truncated:out.length>limit};
+}
+function validateHexColor(c){
+  const s=String(c||'').trim();
+  return /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(s)?s:'';
+}
+function normalizeManualBrandColors(value){
+  const raw=String(value||'').split(/[\n,]+/).map(s=>s.trim()).filter(Boolean);
+  const out=[];let invalidCount=0;
+  raw.forEach(c=>{const v=validateHexColor(c);if(v){if(!out.includes(v))out.push(v);}else invalidCount++;});
+  return {colors:out,invalidCount};
+}
+// Validates + persists. Returns a report of what was rejected so the UI can warn
+// without blocking the save (invalid entries are simply dropped, not stored).
+function saveLeadManualAssets(leadId,payload){
+  const l=leads.find(x=>x.id===leadId);if(!l) return null;
+  const p=payload||{};
+  const logoUrl=validateAssetUrl(p.logoUrl);
+  const heroImage=validateAssetUrl(p.heroImage);
+  const imgRes=normalizeManualAssetUrls(p.propertyImages,8);
+  const videoUrl=validateAssetUrl(p.videoUrl);
+  const colorRes=normalizeManualBrandColors(p.brandColors);
+  const assetNotes=String(p.assetNotes||'').trim().slice(0,1000);
+  const assetsApproved=p.assetsApproved===true;
+  l.mediaAssetsManual={logoUrl,heroImage,propertyImages:imgRes.urls,videoUrl,brandColors:colorRes.colors,assetNotes,assetsApproved,updatedAt:new Date().toISOString()};
+  saveState();
+  return {
+    logoInvalid:!!(p.logoUrl&&!logoUrl),
+    heroInvalid:!!(p.heroImage&&!heroImage),
+    videoInvalid:!!(p.videoUrl&&!videoUrl),
+    imagesInvalidCount:imgRes.invalidCount,
+    imagesTruncated:imgRes.truncated,
+    colorsInvalidCount:colorRes.invalidCount
+  };
+}
+function clearLeadManualAssets(leadId){
+  const l=leads.find(x=>x.id===leadId);if(!l) return;
+  l.mediaAssetsManual=emptyLeadManualAssets();
+  saveState();
+}
+function summarizeLeadAssets(lead){
+  const m=getLeadManualAssets(lead);
+  const hasLogo=!!m.logoUrl,hasHero=!!m.heroImage,hasImages=m.propertyImages.length>0,hasVideo=!!m.videoUrl,hasColors=m.brandColors.length>0;
+  const hasAny=hasLogo||hasHero||hasImages||hasVideo;
+  const state=!hasAny?'sin_assets':(m.assetsApproved?'aprobado':'pendiente');
+  const warnings=[];
+  if(!hasLogo) warnings.push('Falta logo.');
+  if(!hasHero) warnings.push('Falta hero image.');
+  if(!hasImages) warnings.push('Faltan imágenes de propiedad.');
+  if(!hasVideo) warnings.push('Falta vídeo.');
+  if(hasAny&&!m.assetsApproved) warnings.push('Sin assets aprobados todavía.');
+  return {manual:m,hasLogo,hasHero,imageCount:m.propertyImages.length,hasVideo,colorCount:m.brandColors.length,hasColors,state,warnings};
+}
+
+function buildMediaAssetsFromLead(lead){
+  const l=lead||{},a=l.websiteAudit?normalizeWebsiteAudit(l.websiteAudit,l):null;
+  const manual=getLeadManualAssets(l);
+  const manualStatus=manual.assetsApproved?'approved':'pending_validation';
+
+  const logo=fourHooksText(manual.logoUrl||l.logoUrl||l.logo||(l.assets&&l.assets.logo),'');
+  const logoSource=manual.logoUrl?'crm_manual_url':(logo?'manual':'placeholder');
+  const logoStatus=manual.logoUrl?manualStatus:(logo?'candidate':'missing');
+
+  const favicon=fourHooksText(l.favicon||(l.assets&&l.assets.favicon),'');
+
+  const heroUrl=fourHooksText(manual.heroImage||l.heroImage||l.image,'');
+  const heroSource=manual.heroImage?'crm_manual_url':(heroUrl?'manual':'placeholder');
+  const heroStatus=manual.heroImage?manualStatus:(heroUrl?'candidate':'missing');
+
+  const detectedImages=manual.propertyImages.length
+    ?manual.propertyImages
+    :fourHooksList([l.propertyImages,l.assets&&l.assets.images,l.foto,l.fotos]);
+  const imagesSource=manual.propertyImages.length?'crm_manual_url':'manual';
+  const imagesStatus=manual.propertyImages.length?manualStatus:'candidate';
+  const propertyImages=detectedImages.filter(u=>u!==logo&&u!==heroUrl).slice(0,8).map((url,i)=>({url,source:imagesSource,status:imagesStatus,recommendedUse:(i===0&&!heroUrl)?'hero':'gallery'}));
+
+  const video=fourHooksText(manual.videoUrl||l.videoUrl||l.video||(l.assets&&l.assets.video),'');
+  const videoSource=manual.videoUrl?'crm_manual_url':(video?'manual':'aurum_default');
+  const videoStatus=manual.videoUrl?manualStatus:(video?'candidate':'pending_validation');
+  const videos=video?[{url:video,source:videoSource,status:videoStatus,recommendedUse:'hero'}]:[{url:'/VIDEO_AURUM_HEROWEB.mp4',source:'aurum_default',status:'pending_validation',recommendedUse:'hero'}];
+
+  const brandColors=manual.brandColors.length?manual.brandColors:(Array.isArray(l.brandColors)?l.brandColors:[]);
+
+  const heroImageUrl=heroUrl||propertyImages[0]?.url||'';
+  const heroImageSource=heroUrl?heroSource:(propertyImages[0]?propertyImages[0].source:'placeholder');
+  const heroImageStatus=heroUrl?heroStatus:(propertyImages[0]?propertyImages[0].status:'missing');
+
+  const notes=['Assets generated from CRM fields and local audit context.','Public or scraped assets remain candidate/pending_validation until manual approval.',a&&a.status==='success'?'Website audit available.':'Website audit missing or partial.'];
+  if(manual.assetNotes) notes.push(manual.assetNotes);
+  if(manual.logoUrl||manual.heroImage||manual.propertyImages.length||manual.videoUrl||manual.brandColors.length) notes.push(manual.assetsApproved?'Manual assets approved from CRM asset intake.':'Manual assets pending approval from CRM asset intake.');
+
+  const mediaAssets={
+    logo:{url:logo||null,source:logoSource,status:logoStatus},
+    favicon:{url:favicon||null,status:favicon?'candidate':'missing'},
+    heroImage:{url:heroImageUrl||null,source:heroImageSource,status:heroImageStatus},
+    propertyImages,videos,brandColors,notes
+  };
+  return {assets:{logo:logo||null,favicon:favicon||null,images:propertyImages.map(x=>x.url),video:video||null,status:(logo||propertyImages.length||video)?'candidate':'missing'},mediaAssets};
+}
 function buildCommercialDiagnosisFromLead(normalizedLead,audit,mediaAssets){const n=normalizedLead,score=audit.signals.score||0,weakness=audit.weaknesses[0]||'La presencia actual no convierte todo el potencial visual en una conversacion comercial medible.',opportunity=audit.opportunities[0]||('Convertir la presencia digital de '+n.name+' en una propuesta visual clara para '+n.zone+'.'),hasTour=audit.signals.hasVirtualTourSignals,hasVideo=audit.signals.hasVideoSignals;return{painDetected:weakness,opportunityDetected:opportunity,marketContext:n.zone+' exige captar atencion rapido y dar confianza antes de una llamada o visita.',competitiveGap:hasTour?'El diferencial esta en empaquetar mejor el activo visual existente con CTA y seguimiento.':'Falta una experiencia visual que anticipe la visita y reduzca friccion frente a competidores con mejor presentacion.',buyerMotivation:'Ver, entender y confiar antes de contactar.',ownerMotivation:'Percibir que '+n.name+' puede presentar activos con mas valor y profesionalidad.',conversionProblem:audit.signals.hasClearCTA?'El CTA existe, pero puede ganar fuerza si se conecta a una pieza visual concreta.':'El usuario necesita una llamada a la accion mas directa y visual.',recommendedAngle:hasVideo?'Reutilizar video y web actual como base de propuesta premium.':'Crear una primera pieza visual con movimiento, QR y continuidad movil.',score,assetReadiness:mediaAssets.mediaAssets.propertyImages.length?'assets_candidate':'assets_pending'};}
 // LEAD INTELLIGENCE v5 — known canonical AURUM/Rubik routes registered in the public repos.
 // These are the ONLY routes that have been verified as registered in AURUM_PROPERTIES_BOUTIQUE/src/App.tsx
