@@ -101,7 +101,7 @@ test("capabilities v0.3 incluye operatorConsoleAvailable y crmIntakeEnabled", as
     assert.equal(typeof body.operatorConsoleAvailable, "boolean");
     assert.equal(typeof body.crmIntakeEnabled, "boolean");
     assert.equal(body.crmDirectConnection, false);
-    assert.equal(body.version, "0.3.0");
+    assert.equal(body.version, "0.4.0");
   });
 });
 

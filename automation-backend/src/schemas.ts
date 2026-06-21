@@ -1,5 +1,13 @@
 export const SERVICE_NAME = "immersphere-production-orchestrator";
-export const SERVICE_VERSION = "0.3.0";
+export const SERVICE_VERSION = "0.4.0";
+
+export function getMode(): "dry-run" | "production" {
+  return String(process.env.GITHUB_PR_AUTOMATION_ENABLED || "").toLowerCase() === "true"
+    ? "production"
+    : "dry-run";
+}
+
+/** @deprecated Use getMode() to reflect the current runtime flag. */
 export const MODE = "dry-run";
 
 export const CLIENT_FACING_DOMAIN = "aurum-properties-boutique.vercel.app";
