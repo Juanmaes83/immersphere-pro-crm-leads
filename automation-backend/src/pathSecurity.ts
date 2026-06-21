@@ -7,6 +7,11 @@ export const CRM_REPO = "Juanmaes83/immersphere-pro-crm-leads";
 const ALWAYS_FORBIDDEN_EXACT = new Set([".env", "crm.html", "index.html", "package-lock.json"]);
 const ALWAYS_FORBIDDEN_SEGMENTS = new Set([".claude", ".vercel", "node_modules"]);
 
+// App.tsx and vercel.json are allowed as modification targets only (not creations from scratch).
+// They require getFileContent() + patch strategy in the writer, not a full overwrite.
+export const AURUM_APP_TSX = "src/App.tsx";
+export const RUBIK_VERCEL_JSON = "vercel.json";
+
 export function componentBaseFromSlug(slug) {
   return sanitizeSlug(slug)
     .split("-")
@@ -41,7 +46,12 @@ export function validateRepoPath(repo, filePath, slug) {
   }
   if (repo === CRM_REPO) return "crm_write_forbidden_in_v0_2";
 
+  const camelBase = safeSlug.split("-").filter(Boolean).map((p, i) =>
+    i === 0 ? p : p.charAt(0).toUpperCase() + p.slice(1)
+  ).join("");
+
   const rubikAllowed = new Set([
+    // Original manifest paths (kept for backward compat)
     `dynamic-motion-banner/${safeSlug}/README.md`,
     `dynamic-motion-banner/${safeSlug}/config.json`,
     `dynamic-motion-banner/${safeSlug}/index.html`,
@@ -49,14 +59,33 @@ export function validateRepoPath(repo, filePath, slug) {
     `dynamic-motion-banner/${safeSlug}/banner-horizontal.html`,
     `dynamic-motion-banner/${safeSlug}/assets-manifest.json`,
     `production-manifests/${safeSlug}.json`,
+    // Real functional paths (FASE B generators)
+    `gesture-lab/${safeSlug}-v1.html`,
+    `dynamic-motion-banner/${safeSlug}/config.js`,
+    `dynamic-motion-banner/${safeSlug}/banner-engine.js`,
+    `dynamic-motion-banner/${safeSlug}/banner-pack/index.html`,
+    `dynamic-motion-banner/${safeSlug}/assets/logo.svg`,
+    // vercel.json is a patch target — validated separately via RUBIK_VERCEL_JSON
+    RUBIK_VERCEL_JSON,
   ]);
 
   const aurumAllowed = new Set([
+    // Original generated paths (kept for backward compat)
     `production-manifests/${safeSlug}.json`,
     `production-manifests/${safeSlug}-premium-specs.json`,
     `src/generated/${componentBase}ProductionPlan.ts`,
     `src/generated/${componentBase}ProposalPackage.ts`,
     `src/generated/${componentBase}FourHookSpecs.ts`,
+    // Real functional component paths (FASE B generators)
+    `src/data/clientDemos/${camelBase}.ts`,
+    `src/${componentBase}Landing.tsx`,
+    `src/${componentBase}WebCompleta.tsx`,
+    `src/${componentBase}VisualExperience.tsx`,
+    `src/${componentBase}BannerPack.tsx`,
+    `src/${componentBase}BannerVertical.tsx`,
+    `src/${componentBase}BannerHorizontal.tsx`,
+    // App.tsx is a patch target — validated separately via AURUM_APP_TSX
+    AURUM_APP_TSX,
   ]);
 
   if (repo === RUBIK_REPO) return rubikAllowed.has(filePath) ? null : "rubik_path_not_allowed";
