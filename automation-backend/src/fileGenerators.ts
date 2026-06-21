@@ -1,4 +1,5 @@
 import { componentBaseFromSlug, RUBIK_REPO, AURUM_REPO, RUBIK_VERCEL_JSON, AURUM_APP_TSX } from "./pathSecurity.ts";
+import { resolveProductionScore } from "./productionScore.ts";
 import { sanitizeSlug } from "./security.ts";
 import { CLIENT_FACING_DOMAIN, INTERNAL_ENGINE_DOMAIN, SERVICE_VERSION } from "./schemas.ts";
 
@@ -221,8 +222,7 @@ export function buildAurumFiles(payload: Record<string, unknown>, proposalPackag
   if (!heroImage) warnings.push("aurum:no_hero_image");
   if (!waPhone) warnings.push("aurum:no_whatsapp");
 
-  const audit = (payload.audit as Record<string, unknown>) || {};
-  const digitalPresenceScore = Number(audit.score ?? 35);
+  const digitalPresenceScore = resolveProductionScore(payload as Record<string, unknown>);
 
   return {
     files: [

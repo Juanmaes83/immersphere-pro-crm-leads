@@ -1,5 +1,6 @@
 import { getFileContent } from "./githubClient.ts";
 import { AURUM_REPO, componentBaseFromSlug, RUBIK_REPO } from "./pathSecurity.ts";
+import { resolveProductionScore } from "./productionScore.ts";
 import { sanitizeSlug } from "./security.ts";
 import { INTERNAL_ENGINE_DOMAIN, SERVICE_VERSION } from "./schemas.ts";
 import type { ExistingOutputResult, IdempotencyPlan } from "./outputIdempotency.ts";
@@ -81,19 +82,6 @@ function safeJson(text: string): Record<string, unknown> | null {
   } catch {
     return null;
   }
-}
-
-function resolveExpectedScore(payload: Record<string, unknown>): number | null {
-  const candidates = [
-    (payload.auditSnapshot as Record<string, unknown>)?.score,
-    (payload.audit as Record<string, unknown>)?.score,
-    (payload.leadIntelligenceProfile as Record<string, unknown>)?.readinessScore,
-  ];
-  for (const value of candidates) {
-    const n = Number(value);
-    if (Number.isFinite(n)) return n;
-  }
-  return null;
 }
 
 function expectedAurumRoutes(slug: string): string[] {
@@ -217,7 +205,7 @@ async function reviewAurum(ctx: ReviewContext, existing: ExistingOutputResult, b
       const dataInfo = await fetchText(AURUM_REPO, dataPath, branch);
       if (dataInfo.exists) {
         checkedFiles.push(dataPath);
-        const expectedScore = resolveExpectedScore(payload);
+        const expectedScore = resolveProductionScore(payload);
         const scoreRegex = /(digitalPresenceScore|readinessScore|score)\s*[:=]\s*(\d+)/gi;
         const foundScores: Array<{ key: string; value: number }> = [];
         let scoreMatch;

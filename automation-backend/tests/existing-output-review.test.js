@@ -441,3 +441,44 @@ test("create-prs detecta readinessScore mismatch desde leadIntelligenceProfile",
     else process.env.GITHUB_SERVER_TOKEN = prevToken;
   }
 });
+
+// ─── buildAurumFiles usa resolveProductionScore ───────────────────────────────
+
+function findDataFile(aurumFiles, slug) {
+  const camelBase = slug.split("-").filter(Boolean).map((p, i) => (i === 0 ? p : p.charAt(0).toUpperCase() + p.slice(1))).join("");
+  return aurumFiles.files.find((f) => f.path === `src/data/clientDemos/${camelBase}.ts`);
+}
+
+test("buildAurumFiles usa auditSnapshot.score cuando audit.score falta", () => {
+  const slug = "score-audit-snapshot";
+  const payload = validPayload({ slug });
+  payload.audit = { ...(payload.audit || {}), score: undefined };
+  payload.auditSnapshot = { available: true, status: "success", score: 56 };
+  const aurumFiles = buildAurumFiles(payload);
+  const dataFile = findDataFile(aurumFiles, slug);
+  assert.ok(dataFile, "data file generado");
+  assert.match(dataFile.content, /digitalPresenceScore:\s*56/, "usa auditSnapshot.score = 56");
+});
+
+test("buildAurumFiles usa leadIntelligenceProfile.readinessScore cuando es la única fuente", () => {
+  const slug = "score-readiness";
+  const payload = validPayload({ slug });
+  payload.audit = { ...(payload.audit || {}), score: undefined };
+  payload.auditSnapshot = { available: true, status: "success", score: undefined };
+  payload.leadIntelligenceProfile = { readinessScore: 64 };
+  const aurumFiles = buildAurumFiles(payload);
+  const dataFile = findDataFile(aurumFiles, slug);
+  assert.ok(dataFile, "data file generado");
+  assert.match(dataFile.content, /digitalPresenceScore:\s*64/, "usa readinessScore = 64");
+});
+
+test("buildAurumFiles no vuelve a 35 si hay score real en Production Package", () => {
+  const slug = "score-real";
+  const payload = validPayload({ slug });
+  payload.auditSnapshot = { available: true, status: "success", score: 72 };
+  const aurumFiles = buildAurumFiles(payload);
+  const dataFile = findDataFile(aurumFiles, slug);
+  assert.ok(dataFile, "data file generado");
+  assert.match(dataFile.content, /digitalPresenceScore:\s*72/, "usa score real 72");
+  assert.doesNotMatch(dataFile.content, /digitalPresenceScore:\s*35/, "no usa fallback 35");
+});
