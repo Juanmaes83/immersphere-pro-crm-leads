@@ -135,13 +135,20 @@ async function postJsonWithHeaders(baseUrl, path, payload, headers = {}) {
 }
 
 test("/health devuelve ok", async () => {
-  await withServer(async (baseUrl) => {
-    const res = await fetch(`${baseUrl}/health`);
-    const body = await res.json();
-    assert.equal(res.status, 200);
-    assert.equal(body.ok, true);
-    assert.equal(body.mode, "dry-run");
-  });
+  const prev = process.env.GITHUB_PR_AUTOMATION_ENABLED;
+  process.env.GITHUB_PR_AUTOMATION_ENABLED = "false";
+  try {
+    await withServer(async (baseUrl) => {
+      const res = await fetch(`${baseUrl}/health`);
+      const body = await res.json();
+      assert.equal(res.status, 200);
+      assert.equal(body.ok, true);
+      assert.equal(body.mode, "dry-run");
+    });
+  } finally {
+    if (prev === undefined) delete process.env.GITHUB_PR_AUTOMATION_ENABLED;
+    else process.env.GITHUB_PR_AUTOMATION_ENABLED = prev;
+  }
 });
 
 test("dry-run acepta payload valido Torrevieja Sur", async () => {
@@ -379,17 +386,24 @@ test("rechaza media URL con /gesture-lab/ si se propone como cliente-facing", as
 });
 
 test("capabilities declara v0.2 disponible pero PR automation desactivada por defecto", async () => {
-  await withServer(async (baseUrl) => {
-    const res = await fetch(`${baseUrl}/api/production/capabilities`);
-    const body = await res.json();
-    assert.equal(res.status, 200);
-    assert.equal(body.ok, true);
-    assert.equal(body.dryRunEnabled, true);
-    assert.equal(body.prAutomationAvailable, true);
-    assert.equal(body.prAutomationEnabled, false);
-    assert.equal(body.crmDirectConnection, false);
-    assert.deepEqual(body.allowedRepos.sort(), [AURUM_REPO, RUBIK_REPO].sort());
-  });
+  const prev = process.env.GITHUB_PR_AUTOMATION_ENABLED;
+  process.env.GITHUB_PR_AUTOMATION_ENABLED = "false";
+  try {
+    await withServer(async (baseUrl) => {
+      const res = await fetch(`${baseUrl}/api/production/capabilities`);
+      const body = await res.json();
+      assert.equal(res.status, 200);
+      assert.equal(body.ok, true);
+      assert.equal(body.dryRunEnabled, true);
+      assert.equal(body.prAutomationAvailable, true);
+      assert.equal(body.prAutomationEnabled, false);
+      assert.equal(body.crmDirectConnection, false);
+      assert.deepEqual(body.allowedRepos.sort(), [AURUM_REPO, RUBIK_REPO].sort());
+    });
+  } finally {
+    if (prev === undefined) delete process.env.GITHUB_PR_AUTOMATION_ENABLED;
+    else process.env.GITHUB_PR_AUTOMATION_ENABLED = prev;
+  }
 });
 
 test("pr-plan devuelve PRs objetivo, archivos generados y Proposal Package", async () => {
