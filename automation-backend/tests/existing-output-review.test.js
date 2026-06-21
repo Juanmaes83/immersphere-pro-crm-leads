@@ -3,6 +3,7 @@ import test from "node:test";
 import { buildAurumFiles, buildRubikFiles } from "../src/fileGenerators.ts";
 import { startServer } from "../src/server.ts";
 import { SERVICE_VERSION } from "../src/schemas.ts";
+import { extractRouteComponentMap } from "../src/existingOutputReview.ts";
 
 function validPayload(overrides = {}) {
   const slug = overrides.slug || "torrevieja-sur";
@@ -481,4 +482,79 @@ test("buildAurumFiles no vuelve a 35 si hay score real en Production Package", (
   assert.ok(dataFile, "data file generado");
   assert.match(dataFile.content, /digitalPresenceScore:\s*72/, "usa score real 72");
   assert.doesNotMatch(dataFile.content, /digitalPresenceScore:\s*35/, "no usa fallback 35");
+});
+
+// ─── Reutilización de componentes AURUM existentes ────────────────────────────
+
+test("buildAurumFiles reutiliza nombres de componentes existentes y no duplica rutas", () => {
+  const slug = "sandhouse-inmobiliaria";
+  const existingApp = `
+import { SandhouseLanding } from "./SandhouseLanding";
+import { SandhouseWebCompleta } from "./SandhouseWebCompleta";
+import { SandhouseVisualExperience } from "./SandhouseVisualExperience";
+import { SandhouseBannerPack } from "./SandhouseBannerPack";
+import { SandhouseBannerVertical } from "./SandhouseBannerVertical";
+import { SandhouseBannerHorizontal } from "./SandhouseBannerHorizontal";
+
+export function App() {
+  return (
+    <Routes>
+      <Route path="/${slug}" element={<SandhouseLanding />} />
+      <Route path="/${slug}-web-completa" element={<SandhouseWebCompleta />} />
+      <Route path="/visual-experience/${slug}" element={<SandhouseVisualExperience />} />
+      <Route path="/banners/${slug}" element={<SandhouseBannerPack />} />
+      <Route path="/banners/${slug}/vertical" element={<SandhouseBannerVertical />} />
+      <Route path="/banners/${slug}/horizontal" element={<SandhouseBannerHorizontal />} />
+    </Routes>
+  );
+}
+`;
+  const existingRouteComponentMap = extractRouteComponentMap(existingApp, slug);
+  const payload = validPayload({ slug });
+  const aurumFiles = buildAurumFiles(payload, undefined, { existingRouteComponentMap, existingAppTsxContent: existingApp });
+
+  const componentPaths = aurumFiles.files.map((f) => f.path);
+  assert.ok(componentPaths.includes("src/SandhouseLanding.tsx"), "reutiliza SandhouseLanding");
+  assert.ok(componentPaths.includes("src/SandhouseWebCompleta.tsx"), "reutiliza SandhouseWebCompleta");
+  assert.ok(componentPaths.includes("src/SandhouseVisualExperience.tsx"), "reutiliza SandhouseVisualExperience");
+  assert.ok(componentPaths.includes("src/SandhouseBannerPack.tsx"), "reutiliza SandhouseBannerPack");
+  assert.ok(componentPaths.includes("src/SandhouseBannerVertical.tsx"), "reutiliza SandhouseBannerVertical");
+  assert.ok(componentPaths.includes("src/SandhouseBannerHorizontal.tsx"), "reutiliza SandhouseBannerHorizontal");
+
+  assert.ok(!componentPaths.includes("src/SandhouseInmobiliariaLanding.tsx"), "no crea SandhouseInmobiliariaLanding");
+  assert.ok(!componentPaths.includes("src/SandhouseInmobiliariaWebCompleta.tsx"), "no crea SandhouseInmobiliariaWebCompleta");
+
+  const appPatch = aurumFiles.files.find((f) => f.path === "src/App.tsx");
+  assert.ok(appPatch, "App.tsx patch generado");
+  const patch = JSON.parse(appPatch.content);
+  assert.equal(patch.routes.length, 0, "no añade rutas duplicadas");
+  assert.equal(patch.imports.length, 0, "no añade imports duplicados");
+});
+
+test("buildAurumFiles añade solo rutas faltantes manteniendo componentes existentes", () => {
+  const slug = "sandhouse-inmobiliaria";
+  const existingApp = `
+import { SandhouseLanding } from "./SandhouseLanding";
+
+export function App() {
+  return (
+    <Routes>
+      <Route path="/${slug}" element={<SandhouseLanding />} />
+    </Routes>
+  );
+}
+`;
+  const existingRouteComponentMap = extractRouteComponentMap(existingApp, slug);
+  const payload = validPayload({ slug });
+  const aurumFiles = buildAurumFiles(payload, undefined, { existingRouteComponentMap, existingAppTsxContent: existingApp });
+
+  const appPatch = aurumFiles.files.find((f) => f.path === "src/App.tsx");
+  const patch = JSON.parse(appPatch.content);
+  assert.equal(patch.routes.length, 5, "añade las 5 rutas faltantes");
+  assert.ok(patch.routes.every((r) => !existingApp.includes(r)), "ninguna ruta ya existía");
+
+  const newComponent = aurumFiles.files.find((f) => f.path === "src/SandhouseInmobiliariaWebCompleta.tsx");
+  assert.ok(newComponent, "crea componente nuevo para ruta faltante");
+  const reusedLanding = aurumFiles.files.find((f) => f.path === "src/SandhouseLanding.tsx");
+  assert.ok(reusedLanding, "mantiene componente existente");
 });
