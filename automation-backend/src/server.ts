@@ -154,7 +154,7 @@ function readJsonBody(req) {
     });
     req.on("end", () => {
       try {
-        const raw = Buffer.concat(chunks).toString("utf8") || "{}";
+        const raw = Buffer.concat(chunks).toString("utf8").replace(/^\uFEFF/, "") || "{}";
         resolve(JSON.parse(raw));
       } catch {
         reject(new Error("invalid_json"));
@@ -162,6 +162,11 @@ function readJsonBody(req) {
     });
     req.on("error", reject);
   });
+}
+
+async function readAndSanitizeProductionPackage(req) {
+  const rawPayload = await readJsonBody(req);
+  return sanitizeProductionPackageForPrAutomation(rawPayload);
 }
 
 function getOperatorSession(req) {
@@ -310,7 +315,7 @@ export function createRequestHandler() {
 
     if (req.method === "POST" && url.pathname === "/api/production/dry-run") {
       try {
-        const payload = await readJsonBody(req);
+        const payload = await readAndSanitizeProductionPackage(req);
         const validation = validateProductionPackage(payload);
         const plan = buildDryRunPlan(payload, validation);
         logInfo("dry-run requested", { leadSlug: payload?.lead?.slug || "missing", ok: plan.ok });
@@ -329,7 +334,7 @@ export function createRequestHandler() {
 
     if (req.method === "POST" && url.pathname === "/api/production/pr-plan") {
       try {
-        const payload = await readJsonBody(req);
+        const payload = await readAndSanitizeProductionPackage(req);
         const validation = validateProductionPackage(payload);
         const plan = buildPrAutomationPlan(payload, validation);
         if (plan.jobId) {
@@ -354,7 +359,7 @@ export function createRequestHandler() {
 
     if (req.method === "POST" && url.pathname === "/api/production/proposal-package") {
       try {
-        const payload = await readJsonBody(req);
+        const payload = await readAndSanitizeProductionPackage(req);
         const validation = validateProductionPackage(payload);
         if (!validation.passed) {
           sendJson(res, 400, { ok: false, validation, blocked: true }, headers);
@@ -378,7 +383,7 @@ export function createRequestHandler() {
 
     if (req.method === "POST" && url.pathname === "/api/production/github-preflight") {
       try {
-        const payload = await readJsonBody(req);
+        const payload = await readAndSanitizeProductionPackage(req);
         const validation = validateProductionPackage(payload);
         if (!validation.passed) {
           sendJson(res, 400, {
@@ -422,8 +427,7 @@ export function createRequestHandler() {
         return;
       }
       try {
-        const rawPayload = await readJsonBody(req);
-        const payload = sanitizeProductionPackageForPrAutomation(rawPayload);
+        const payload = await readAndSanitizeProductionPackage(req);
         const validation = validateProductionPackage(payload);
         const plan = buildPrAutomationPlan(payload, validation);
         if (!plan.ok) {
@@ -649,7 +653,7 @@ export function createRequestHandler() {
 
       if (url.pathname === "/api/operator/proposal-package") {
         try {
-          const payload = await readJsonBody(req);
+          const payload = await readAndSanitizeProductionPackage(req);
           const validation = validateProductionPackage(payload);
           if (!validation.passed) {
             sendJson(res, 400, {
@@ -684,7 +688,7 @@ export function createRequestHandler() {
 
       if (url.pathname === "/api/operator/pr-plan") {
         try {
-          const payload = await readJsonBody(req);
+          const payload = await readAndSanitizeProductionPackage(req);
           const validation = validateProductionPackage(payload);
           const plan = buildPrAutomationPlan(payload, validation);
           logInfo("operator pr-plan requested", { leadSlug: payload?.lead?.slug || "missing", ok: plan.ok });
@@ -698,7 +702,7 @@ export function createRequestHandler() {
 
       if (url.pathname === "/api/operator/github-preflight") {
         try {
-          const payload = await readJsonBody(req);
+          const payload = await readAndSanitizeProductionPackage(req);
           const validation = validateProductionPackage(payload);
           if (!validation.passed) {
             sendJson(res, 400, { ok: false, mode: "github-preflight", canCreatePRs: false, blockers: validation.errors }, headers);
@@ -729,7 +733,7 @@ export function createRequestHandler() {
           return;
         }
         try {
-          const payload = await readJsonBody(req);
+          const payload = await readAndSanitizeProductionPackage(req);
           const validation = validateProductionPackage(payload);
           const plan = buildPrAutomationPlan(payload, validation);
           if (!plan.ok) {
@@ -752,7 +756,7 @@ export function createRequestHandler() {
             ok: true,
             jobId: plan.jobId,
             leadSlug: plan.leadSlug,
-            status: "prs_created",
+            status: result.status || "prs_created",
             pullRequests: result.pullRequests,
             responseBundle: result.responseBundle,
             timestamp: Date.now(),
@@ -764,11 +768,12 @@ export function createRequestHandler() {
             mode: "create-prs",
             jobId: plan.jobId,
             leadSlug: plan.leadSlug,
-            writeAttempted: true,
+            writeAttempted: result.writeAttempted,
+            status: result.status,
             pullRequests: result.pullRequests,
             responseBundle: result.responseBundle,
             idempotencyNotes: result.idempotencyNotes,
-            nextStep: "human_review_required",
+            nextStep: result.nextStep || "human_review_required",
           }, headers);
         } catch (error) {
           const safeError = sanitizeGithubError(error);
