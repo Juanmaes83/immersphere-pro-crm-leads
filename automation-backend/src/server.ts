@@ -18,6 +18,7 @@ import {
 import { logInfo, logWarn } from "./logger.ts";
 import { getMode, MAX_BODY_BYTES, SERVICE_NAME, SERVICE_VERSION } from "./schemas.ts";
 import { detectExistingOutputsForPlan, filterGeneratedFilesByExistingOutputs } from "./outputIdempotency.ts";
+import { reviewExistingOutputsAgainstProductionPackage } from "./existingOutputReview.ts";
 import { buildProposalPackage } from "./proposalPackage.ts";
 import { sanitizeProductionPackageForPrAutomation } from "./sanitizeProductionPackage.ts";
 import { validateProductionPackage } from "./validateProductionPackage.ts";
@@ -408,8 +409,23 @@ export function createRequestHandler() {
           return;
         }
         const preflight = await runGithubPreflight(plan);
-        logInfo("github-preflight requested", { leadSlug: plan.leadSlug, canCreatePRs: preflight.canCreatePRs });
-        sendJson(res, preflight.ok ? 200 : 200, preflight, headers);
+        let existingOutputReview = {
+          overall: {
+            passed: false,
+            status: "missing",
+            mismatches: [],
+            criticalWarnings: [],
+            safeWarnings: ["github_preflight_skipped_existing_output_review:missing_token"],
+            checkedFiles: [],
+            recommendedAction: "configure_github_server_token",
+          },
+        };
+        if (preflight.canCreatePRs) {
+          const existingOutputs = await detectExistingOutputsForPlan(plan, "main");
+          existingOutputReview = await reviewExistingOutputsAgainstProductionPackage(payload, plan, existingOutputs, "main");
+        }
+        logInfo("github-preflight requested", { leadSlug: plan.leadSlug, canCreatePRs: preflight.canCreatePRs, existingOutputStatus: existingOutputReview.overall.status });
+        sendJson(res, preflight.ok ? 200 : 200, { ...preflight, existingOutputReview: existingOutputReview.overall }, headers);
       } catch (error) {
         const message = error instanceof Error ? error.message : "request_failed";
         sendJson(res, 400, { ok: false, mode: "github-preflight", canCreatePRs: false, blockers: [message] }, headers);
@@ -446,7 +462,7 @@ export function createRequestHandler() {
           }, headers);
           return;
         }
-        const result = await createProductionPullRequests(plan, preflight);
+        const result = await createProductionPullRequests(payload, plan, preflight);
         jobs.set(plan.jobId, {
           ok: true,
           jobId: plan.jobId,
@@ -457,12 +473,13 @@ export function createRequestHandler() {
           timestamp: Date.now(),
         });
         sendJson(res, 200, {
-          ok: true,
+          ok: result.ok !== false,
           mode: "create-prs",
           jobId: plan.jobId,
           leadSlug: plan.leadSlug,
           writeAttempted: result.writeAttempted,
           status: result.status,
+          existingOutputReview: result.existingOutputReview,
           pullRequests: result.pullRequests,
           responseBundle: result.responseBundle,
           idempotencyNotes: result.idempotencyNotes,
@@ -501,7 +518,7 @@ export function createRequestHandler() {
           sendJson(res, 400, { ok: false, error: "invalid_schema_version", expected: "operator-response-bundle/1.0", received: responseBundle.schemaVersion }, headers);
           return;
         }
-        const validStatuses = ["dry_run_ok", "pr_created", "needs_manual_merge", "published", "failed", "needs_existing_output_review"];
+        const validStatuses = ["dry_run_ok", "pr_created", "needs_manual_merge", "published", "failed", "needs_existing_output_review", "existing_outputs_current", "existing_outputs_update_required"];
         const bundleStatus = typeof responseBundle.status === "string" ? responseBundle.status : "unknown";
         if (!validStatuses.includes(bundleStatus)) {
           sendJson(res, 400, { ok: false, error: "invalid_status", status: bundleStatus, valid: validStatuses }, headers);
@@ -751,7 +768,7 @@ export function createRequestHandler() {
             }, headers);
             return;
           }
-          const result = await createProductionPullRequests(plan, preflight);
+          const result = await createProductionPullRequests(payload, plan, preflight);
           jobs.set(plan.jobId, {
             ok: true,
             jobId: plan.jobId,
@@ -764,12 +781,13 @@ export function createRequestHandler() {
           });
           logInfo("operator create-prs success", { leadSlug: plan.leadSlug });
           sendJson(res, 200, {
-            ok: true,
+            ok: result.ok !== false,
             mode: "create-prs",
             jobId: plan.jobId,
             leadSlug: plan.leadSlug,
             writeAttempted: result.writeAttempted,
             status: result.status,
+            existingOutputReview: result.existingOutputReview,
             pullRequests: result.pullRequests,
             responseBundle: result.responseBundle,
             idempotencyNotes: result.idempotencyNotes,
@@ -873,34 +891,47 @@ function buildResponseBundle(plan, pullRequestsByRepo: Record<string, { url: str
   };
 }
 
-async function createProductionPullRequests(plan, preflight = {}) {
+async function ensureUpdateBranch(repo: string, desiredBranch: string, baseBranch = "main") {
+  if (await branchExists(repo, desiredBranch)) {
+    const safeBranch = `${desiredBranch}-refresh-${Date.now()}`;
+    const fromSha = await getBranchHeadSha(repo, baseBranch);
+    await createBranch(repo, safeBranch, fromSha);
+    return { branch: safeBranch, reused: false, refreshed: true };
+  }
+  const fromSha = await getBranchHeadSha(repo, baseBranch);
+  await createBranch(repo, desiredBranch, fromSha);
+  return { branch: desiredBranch, reused: false, refreshed: false };
+}
+
+async function createProductionPullRequests(payload, plan, preflight = {}) {
   const createdAt = new Date().toISOString();
   const idempotencyNotes: string[] = [];
 
   const existingOutputs = await detectExistingOutputsForPlan(plan, "main");
+  const existingOutputReview = await reviewExistingOutputsAgainstProductionPackage(payload, plan, existingOutputs, "main");
 
-  if (existingOutputs.overall === "all_exist") {
+  if (existingOutputs.overall === "all_exist" && existingOutputReview.overall.passed) {
     const responseBundle = buildResponseBundle(plan, {}, createdAt);
-    responseBundle.status = "needs_existing_output_review";
+    responseBundle.status = "existing_outputs_current";
     responseBundle.publicRoutes = {
       ...existingOutputs.rubik.publicRoutes,
       ...existingOutputs.aurum.publicRoutes,
     };
-    responseBundle.warnings = [
-      ...(responseBundle.warnings || []),
-      "existing_outputs_detected_no_pr_created",
-      `rubik_existing:${existingOutputs.rubik.existing.join(",")}`,
-      `aurum_existing:${existingOutputs.aurum.existing.join(",")}`,
-    ];
+    responseBundle.warnings = existingOutputReview.overall.safeWarnings;
     return {
+      ok: true,
       pullRequests: {},
-      idempotencyNotes: ["all_outputs_already_exist_in_main_no_pr_created"],
+      idempotencyNotes: ["existing_outputs_current_no_pr_needed"],
       responseBundle,
-      status: "existing_outputs_found",
+      existingOutputReview: existingOutputReview.overall,
+      status: "existing_outputs_current",
       writeAttempted: false,
-      nextStep: "review_existing_outputs_in_main",
+      nextStep: "ready_to_validate_public_urls",
     };
   }
+
+  const hasExistingOutputs = existingOutputs.overall === "all_exist" || existingOutputs.overall === "partial";
+  const status = hasExistingOutputs ? "existing_outputs_update_required" : "prs_created";
 
   const repoStatus = (preflight as Record<string, unknown>).repos || {};
   const grouped = groupByRepo(plan.generatedFiles);
@@ -913,12 +944,12 @@ async function createProductionPullRequests(plan, preflight = {}) {
     const repoKey = Object.keys(plan.targetPRs).find((k) => (plan.targetPRs[k] as Record<string, string>).repo === repo);
     const existing = repo === RUBIK_REPO ? existingOutputs.rubik : existingOutputs.aurum;
 
-    if (existing.allExist) {
-      idempotencyNotes.push(`${repoKey}_all_outputs_exist_skipped`);
+    if (existing.allExist && existingOutputReview[repoKey || "aurum"].passed) {
+      idempotencyNotes.push(`${repoKey}_outputs_current_skipped`);
       continue;
     }
 
-    const files = filterGeneratedFilesByExistingOutputs(rawFiles as Array<Record<string, unknown>>, existing);
+    const files = hasExistingOutputs ? rawFiles as Array<Record<string, unknown>> : filterGeneratedFilesByExistingOutputs(rawFiles as Array<Record<string, unknown>>, existing);
     if (files.length === 0) {
       idempotencyNotes.push(`${repoKey}_all_files_filtered_skipped`);
       continue;
@@ -928,53 +959,52 @@ async function createProductionPullRequests(plan, preflight = {}) {
       idempotencyNotes.push(`skipped_existing_file:${repo}:${skipped}`);
     }
 
-    const alreadyExists = (repoStatus as Record<string, Record<string, unknown>>)[repoKey || ""]?.branchExists;
-    if (!alreadyExists) {
-      const fromSha = await getBranchHeadSha(repo, "main");
-      await createBranch(repo, target.headBranch, fromSha);
-    } else {
-      idempotencyNotes.push(`branch_reused:${target.headBranch}`);
+    const branchInfo = await ensureUpdateBranch(repo, target.headBranch, "main");
+    if (branchInfo.refreshed) {
+      idempotencyNotes.push(`branch_refreshed:${target.headBranch}->${branchInfo.branch}`);
     }
 
     for (const file of files) {
-      await writeFileToRepo(repo, target.headBranch, file);
-      const info = await getFileInfo(repo, String(file.path), target.headBranch);
+      await writeFileToRepo(repo, branchInfo.branch, file);
+      const info = await getFileInfo(repo, String(file.path), branchInfo.branch);
       if (info.exists && !file.isPatchTarget) idempotencyNotes.push(`file_updated:${String(file.path)}`);
     }
 
     const existingPR = (repoStatus as Record<string, Record<string, unknown>>)[repoKey || ""]?.existingPR as { url: string; number: number } | null;
 
     if (existingPR) {
-      pullRequests[repo] = { url: existingPR.url, number: existingPR.number, branch: target.headBranch, reused: true };
+      pullRequests[repo] = { url: existingPR.url, number: existingPR.number, branch: branchInfo.branch, reused: true };
       idempotencyNotes.push(`pr_reused:#${existingPR.number}`);
     } else {
       const pr = await createPullRequest(
         repo,
-        target.headBranch,
+        branchInfo.branch,
         "main",
-        `[Production] ${plan.leadSlug} — ${repoKey === "aurum" ? "Landing, Web Completa & wrappers" : "Visual Experience & Banners"}`,
-        `Auto-generated by immersphere-production-orchestrator v${SERVICE_VERSION}\n\nHuman review required. No auto-merge.\n\nAsset mode: \`${plan.assetMode || "unknown"}\`\n\nWarnings: ${(plan.generatorWarnings || []).length}`,
+        `[Production Update] ${plan.leadSlug} — ${repoKey === "aurum" ? "Landing, Web Completa & wrappers" : "Visual Experience & Banners"}`,
+        `Auto-generated by immersphere-production-orchestrator v${SERVICE_VERSION}\n\nHuman review required. No auto-merge.\n\nExisting outputs review: \`${existingOutputReview[repoKey || "aurum"].status}\`\n\nMismatches: ${existingOutputReview[repoKey || "aurum"].mismatches.join(", ") || "none"}\n\nAsset mode: \`${plan.assetMode || "unknown"}\`\n\nWarnings: ${(plan.generatorWarnings || []).length}`,
       );
-      pullRequests[repo] = { url: pr.html_url, number: pr.number, branch: target.headBranch };
+      pullRequests[repo] = { url: pr.html_url, number: pr.number, branch: branchInfo.branch };
     }
   }
 
   const responseBundle = buildResponseBundle(plan, pullRequests, createdAt);
-  if (existingOutputs.overall === "partial") {
-    responseBundle.warnings = [
-      ...(responseBundle.warnings || []),
-      "partial_existing_outputs_detected",
-      ...idempotencyNotes.filter((n) => n.startsWith("skipped_existing_file:")),
-    ];
-  }
+  responseBundle.status = status === "prs_created" ? "pr_created" : status;
+  responseBundle.warnings = [
+    ...(responseBundle.warnings || []),
+    ...existingOutputReview.overall.mismatches,
+    ...existingOutputReview.overall.criticalWarnings,
+    ...idempotencyNotes.filter((n) => n.startsWith("skipped_existing_file:")),
+  ];
 
   return {
+    ok: true,
     pullRequests,
     idempotencyNotes,
     responseBundle,
-    status: Object.keys(pullRequests).length ? "prs_created" : "existing_outputs_found",
+    existingOutputReview: existingOutputReview.overall,
+    status: Object.keys(pullRequests).length ? status : "existing_outputs_update_required_but_write_blocked",
     writeAttempted: Object.keys(pullRequests).length > 0,
-    nextStep: Object.keys(pullRequests).length ? "human_review_required" : "review_existing_outputs_in_main",
+    nextStep: Object.keys(pullRequests).length ? "human_review_required" : "resolve_write_blocker",
   };
 }
 
