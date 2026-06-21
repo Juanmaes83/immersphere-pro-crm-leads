@@ -246,6 +246,18 @@ test("create-prs para Sandhouse con outputs existentes actuales no crea PRs", as
       assert.equal(body.responseBundle.status, "existing_outputs_current");
       assert.equal(body.existingOutputReview.status, "current");
 
+      // publicRoutes is the client-facing surface — it must be 100% AURUM,
+      // never the internal Rubik rendering engine, even though Rubik
+      // legitimately has its own publicRoutes entries internally.
+      const publicRoutes = body.responseBundle.publicRoutes;
+      assert.ok(publicRoutes && Object.keys(publicRoutes).length > 0, "publicRoutes no está vacío");
+      for (const [key, url] of Object.entries(publicRoutes)) {
+        assert.match(url, /^https:\/\/aurum-properties-boutique\.vercel\.app\//, `publicRoutes.${key} debe ser AURUM`);
+        assert.ok(!String(url).includes("rubik-sota-director-de-orquesta"), `publicRoutes.${key} no debe ser Rubik`);
+      }
+      assert.ok(publicRoutes.landing, "incluye landing (Rubik no tiene equivalente)");
+      assert.ok(publicRoutes.webCompleta, "incluye webCompleta (Rubik no tiene equivalente)");
+
       const branchCreates = calls.filter((c) => c.url.includes("/git/refs") && c.method === "POST");
       const filePuts = calls.filter((c) => c.url.includes("/contents/") && c.method === "PUT");
       const prCreates = calls.filter((c) => c.url.includes("/pulls") && c.method === "POST");
