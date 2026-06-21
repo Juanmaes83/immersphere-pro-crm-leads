@@ -515,12 +515,12 @@ test("pathSecurity obliga a ramas production por lead", () => {
   assert.notEqual(validateProductionBranch("production/torrevieja-sur/../../main", "torrevieja-sur"), null);
 });
 
-test("buildPrAutomationPlan bloquea payload inseguro antes de generar archivos", async () => {
+test("buildPrAutomationPlan bloquea payload inseguro antes de generar archivos", () => {
   const payload = validPayload({
     patch: { targetRoutes: { landing: "https://aurum-properties-boutique.vercel.app/gesture-lab/torrevieja-sur" } },
   });
   const validation = validateProductionPackage(payload);
-  const plan = await buildPrAutomationPlan(payload, validation);
+  const plan = buildPrAutomationPlan(payload, validation);
   assert.equal(plan.ok, false);
   assert.equal(plan.blocked, true);
   assert.match(plan.validation.errors.join(" "), /gesture_lab/);

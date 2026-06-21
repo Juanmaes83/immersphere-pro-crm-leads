@@ -2,9 +2,7 @@ import crypto from "node:crypto";
 import http from "node:http";
 import { URL } from "node:url";
 import { buildPrAutomationPlan } from "./buildPrAutomationPlan.ts";
-import { buildAurumFiles } from "./fileGenerators.ts";
 import { buildDryRunPlan } from "./buildDryRunPlan.ts";
-import { extractRouteComponentMap } from "./existingOutputReview.ts";
 import {
   allowedRepos,
   branchExists,
@@ -339,7 +337,7 @@ export function createRequestHandler() {
       try {
         const payload = await readAndSanitizeProductionPackage(req);
         const validation = validateProductionPackage(payload);
-        const plan = await buildPrAutomationPlan(payload, validation);
+        const plan = buildPrAutomationPlan(payload, validation);
         if (plan.jobId) {
           jobs.set(plan.jobId, {
             ok: plan.ok,
@@ -368,7 +366,7 @@ export function createRequestHandler() {
           sendJson(res, 400, { ok: false, validation, blocked: true }, headers);
           return;
         }
-        const plan = await buildPrAutomationPlan(payload, validation);
+        const plan = buildPrAutomationPlan(payload, validation);
         sendJson(res, 200, {
           ok: true,
           mode: "proposal-package",
@@ -399,7 +397,7 @@ export function createRequestHandler() {
           }, headers);
           return;
         }
-        const plan = await buildPrAutomationPlan(payload, validation);
+        const plan = buildPrAutomationPlan(payload, validation);
         if (!plan.ok) {
           sendJson(res, 400, {
             ok: false,
@@ -447,7 +445,7 @@ export function createRequestHandler() {
       try {
         const payload = await readAndSanitizeProductionPackage(req);
         const validation = validateProductionPackage(payload);
-        const plan = await buildPrAutomationPlan(payload, validation);
+        const plan = buildPrAutomationPlan(payload, validation);
         if (!plan.ok) {
           sendJson(res, 400, { ...plan, writeAttempted: false }, headers);
           return;
@@ -684,7 +682,7 @@ export function createRequestHandler() {
             }, headers);
             return;
           }
-          const plan = await buildPrAutomationPlan(payload, validation);
+          const plan = buildPrAutomationPlan(payload, validation);
           const proposalPackage = plan.proposalPackage || buildProposalPackage(payload, {
             branches: plan.branches || {},
             targetPRs: plan.targetPRs || {},
@@ -709,7 +707,7 @@ export function createRequestHandler() {
         try {
           const payload = await readAndSanitizeProductionPackage(req);
           const validation = validateProductionPackage(payload);
-          const plan = await buildPrAutomationPlan(payload, validation);
+          const plan = buildPrAutomationPlan(payload, validation);
           logInfo("operator pr-plan requested", { leadSlug: payload?.lead?.slug || "missing", ok: plan.ok });
           sendJson(res, plan.ok ? 200 : 400, plan, headers);
         } catch (error) {
@@ -727,7 +725,7 @@ export function createRequestHandler() {
             sendJson(res, 400, { ok: false, mode: "github-preflight", canCreatePRs: false, blockers: validation.errors }, headers);
             return;
           }
-          const plan = await buildPrAutomationPlan(payload, validation);
+          const plan = buildPrAutomationPlan(payload, validation);
           if (!plan.ok) {
             sendJson(res, 400, { ok: false, mode: "github-preflight", canCreatePRs: false, blockers: plan.validation?.errors || [] }, headers);
             return;
@@ -754,7 +752,7 @@ export function createRequestHandler() {
         try {
           const payload = await readAndSanitizeProductionPackage(req);
           const validation = validateProductionPackage(payload);
-          const plan = await buildPrAutomationPlan(payload, validation);
+          const plan = buildPrAutomationPlan(payload, validation);
           if (!plan.ok) {
             sendJson(res, 400, { ...plan, writeAttempted: false }, headers);
             return;
@@ -912,25 +910,6 @@ async function createProductionPullRequests(payload, plan, preflight = {}) {
   const existingOutputs = await detectExistingOutputsForPlan(plan, "main");
   const existingOutputReview = await reviewExistingOutputsAgainstProductionPackage(payload, plan, existingOutputs, "main");
 
-  const hasExistingOutputs = existingOutputs.overall === "all_exist" || existingOutputs.overall === "partial";
-  if (hasExistingOutputs) {
-    let existingAppTsxContent = "";
-    try {
-      const appInfo = await getFileContent(AURUM_REPO, "src/App.tsx", "main");
-      if (appInfo.exists) existingAppTsxContent = appInfo.content || "";
-    } catch {
-      existingAppTsxContent = "";
-    }
-    const existingRouteComponentMap = extractRouteComponentMap(existingAppTsxContent, plan.leadSlug);
-    const reconciledAurum = buildAurumFiles(payload, plan.proposalPackage, {
-      existingRouteComponentMap,
-      existingAppTsxContent,
-    });
-    const rubikFiles = plan.generatedFiles.filter((f) => f.repo === RUBIK_REPO);
-    plan.generatedFiles = [...rubikFiles, ...reconciledAurum.files];
-    idempotencyNotes.push("aurum_files_reconciled_with_existing_app_tsx");
-  }
-
   if (existingOutputs.overall === "all_exist" && existingOutputReview.overall.passed) {
     const responseBundle = buildResponseBundle(plan, {}, createdAt);
     responseBundle.status = "existing_outputs_current";
@@ -951,6 +930,7 @@ async function createProductionPullRequests(payload, plan, preflight = {}) {
     };
   }
 
+  const hasExistingOutputs = existingOutputs.overall === "all_exist" || existingOutputs.overall === "partial";
   const status = hasExistingOutputs ? "existing_outputs_update_required" : "prs_created";
 
   const repoStatus = (preflight as Record<string, unknown>).repos || {};
