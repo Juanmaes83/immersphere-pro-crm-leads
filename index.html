@@ -10641,7 +10641,109 @@ function renderFourHooksProposalPanel(l){
   const routeRow=(label,key)=>{const pub=pr[key]||'',cand=cr[key]||'';if(pub&&fourHooksUrlIsValid(pub))return '<div style="font-size:11px;color:var(--text3);word-break:break-all;margin:2px 0"><strong style="color:var(--text2)">'+safeHtml(label)+':</strong> <a href="'+safeHtml(pub)+'" target="_blank" rel="noopener noreferrer" style="color:var(--accent2)">'+safeHtml(pub)+'</a></div>';if(cand&&fourHooksUrlIsValid(cand))return '<div style="font-size:11px;color:var(--text3);word-break:break-all;margin:2px 0"><strong style="color:var(--text2)">'+safeHtml(label)+':</strong> <span style="font-size:10px;color:var(--text3)">[candidata]</span> '+safeHtml(cand)+'</div>';return '<div style="font-size:11px;color:var(--text3);margin:2px 0"><strong style="color:var(--text2)">'+safeHtml(label)+':</strong> <em>Pendiente de publicación</em></div>';};
   // Hook card: uses reviewableFourHooks — never renders candidateUrl as a live link
   const hookCard=(rh,num)=>{const pubBadge=rh.published?'<span class="tag est-cerrado">Publicado</span>':'<span class="tag est-pendiente">Pendiente publicación</span>';let urlHtml='';if(rh.published&&rh.publicUrl){urlHtml='<div class="hook-card-url"><a href="'+safeHtml(rh.publicUrl)+'" target="_blank" rel="noopener noreferrer" style="color:var(--accent2);word-break:break-all">'+safeHtml(rh.publicUrl)+'</a></div>';}else if(rh.candidateUrl){urlHtml='<div class="hook-card-url" style="word-break:break-all"><span style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;display:block;margin-bottom:2px">Ruta candidata — pendiente de publicación</span>'+safeHtml(rh.candidateUrl)+'</div>';}else{urlHtml='<div class="hook-card-url" style="color:var(--text3);font-style:italic">Sin ruta pública — pendiente de publicación</div>';}return '<div class="hook-card"><div class="hook-card-head"><span class="hook-badge">G'+num+'</span><span class="tag est-visual">Generado</span>'+pubBadge+'</div><div class="hook-card-title">'+safeHtml(rh.title||'')+'</div><div class="hook-card-desc">'+safeHtml(rh.description||'')+'</div>'+urlHtml+'</div>';};
-  return`<div class="modal-section" data-section="four-hooks-proposal"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px"><div class="modal-section-title" style="margin:0">Propuesta 4 ganchos</div><div style="display:flex;gap:6px;flex-wrap:wrap">${chip}${readyChip}</div></div>${counterHtml}<div class="hook-explain">Genera un paquete operativo personalizado desde la ficha, auditoria y datos disponibles. No expone tokens y no ejecuta create-prs.</div><div class="contact-actions" style="margin:10px 0"><button class="contact-btn btn-web" onclick="connectExistingFourHooksEngines(${l.id})">${has?'Regenerar 4 ganchos personalizados':'Generar 4 ganchos personalizados'}</button><button class="contact-btn btn-wa" onclick="copyFourHooksField(${l.id},'whatsapp')">Copiar WhatsApp</button><button class="contact-btn btn-email" onclick="copyFourHooksField(${l.id},'email')">Copiar email</button><button class="contact-btn btn-maps" onclick="copyFourHooksField(${l.id},'summary')">Copiar resumen</button><button class="contact-btn btn-email" onclick="copyFourHooksField(${l.id},'json')">Copiar JSON</button><button class="contact-btn btn-tel" onclick="downloadFourHooksPackage(${l.id})">Descargar JSON</button><button class="contact-btn btn-web" onclick="openOperatorConsole(${l.id})">Abrir Operator Console</button><button class="contact-btn btn-maps" onclick="copyOperatorInstructions(${l.id})">Instrucciones operador</button></div>${has?`<div class="hook-strategy">${safeHtml(d.opportunityDetected||'Propuesta personalizada generada.')}</div><div class="info-grid"><div class="info-item"><label>Lead</label><span>${safeHtml(p.lead.name)}</span></div><div class="info-item"><label>Slug</label><span>${safeHtml(p.lead.slug)}</span></div><div class="info-item"><label>Auditoria</label><span>${safeHtml(p.audit.status)}</span></div><div class="info-item"><label>Score</label><span>${safeHtml(String(p.audit.signals.score||0))}</span></div></div><div style="margin:10px 0">${routeRow('EV','visualExperience')}${routeRow('Landing','landing')}${routeRow('Web completa','webCompleta')}${routeRow('Banner pack','bannerPack')}${routeRow('Vertical','bannerVertical')}${routeRow('Horizontal','bannerHorizontal')}</div><div class="hook-grid">${reviewable.map((rh,i)=>hookCard(rh,i+1)).join('')}</div>${(errList||warnList)?'<div style="margin-top:10px;display:grid;gap:8px">'+(errList?'<div class="pl-warning"><strong>Errores:</strong><ul>'+errList+'</ul></div>':'')+(warnList?'<div class="hook-form-hint"><strong>Warnings:</strong><ul>'+warnList+'</ul></div>':'')+'</div>':''}<div class="contact-actions" style="margin-top:10px"><button class="contact-btn btn-email" onclick="saveRailwayResponseForLead(${l.id},'proposal-package')">Pegar proposal-package</button><button class="contact-btn btn-email" onclick="saveRailwayResponseForLead(${l.id},'pr-plan')">Pegar pr-plan</button><button class="contact-btn btn-email" onclick="saveRailwayResponseForLead(${l.id},'github-preflight')">Pegar github-preflight</button></div>`:'<div style="font-size:12px;color:var(--text3);line-height:1.6">Pulsa generar para crear diagnostico, 4 ganchos, rutas, mensajes y Production Package JSON compatible con backend.</div>'}</div>`;
+  return`<div class="modal-section" data-section="four-hooks-proposal"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px"><div class="modal-section-title" style="margin:0">Propuesta 4 ganchos</div><div style="display:flex;gap:6px;flex-wrap:wrap">${chip}${readyChip}</div></div>${counterHtml}<div class="hook-explain">Genera un paquete operativo personalizado desde la ficha, auditoria y datos disponibles. No expone tokens y no ejecuta create-prs.</div><div class="contact-actions" style="margin:10px 0"><button class="contact-btn btn-web" onclick="connectExistingFourHooksEngines(${l.id})">${has?'Regenerar 4 ganchos personalizados':'Generar 4 ganchos personalizados'}</button><button class="contact-btn btn-wa" onclick="copyFourHooksField(${l.id},'whatsapp')">Copiar WhatsApp</button><button class="contact-btn btn-email" onclick="copyFourHooksField(${l.id},'email')">Copiar email</button><button class="contact-btn btn-maps" onclick="copyFourHooksField(${l.id},'summary')">Copiar resumen</button><button class="contact-btn btn-email" onclick="copyFourHooksField(${l.id},'json')">Copiar JSON</button><button class="contact-btn btn-tel" onclick="downloadFourHooksPackage(${l.id})">Descargar JSON</button><button class="contact-btn btn-web" onclick="openOperatorConsole(${l.id})">Abrir Operator Console</button><button class="contact-btn btn-maps" onclick="copyOperatorInstructions(${l.id})">Instrucciones operador</button><button class="contact-btn btn-tel" onclick="openImportResponseBundlePanel(${l.id})">Importar Response Bundle</button></div>${has?`<div class="hook-strategy">${safeHtml(d.opportunityDetected||'Propuesta personalizada generada.')}</div><div class="info-grid"><div class="info-item"><label>Lead</label><span>${safeHtml(p.lead.name)}</span></div><div class="info-item"><label>Slug</label><span>${safeHtml(p.lead.slug)}</span></div><div class="info-item"><label>Auditoria</label><span>${safeHtml(p.audit.status)}</span></div><div class="info-item"><label>Score</label><span>${safeHtml(String(p.audit.signals.score||0))}</span></div></div><div style="margin:10px 0">${routeRow('EV','visualExperience')}${routeRow('Landing','landing')}${routeRow('Web completa','webCompleta')}${routeRow('Banner pack','bannerPack')}${routeRow('Vertical','bannerVertical')}${routeRow('Horizontal','bannerHorizontal')}</div><div class="hook-grid">${reviewable.map((rh,i)=>hookCard(rh,i+1)).join('')}</div>${(errList||warnList)?'<div style="margin-top:10px;display:grid;gap:8px">'+(errList?'<div class="pl-warning"><strong>Errores:</strong><ul>'+errList+'</ul></div>':'')+(warnList?'<div class="hook-form-hint"><strong>Warnings:</strong><ul>'+warnList+'</ul></div>':'')+'</div>':''}<div class="contact-actions" style="margin-top:10px"><button class="contact-btn btn-email" onclick="saveRailwayResponseForLead(${l.id},'proposal-package')">Pegar proposal-package</button><button class="contact-btn btn-email" onclick="saveRailwayResponseForLead(${l.id},'pr-plan')">Pegar pr-plan</button><button class="contact-btn btn-email" onclick="saveRailwayResponseForLead(${l.id},'github-preflight')">Pegar github-preflight</button><button class="contact-btn btn-web" onclick="openImportResponseBundlePanel(${l.id})" style="font-weight:700">Importar Response Bundle</button></div>`:'<div style="font-size:12px;color:var(--text3);line-height:1.6">Pulsa generar para crear diagnostico, 4 ganchos, rutas, mensajes y Production Package JSON compatible con backend.</div>'}</div>`;
+}
+
+// ── Response Bundle import — Platform B ──────────────────────────────────────
+function importResponseBundle(leadId, bundle) {
+  if (!bundle || typeof bundle !== 'object') return {ok:false, error:'bundle_required'};
+  if (bundle.schemaVersion !== 'operator-response-bundle/1.0') return {ok:false, error:'invalid_schema_version:'+String(bundle.schemaVersion||'')};
+  if (!bundle.slug && !bundle.leadId) return {ok:false, error:'slug_or_leadId_required'};
+  const validStatuses = ['dry_run_ok','pr_created','needs_manual_merge','published','failed'];
+  if (!validStatuses.includes(bundle.status)) return {ok:false, error:'invalid_status:'+String(bundle.status||'')};
+
+  let l = leads.find(x => String(x.id) === String(leadId));
+  if (!l && bundle.slug) l = leads.find(x => toLeadSlug(x.empresa||'') === bundle.slug);
+  if (!l && bundle.leadId) l = leads.find(x => String(x.id) === String(bundle.leadId));
+  if (!l) return {ok:false, error:'lead_not_found'};
+
+  const now = new Date().toISOString();
+  if (!l.previewEngine) l.previewEngine = {};
+  if (!Array.isArray(l._hookHistory)) l._hookHistory = [];
+
+  l.previewEngine.operatorResponseBundle = bundle;
+  l.previewEngine.operatorResponseBundleImportedAt = now;
+  l.previewEngine.operatorResponseBundleStatus = bundle.status;
+
+  if (bundle.pullRequests) {
+    const pr = bundle.pullRequests;
+    l.previewEngine.prUrls = {
+      aurum: pr.aurum ? {url: pr.aurum.url||pr.aurum, number: pr.aurum.number||null} : null,
+      rubik: pr.rubik ? {url: pr.rubik.url||pr.rubik, number: pr.rubik.number||null} : null,
+    };
+  }
+
+  if (bundle.status === 'pr_created') {
+    l.previewEngine.publicationStatus = 'publication_pending';
+    l._hookHistory.push({hook:'operator', status:'pr_created', action:'response_bundle_imported', at:now});
+  } else if (bundle.status === 'published') {
+    l.previewEngine.publicationStatus = 'published';
+    l._hookHistory.push({hook:'operator', status:'published', action:'response_bundle_imported', at:now});
+  } else {
+    l._hookHistory.push({hook:'operator', status:bundle.status, action:'response_bundle_imported', at:now});
+  }
+
+  const planned = bundle.plannedPublicRoutes || {};
+  const isValidUrl = u => typeof u === 'string' && /^https?:\/\//.test(u);
+  const stale = s => !s || s === 'pending' || s === 'briefing_ready';
+  if (typeof ensureLeadCommercialHooks === 'function') {
+    const hooks = ensureLeadCommercialHooks(l);
+    if (hooks) {
+      if (isValidUrl(planned.visualExperience) && !hooks.visualExperience.url) {
+        hooks.visualExperience.url = planned.visualExperience;
+        hooks.visualExperience.assetStatus = 'in_production';
+        if (stale(hooks.visualExperience.status)) hooks.visualExperience.status = 'in_production';
+        hooks.visualExperience.lastUpdate = now;
+      }
+      if (isValidUrl(planned.landing) && !hooks.landingPage.url) {
+        hooks.landingPage.url = planned.landing;
+        hooks.landingPage.assetStatus = 'in_production';
+        if (stale(hooks.landingPage.status)) hooks.landingPage.status = 'in_production';
+        hooks.landingPage.lastUpdate = now;
+      }
+      if (isValidUrl(planned.webCompleta) && !hooks.fullWebDemo.url) {
+        hooks.fullWebDemo.url = planned.webCompleta;
+        hooks.fullWebDemo.assetStatus = 'in_production';
+        if (stale(hooks.fullWebDemo.status)) hooks.fullWebDemo.status = 'in_production';
+        hooks.fullWebDemo.lastUpdate = now;
+      }
+      const bp = hooks.bannerPack;
+      let bpChanged = false;
+      if (isValidUrl(planned.bannerPack) && !bp.url) { bp.url = planned.bannerPack; bp.packUrl = planned.bannerPack; bpChanged = true; }
+      if (isValidUrl(planned.bannerVertical) && !bp.verticalUrl) { bp.verticalUrl = planned.bannerVertical; bpChanged = true; }
+      if (isValidUrl(planned.bannerHorizontal) && !bp.horizontalUrl) { bp.horizontalUrl = planned.bannerHorizontal; bpChanged = true; }
+      if (bpChanged) { bp.assetStatus = 'in_production'; if (stale(bp.status)) bp.status = 'in_production'; bp.lastUpdate = now; }
+      l.commercialHooks = hooks;
+    }
+  }
+
+  if (typeof commercialHooksNextAction === 'function') l._proxAccion = commercialHooksNextAction(l);
+  else l._proxAccion = 'Revisar PRs en GitHub. Una vez aprobados y mergeados, confirmar publicación.';
+  l.updatedAt = now;
+  saveState();
+  return {ok:true, slug:bundle.slug, status:bundle.status, importedAt:now};
+}
+
+function openImportResponseBundlePanel(id) {
+  const l = leads.find(x => x.id === id); if (!l) return;
+  const existing = l.previewEngine && l.previewEngine.operatorResponseBundle;
+  const hint = existing
+    ? 'Bundle previo importado (slug: '+safeHtml(existing.slug||'?')+', status: '+safeHtml(existing.status||'?')+').\nSobrescribirá el anterior.\n\n'
+    : '';
+  const raw = prompt(hint + 'Pega el Response Bundle JSON de Railway Operator:\n(objeto responseBundle de /api/operator/create-prs o /api/production/create-prs)','');
+  if (raw === null) return;
+  let bundle;
+  try { bundle = JSON.parse(raw); } catch(e) { _showToast('JSON no válido: '+String(e.message||e), 'var(--red)'); return; }
+  // Accept full response or just the responseBundle field
+  if (bundle && bundle.responseBundle && typeof bundle.responseBundle === 'object') bundle = bundle.responseBundle;
+  const result = importResponseBundle(id, bundle);
+  if (!result.ok) { _showToast('Error importando bundle: ' + result.error, 'var(--red)'); return; }
+  renderAll();
+  openModal(id);
+  const label = bundle.status === 'pr_created'
+    ? 'PRs creados — ficha en publication_pending'
+    : ('Bundle importado — status: ' + bundle.status);
+  _showToast(label, 'var(--green)');
 }
 
 loadState();

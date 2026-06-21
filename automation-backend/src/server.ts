@@ -10,6 +10,7 @@ import {
   createPullRequest,
   findOpenPullRequestByHead,
   getBranchHeadSha,
+  getFileContent,
   getFileInfo,
   putFile,
   sanitizeGithubError,
@@ -444,6 +445,7 @@ export function createRequestHandler() {
           leadSlug: plan.leadSlug,
           status: "prs_created",
           pullRequests: result.pullRequests,
+          responseBundle: result.responseBundle,
           timestamp: Date.now(),
         });
         sendJson(res, 200, {
@@ -453,12 +455,64 @@ export function createRequestHandler() {
           leadSlug: plan.leadSlug,
           writeAttempted: true,
           pullRequests: result.pullRequests,
+          responseBundle: result.responseBundle,
           idempotencyNotes: result.idempotencyNotes,
           nextStep: "human_review_required",
         }, headers);
       } catch (error) {
         const safeError = sanitizeGithubError(error);
         sendJson(res, 500, { ok: false, mode: "create-prs", writeAttempted: true, status: "error", error: safeError }, headers);
+      }
+      return;
+    }
+
+    // ── GET /api/production/response-bundle/:jobId ───────────────────────────
+    const prodBundleMatch = url.pathname.match(/^\/api\/production\/response-bundle\/([a-z0-9_-]+)$/i);
+    if (req.method === "GET" && prodBundleMatch) {
+      const jobId = prodBundleMatch[1];
+      const job = jobs.get(jobId);
+      if (!job || !job.responseBundle) {
+        sendJson(res, 404, { ok: false, error: "job_not_found_or_no_bundle", jobId, hint: "Only available after /api/production/create-prs or /api/operator/create-prs" }, headers);
+        return;
+      }
+      logInfo("production/response-bundle retrieved", { jobId, leadSlug: job.leadSlug });
+      sendJson(res, 200, { ok: true, jobId, leadSlug: job.leadSlug, responseBundle: job.responseBundle, retrievedAt: new Date().toISOString() }, headers);
+      return;
+    }
+
+    // ── POST /api/crm/import-response-bundle ─────────────────────────────────
+    if (req.method === "POST" && url.pathname === "/api/crm/import-response-bundle") {
+      try {
+        const body = await readJsonBody(req);
+        const leadId = typeof body?.leadId === "string" ? body.leadId : null;
+        const responseBundle = body?.responseBundle;
+        if (!leadId) { sendJson(res, 400, { ok: false, error: "leadId_required" }, headers); return; }
+        if (!responseBundle || typeof responseBundle !== "object") { sendJson(res, 400, { ok: false, error: "responseBundle_required_object" }, headers); return; }
+        if (responseBundle.schemaVersion !== "operator-response-bundle/1.0") {
+          sendJson(res, 400, { ok: false, error: "invalid_schema_version", expected: "operator-response-bundle/1.0", received: responseBundle.schemaVersion }, headers);
+          return;
+        }
+        const validStatuses = ["dry_run_ok", "pr_created", "needs_manual_merge", "published", "failed"];
+        const bundleStatus = typeof responseBundle.status === "string" ? responseBundle.status : "unknown";
+        if (!validStatuses.includes(bundleStatus)) {
+          sendJson(res, 400, { ok: false, error: "invalid_status", status: bundleStatus, valid: validStatuses }, headers);
+          return;
+        }
+        const importStatus = bundleStatus === "published" ? "published" : "publication_pending";
+        const warnings: string[] = [];
+        if (bundleStatus === "dry_run_ok") warnings.push("responseBundle.status is dry_run_ok — PRs not yet merged. Publication pending.");
+        if (bundleStatus === "needs_manual_merge") warnings.push("responseBundle.status is needs_manual_merge — merge required before publication.");
+        if (bundleStatus === "failed") warnings.push("responseBundle.status is failed — check errors before importing.");
+        const jobId = typeof responseBundle.jobId === "string" ? responseBundle.jobId : null;
+        if (jobId && jobs.has(jobId)) {
+          const existing = jobs.get(jobId);
+          jobs.set(jobId, { ...existing, crmImportedAt: new Date().toISOString(), crmLeadId: leadId });
+        }
+        logInfo("crm/import-response-bundle", { leadId, jobId: jobId || "none", importStatus });
+        sendJson(res, 200, { ok: true, leadId, imported: true, status: importStatus, jobId, warnings }, headers);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "request_failed";
+        sendJson(res, message === "payload_too_large" ? 413 : 400, { ok: false, error: message }, headers);
       }
       return;
     }
@@ -556,6 +610,20 @@ export function createRequestHandler() {
         return;
       }
       sendJson(res, 200, { ok: true, authenticated: true, csrfToken: session.csrfToken, expiresAt: session.expiresAt }, headers);
+      return;
+    }
+
+    // ── GET /api/operator/response-bundle/:jobId (no session required for GET) ─
+    const operatorBundleMatch = url.pathname.match(/^\/api\/operator\/response-bundle\/([a-z0-9_-]+)$/i);
+    if (req.method === "GET" && operatorBundleMatch) {
+      const jobId = operatorBundleMatch[1];
+      const job = jobs.get(jobId);
+      if (!job || !job.responseBundle) {
+        sendJson(res, 404, { ok: false, error: "job_not_found_or_no_bundle", jobId, hint: "Only available after /api/operator/create-prs or /api/production/create-prs" }, headers);
+        return;
+      }
+      logInfo("operator/response-bundle retrieved", { jobId, leadSlug: job.leadSlug });
+      sendJson(res, 200, { ok: true, jobId, leadSlug: job.leadSlug, responseBundle: job.responseBundle, retrievedAt: new Date().toISOString() }, headers);
       return;
     }
 
@@ -681,6 +749,7 @@ export function createRequestHandler() {
             leadSlug: plan.leadSlug,
             status: "prs_created",
             pullRequests: result.pullRequests,
+            responseBundle: result.responseBundle,
             timestamp: Date.now(),
             source: "operator",
           });
@@ -692,6 +761,7 @@ export function createRequestHandler() {
             leadSlug: plan.leadSlug,
             writeAttempted: true,
             pullRequests: result.pullRequests,
+            responseBundle: result.responseBundle,
             idempotencyNotes: result.idempotencyNotes,
             nextStep: "human_review_required",
           }, headers);
@@ -720,17 +790,92 @@ function groupByRepo(files) {
   return map;
 }
 
+function applyAppTsxPatch(current: string, patch: { imports: string[]; routes: string[] }): string {
+  let result = current;
+  const importBlock = patch.imports.join("\n");
+  const lastImportIdx = result.lastIndexOf("\nimport ");
+  if (lastImportIdx !== -1) {
+    const endOfLine = result.indexOf("\n", lastImportIdx + 1);
+    result = endOfLine !== -1
+      ? result.slice(0, endOfLine + 1) + importBlock + "\n" + result.slice(endOfLine + 1)
+      : result + "\n" + importBlock + "\n";
+  } else {
+    result = importBlock + "\n" + result;
+  }
+  const routeBlock = patch.routes.map((r) => "      " + r).join("\n");
+  if (result.includes("</Routes>")) {
+    result = result.replace("</Routes>", routeBlock + "\n      </Routes>");
+  }
+  return result;
+}
+
+function applyVercelJsonPatch(current: string, newRewrites: Array<{ source: string; destination: string }>): string {
+  let parsed: Record<string, unknown>;
+  try { parsed = JSON.parse(current || "{}"); } catch { parsed = {}; }
+  const existing = Array.isArray(parsed.rewrites) ? parsed.rewrites as Array<{ source: string }> : [];
+  const toAdd = newRewrites.filter((nr) => !existing.some((er) => er.source === nr.source));
+  parsed.rewrites = [...existing, ...toAdd];
+  return JSON.stringify(parsed, null, 2);
+}
+
+async function writeFileToRepo(repo: string, branch: string, file: Record<string, unknown>): Promise<void> {
+  if (file.isPatchTarget && file.patchType === "app-tsx-routes") {
+    const patch = JSON.parse(String(file.content));
+    const current = await getFileContent(repo, String(file.path), "main");
+    const patched = applyAppTsxPatch(current.content || "", patch);
+    const info = await getFileInfo(repo, String(file.path), branch);
+    await putFile(repo, branch, String(file.path), patched, String(file.message), info.sha || undefined);
+    return;
+  }
+  if (file.isPatchTarget && file.patchType === "vercel-json-rewrites") {
+    const newRewrites = JSON.parse(String(file.content));
+    const current = await getFileContent(repo, String(file.path), "main");
+    const patched = applyVercelJsonPatch(current.content || "{}", newRewrites);
+    const info = await getFileInfo(repo, String(file.path), branch);
+    await putFile(repo, branch, String(file.path), patched, String(file.message), info.sha || undefined);
+    return;
+  }
+  const info = await getFileInfo(repo, String(file.path), branch);
+  await putFile(repo, branch, String(file.path), String(file.content), String(file.message), info.sha || undefined);
+}
+
+function buildResponseBundle(plan, pullRequestsByRepo: Record<string, { url: string; number: number; branch: string }>, createdAt: string) {
+  const aurum = Object.entries(pullRequestsByRepo).find(([repo]) => repo.toLowerCase().includes("aurum"))?.[1] || null;
+  const rubik = Object.entries(pullRequestsByRepo).find(([repo]) => repo.toLowerCase().includes("rubik"))?.[1] || null;
+  return {
+    schemaVersion: "operator-response-bundle/1.0",
+    jobId: plan.jobId,
+    leadId: plan.leadSlug,
+    slug: plan.leadSlug,
+    status: "pr_created",
+    source: "railway-operator-create-prs",
+    pullRequests: {
+      aurum: aurum ? { url: aurum.url, number: aurum.number, branch: aurum.branch } : null,
+      rubik: rubik ? { url: rubik.url, number: rubik.number, branch: rubik.branch } : null,
+      crm: null,
+    },
+    plannedPublicRoutes: plan.plannedPublicRoutes || {},
+    publicRoutes: {},
+    assetMode: plan.assetMode || "fallback_internal_library",
+    warnings: plan.generatorWarnings || [],
+    errors: plan.generatorErrors || [],
+    createdAt,
+  };
+}
+
 async function createProductionPullRequests(plan, preflight = {}) {
   const grouped = groupByRepo(plan.generatedFiles);
-  const pullRequests = {};
-  const idempotencyNotes = [];
-  const repoStatus = preflight.repos || {};
+  const pullRequests: Record<string, { url: string; number: number; branch: string; reused?: boolean }> = {};
+  const idempotencyNotes: string[] = [];
+  const repoStatus = (preflight as Record<string, unknown>).repos || {};
+  const createdAt = new Date().toISOString();
 
   for (const [repo, files] of grouped.entries()) {
-    const target = Object.values(plan.targetPRs).find((item) => item.repo === repo);
+    const target = Object.values(plan.targetPRs).find((item: Record<string, unknown>) => item.repo === repo) as Record<string, string> | undefined;
     if (!target) continue;
 
-    const alreadyExists = repoStatus[Object.keys(plan.targetPRs).find((k) => plan.targetPRs[k].repo === repo)]?.branchExists;
+    const repoKey = Object.keys(plan.targetPRs).find((k) => (plan.targetPRs[k] as Record<string, string>).repo === repo);
+    const alreadyExists = (repoStatus as Record<string, Record<string, unknown>>)[repoKey || ""]?.branchExists;
 
     if (!alreadyExists) {
       const fromSha = await getBranchHeadSha(repo, "main");
@@ -739,14 +884,13 @@ async function createProductionPullRequests(plan, preflight = {}) {
       idempotencyNotes.push(`branch_reused:${target.headBranch}`);
     }
 
-    for (const file of files) {
-      const info = await getFileInfo(repo, file.path, target.headBranch);
-      await putFile(repo, target.headBranch, file.path, file.content, file.message, info.sha || undefined);
-      if (info.exists) idempotencyNotes.push(`file_updated:${file.path}`);
+    for (const file of files as Array<Record<string, unknown>>) {
+      await writeFileToRepo(repo, target.headBranch, file);
+      const info = await getFileInfo(repo, String(file.path), target.headBranch);
+      if (info.exists && !file.isPatchTarget) idempotencyNotes.push(`file_updated:${String(file.path)}`);
     }
 
-    const repoKey = Object.keys(plan.targetPRs).find((k) => plan.targetPRs[k].repo === repo);
-    const existingPR = repoStatus[repoKey]?.existingPR;
+    const existingPR = (repoStatus as Record<string, Record<string, unknown>>)[repoKey || ""]?.existingPR as { url: string; number: number } | null;
 
     if (existingPR) {
       pullRequests[repo] = { url: existingPR.url, number: existingPR.number, branch: target.headBranch, reused: true };
@@ -756,13 +900,15 @@ async function createProductionPullRequests(plan, preflight = {}) {
         repo,
         target.headBranch,
         "main",
-        `Production draft for ${plan.leadSlug}`,
-        "Automated v0.3 production draft. Human review required. No auto-merge.",
+        `[Production] ${plan.leadSlug} — ${repoKey === "aurum" ? "Landing, Web Completa & wrappers" : "Visual Experience & Banners"}`,
+        `Auto-generated by immersphere-production-orchestrator v0.3.0\n\nHuman review required. No auto-merge.\n\nAsset mode: \`${plan.assetMode || "unknown"}\`\n\nWarnings: ${(plan.generatorWarnings || []).length}`,
       );
       pullRequests[repo] = { url: pr.html_url, number: pr.number, branch: target.headBranch };
     }
   }
-  return { pullRequests, idempotencyNotes };
+
+  const responseBundle = buildResponseBundle(plan, pullRequests, createdAt);
+  return { pullRequests, idempotencyNotes, responseBundle };
 }
 
 export function startServer(options = {}) {

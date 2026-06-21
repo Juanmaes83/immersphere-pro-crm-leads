@@ -84,6 +84,21 @@ export async function getFileInfo(repo, filePath, branch) {
   }
 }
 
+export async function getFileContent(repo, filePath, branch) {
+  try {
+    const res = await githubFetch(
+      `${repoPath(repo)}/contents/${filePath.split("/").map(encodeURIComponent).join("/")}?ref=${encodeURIComponent(branch)}`,
+    );
+    const content = res.content
+      ? Buffer.from(res.content.replace(/\n/g, ""), "base64").toString("utf8")
+      : "";
+    return { sha: res.sha || null, exists: true, content };
+  } catch (error) {
+    if (error.status === 404) return { sha: null, exists: false, content: "" };
+    throw error;
+  }
+}
+
 export async function findOpenPullRequestByHead(repo, headBranch) {
   const owner = repo.split("/")[0];
   const items = await githubFetch(
