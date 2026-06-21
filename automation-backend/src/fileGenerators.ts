@@ -186,7 +186,14 @@ export function buildRubikFiles(payload: Record<string, unknown>): GeneratorResu
 
 // ─── AURUM generators ─────────────────────────────────────────────────────────
 
-export function buildAurumFiles(payload: Record<string, unknown>, proposalPackage?: Record<string, unknown>): GeneratorResult {
+export function buildAurumFiles(
+  payload: Record<string, unknown>,
+  proposalPackage?: Record<string, unknown>,
+  options: {
+    existingRouteComponentMap?: Record<string, string>;
+    existingAppTsxContent?: string;
+  } = {},
+): GeneratorResult {
   const slug = sanitizeSlug(String((payload?.lead as Record<string, unknown>)?.slug ?? ""));
   const lead = (payload.lead || {}) as Record<string, unknown>;
   const assets = (payload.mediaAssets || {}) as Record<string, unknown>;
@@ -224,6 +231,16 @@ export function buildAurumFiles(payload: Record<string, unknown>, proposalPackag
 
   const digitalPresenceScore = resolveProductionScore(payload as Record<string, unknown>);
 
+  const existingRouteComponentMap = options.existingRouteComponentMap || {};
+  const routeComponentByType: Record<string, string> = {
+    landing: existingRouteComponentMap[`/${slug}`] || `${componentBase}Landing`,
+    webCompleta: existingRouteComponentMap[`/${slug}-web-completa`] || `${componentBase}WebCompleta`,
+    visualExperience: existingRouteComponentMap[`/visual-experience/${slug}`] || `${componentBase}VisualExperience`,
+    bannerPack: existingRouteComponentMap[`/banners/${slug}`] || `${componentBase}BannerPack`,
+    bannerVertical: existingRouteComponentMap[`/banners/${slug}/vertical`] || `${componentBase}BannerVertical`,
+    bannerHorizontal: existingRouteComponentMap[`/banners/${slug}/horizontal`] || `${componentBase}BannerHorizontal`,
+  };
+
   return {
     files: [
       {
@@ -235,50 +252,50 @@ export function buildAurumFiles(payload: Record<string, unknown>, proposalPackag
       },
       {
         repo: AURUM_REPO,
-        path: `src/${componentBase}Landing.tsx`,
-        content: buildLandingComponent({ slug, componentBase, camelBase, clientName, heroImage, logoUrl, claim, waHref, accentColor }),
+        path: `src/${routeComponentByType.landing}.tsx`,
+        content: buildLandingComponent({ slug, componentBase: routeComponentByType.landing, camelBase, clientName, heroImage, logoUrl, claim, waHref, accentColor }),
         message: `feat(landing): add ${clientName} landing page`,
         encoding: "utf8",
       },
       {
         repo: AURUM_REPO,
-        path: `src/${componentBase}WebCompleta.tsx`,
-        content: buildWebCompletaComponent({ slug, componentBase, camelBase, clientName }),
+        path: `src/${routeComponentByType.webCompleta}.tsx`,
+        content: buildWebCompletaComponent({ slug, componentBase: routeComponentByType.webCompleta, camelBase, clientName }),
         message: `feat(web-completa): add ${clientName} web completa`,
         encoding: "utf8",
       },
       {
         repo: AURUM_REPO,
-        path: `src/${componentBase}VisualExperience.tsx`,
-        content: buildIframeWrapper({ slug, componentBase, type: "visual-experience" }),
+        path: `src/${routeComponentByType.visualExperience}.tsx`,
+        content: buildIframeWrapper({ slug, componentBase: routeComponentByType.visualExperience, type: "visual-experience" }),
         message: `feat(visual-experience): add ${clientName} visual experience wrapper`,
         encoding: "utf8",
       },
       {
         repo: AURUM_REPO,
-        path: `src/${componentBase}BannerPack.tsx`,
-        content: buildIframeWrapper({ slug, componentBase, type: "banner-pack" }),
+        path: `src/${routeComponentByType.bannerPack}.tsx`,
+        content: buildIframeWrapper({ slug, componentBase: routeComponentByType.bannerPack, type: "banner-pack" }),
         message: `feat(banners): add ${clientName} banner pack wrapper`,
         encoding: "utf8",
       },
       {
         repo: AURUM_REPO,
-        path: `src/${componentBase}BannerVertical.tsx`,
-        content: buildIframeWrapper({ slug, componentBase, type: "banner-vertical" }),
+        path: `src/${routeComponentByType.bannerVertical}.tsx`,
+        content: buildIframeWrapper({ slug, componentBase: routeComponentByType.bannerVertical, type: "banner-vertical" }),
         message: `feat(banners): add ${clientName} banner vertical wrapper`,
         encoding: "utf8",
       },
       {
         repo: AURUM_REPO,
-        path: `src/${componentBase}BannerHorizontal.tsx`,
-        content: buildIframeWrapper({ slug, componentBase, type: "banner-horizontal" }),
+        path: `src/${routeComponentByType.bannerHorizontal}.tsx`,
+        content: buildIframeWrapper({ slug, componentBase: routeComponentByType.bannerHorizontal, type: "banner-horizontal" }),
         message: `feat(banners): add ${clientName} banner horizontal wrapper`,
         encoding: "utf8",
       },
       {
         repo: AURUM_REPO,
         path: AURUM_APP_TSX,
-        content: j(buildAppTsxPatch({ slug, componentBase })),
+        content: j(buildAppTsxPatch({ slug, componentNames: routeComponentByType, existingAppTsxContent: options.existingAppTsxContent || "" })),
         message: `feat(routing): add ${clientName} routes to App.tsx`,
         encoding: "utf8",
         isPatchTarget: true,
@@ -807,25 +824,32 @@ export function ${componentBase}${suffix}() {
 `;
 }
 
-function buildAppTsxPatch({ slug, componentBase }): object {
+function buildAppTsxPatch({
+  slug,
+  componentNames,
+  existingAppTsxContent = "",
+}: {
+  slug: string;
+  componentNames: Record<string, string>;
+  existingAppTsxContent?: string;
+}): object {
+  const lowerExisting = existingAppTsxContent.toLowerCase();
+  const allRoutes = [
+    { key: "landing", path: `/${slug}`, component: componentNames.landing },
+    { key: "webCompleta", path: `/${slug}-web-completa`, component: componentNames.webCompleta },
+    { key: "visualExperience", path: `/visual-experience/${slug}`, component: componentNames.visualExperience },
+    { key: "bannerPack", path: `/banners/${slug}`, component: componentNames.bannerPack },
+    { key: "bannerVertical", path: `/banners/${slug}/vertical`, component: componentNames.bannerVertical },
+    { key: "bannerHorizontal", path: `/banners/${slug}/horizontal`, component: componentNames.bannerHorizontal },
+  ];
+
+  const missingRoutes = allRoutes.filter((r) => !lowerExisting.includes(`path="${r.path}"`.toLowerCase()));
+  const usedComponents = new Set(missingRoutes.map((r) => r.component));
+  const imports = [...usedComponents].map((componentName) => `import { ${componentName} } from "./${componentName}";`).filter((imp) => !existingAppTsxContent.includes(imp));
+
   return {
     slug,
-    componentBase,
-    imports: [
-      `import { ${componentBase}Landing } from "./${componentBase}Landing";`,
-      `import { ${componentBase}WebCompleta } from "./${componentBase}WebCompleta";`,
-      `import { ${componentBase}VisualExperience } from "./${componentBase}VisualExperience";`,
-      `import { ${componentBase}BannerPack } from "./${componentBase}BannerPack";`,
-      `import { ${componentBase}BannerVertical } from "./${componentBase}BannerVertical";`,
-      `import { ${componentBase}BannerHorizontal } from "./${componentBase}BannerHorizontal";`,
-    ],
-    routes: [
-      `<Route path="/${slug}" element={<${componentBase}Landing />} />`,
-      `<Route path="/${slug}-web-completa" element={<${componentBase}WebCompleta />} />`,
-      `<Route path="/visual-experience/${slug}" element={<${componentBase}VisualExperience />} />`,
-      `<Route path="/banners/${slug}" element={<${componentBase}BannerPack />} />`,
-      `<Route path="/banners/${slug}/vertical" element={<${componentBase}BannerVertical />} />`,
-      `<Route path="/banners/${slug}/horizontal" element={<${componentBase}BannerHorizontal />} />`,
-    ],
+    imports,
+    routes: missingRoutes.map((r) => `<Route path="${r.path}" element={<${r.component} />} />`),
   };
 }
