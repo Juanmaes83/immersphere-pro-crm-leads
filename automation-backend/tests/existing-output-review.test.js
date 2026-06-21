@@ -742,3 +742,63 @@ test("patchAurumDataFileScoreSafely devuelve null cuando no encuentra el campo d
   const original = `export const sandhouseDemo = { hero: { headline: "Sandhouse" } };\n`;
   assert.equal(patchAurumDataFileScoreSafely(original, 56), null);
 });
+
+// ─── Real-world shape: score: <n> nested inside audit: { ... } ───────────────
+// This is the actual structure AURUM's premium sandhouse.ts data file uses —
+// the flat `digitalPresenceScore: <n>` pattern never matches it.
+
+test("patchAurumDataFileScoreSafely parchea audit.score real (score: 88 -> 56) preservando el resto byte a byte", () => {
+  const original = `export const sandhouseDemo = {
+  client: {
+    name: 'Sandhouse Inmobiliaria',
+  },
+  audit: {
+    score: 88,
+    priority: 'A',
+  },
+  visualExperience: {
+    embedUrl: 'https://rubik-sota-director-de-orquesta.vercel.app/dynamic-motion-banner/sandhouse-inmobiliaria/?embed=1',
+    standaloneUrl: 'https://aurum-properties-boutique.vercel.app/sandhouse-inmobiliaria/visual-experience',
+  },
+};
+`;
+  const patched = patchAurumDataFileScoreSafely(original, 56, "sandhouse-inmobiliaria");
+  assert.ok(patched, "el patch tiene éxito");
+  assert.match(patched, /audit:\s*\{\s*score:\s*56,\s*priority:\s*'A',/, "audit.score pasa a 56");
+  assert.doesNotMatch(patched, /score:\s*88/, "no queda el valor viejo");
+
+  // Byte-for-byte preservation of everything except the score digits and
+  // the canonical URL it opportunistically fixes — verified by replacing
+  // both expected diffs in the original and comparing.
+  const expectedUnchanged = original
+    .replace("score: 88,", "score: 56,")
+    .replace(
+      "standaloneUrl: 'https://aurum-properties-boutique.vercel.app/sandhouse-inmobiliaria/visual-experience',",
+      "standaloneUrl: 'https://aurum-properties-boutique.vercel.app/visual-experience/sandhouse-inmobiliaria',",
+    );
+  assert.equal(patched, expectedUnchanged);
+});
+
+test("patchAurumDataFileScoreSafely no toca un score fuera del bloque audit", () => {
+  const original = `export const sandhouseDemo = {\n  seo: { score: 99 },\n  hero: { headline: "Sandhouse" },\n};\n`;
+  // No `audit:` block at all — must not patch the unrelated seo.score.
+  assert.equal(patchAurumDataFileScoreSafely(original, 56), null);
+});
+
+test("patchAurumDataFileScoreSafely devuelve null si el bloque audit existe pero no tiene score", () => {
+  const original = `export const sandhouseDemo = {\n  audit: { priority: 'A', mobileFriendly: true },\n};\n`;
+  assert.equal(patchAurumDataFileScoreSafely(original, 56), null);
+});
+
+test("patchAurumDataFileScoreSafely canonicaliza standaloneUrl viejo a /visual-experience/<slug>", () => {
+  const original = `export const sandhouseDemo = {\n  audit: { score: 88 },\n  visualExperience: { standaloneUrl: 'https://aurum-properties-boutique.vercel.app/sandhouse-inmobiliaria/visual-experience' },\n};\n`;
+  const patched = patchAurumDataFileScoreSafely(original, 56, "sandhouse-inmobiliaria");
+  assert.match(patched, /standaloneUrl:\s*'https:\/\/aurum-properties-boutique\.vercel\.app\/visual-experience\/sandhouse-inmobiliaria'/);
+});
+
+test("patchAurumDataFileScoreSafely no bloquea el patch de score si la URL canónica no aparece", () => {
+  const original = `export const sandhouseDemo = {\n  audit: { score: 88 },\n  visualExperience: { standaloneUrl: 'https://aurum-properties-boutique.vercel.app/visual-experience/sandhouse-inmobiliaria' },\n};\n`;
+  const patched = patchAurumDataFileScoreSafely(original, 56, "sandhouse-inmobiliaria");
+  assert.ok(patched, "el patch de score sigue funcionando aunque la URL ya sea canónica");
+  assert.match(patched, /score:\s*56/);
+});

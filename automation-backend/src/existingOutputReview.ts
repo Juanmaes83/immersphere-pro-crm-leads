@@ -2,7 +2,7 @@ import { getFileContent } from "./githubClient.ts";
 import { AURUM_REPO, componentBaseFromSlug, RUBIK_REPO } from "./pathSecurity.ts";
 import { resolveProductionScore } from "./productionScore.ts";
 import { sanitizeSlug } from "./security.ts";
-import { INTERNAL_ENGINE_DOMAIN, SERVICE_VERSION } from "./schemas.ts";
+import { CLIENT_FACING_DOMAIN, INTERNAL_ENGINE_DOMAIN, SERVICE_VERSION } from "./schemas.ts";
 import type { ExistingOutputResult, IdempotencyPlan } from "./outputIdempotency.ts";
 
 export interface ExistingOutputReview {
@@ -267,15 +267,74 @@ export function classifyExistingAurumComponent(content: string): AurumComponentC
   return "unknown";
 }
 
-// Surgical, non-destructive patch: updates only the digitalPresenceScore
-// field's value in place, byte-for-byte preserving everything else (premium
-// structure, comments, formatting). Returns null when no recognizable
-// `digitalPresenceScore: <n>` field is found — the caller must then block
-// rather than fall back to a full-content overwrite.
-export function patchAurumDataFileScoreSafely(existingContent: string, digitalPresenceScore: number): string | null {
-  const pattern = /(digitalPresenceScore\s*:\s*)-?\d+(\.\d+)?/;
-  if (!pattern.test(existingContent)) return null;
-  return existingContent.replace(pattern, `$1${digitalPresenceScore}`);
+// Finds the byte span of a `<keyName>: { ... }` block, properly tracking
+// nested braces so we don't stop at the first "}" that belongs to a nested
+// object. Returns null if the key isn't found or its block is unterminated.
+function findNamedBlockSpan(content: string, keyName: string): { start: number; end: number } | null {
+  const keyRe = new RegExp(`\\b${escapeRegex(keyName)}\\s*:\\s*\\{`);
+  const m = keyRe.exec(content);
+  if (!m) return null;
+  const braceStart = content.indexOf("{", m.index);
+  let depth = 0;
+  for (let i = braceStart; i < content.length; i++) {
+    if (content[i] === "{") depth++;
+    else if (content[i] === "}") {
+      depth--;
+      if (depth === 0) return { start: braceStart, end: i + 1 };
+    }
+  }
+  return null;
+}
+
+// Surgical, non-destructive patch: updates only the score field's value in
+// place, byte-for-byte preserving everything else (premium structure,
+// comments, formatting). Recognizes two real-world shapes:
+//   A) a bare top-level `digitalPresenceScore: <n>` field;
+//   B) `score: <n>` nested inside an `audit: { ... }` block — the shape
+//      AURUM's actual premium data files use (e.g. sandhouse.ts's
+//      `audit: { score: 88, priority: 'A', ... }`).
+// Pattern B is scoped to the audit block specifically — never a bare
+// `score:` anywhere in the file — so an unrelated field (seoScore, etc.)
+// can't be patched by mistake. Returns null when neither shape is found;
+// the caller must then block rather than guess at the file's structure.
+//
+// When `slug` is provided, also opportunistically canonicalizes a known
+// stale `standaloneUrl` shape (the /<slug>/visual-experience alias) to the
+// canonical /visual-experience/<slug> route. This is best-effort: failing
+// to find it does not block the score patch.
+export function patchAurumDataFileScoreSafely(existingContent: string, digitalPresenceScore: number, slug?: string): string | null {
+  let patched = existingContent;
+  let scorePatched = false;
+
+  const flatPattern = /(digitalPresenceScore\s*:\s*)-?\d+(\.\d+)?/;
+  if (flatPattern.test(patched)) {
+    patched = patched.replace(flatPattern, `$1${digitalPresenceScore}`);
+    scorePatched = true;
+  } else {
+    const auditSpan = findNamedBlockSpan(patched, "audit");
+    if (auditSpan) {
+      const block = patched.slice(auditSpan.start, auditSpan.end);
+      const scorePattern = /(\bscore\s*:\s*)-?\d+(\.\d+)?/;
+      if (scorePattern.test(block)) {
+        const patchedBlock = block.replace(scorePattern, `$1${digitalPresenceScore}`);
+        patched = patched.slice(0, auditSpan.start) + patchedBlock + patched.slice(auditSpan.end);
+        scorePatched = true;
+      }
+    }
+  }
+
+  if (!scorePatched) return null;
+
+  if (slug) {
+    const oldUrl = `https://${CLIENT_FACING_DOMAIN}/${slug}/visual-experience`;
+    const canonicalUrl = `https://${CLIENT_FACING_DOMAIN}/visual-experience/${slug}`;
+    const urlPattern = new RegExp(`(standaloneUrl\\s*:\\s*)(["'])${escapeRegex(oldUrl)}\\2`);
+    if (urlPattern.test(patched)) {
+      patched = patched.replace(urlPattern, `$1$2${canonicalUrl}$2`);
+    }
+  }
+
+  return patched;
 }
 
 const FORBIDDEN_DOUBLED_NAME_PATTERNS = [

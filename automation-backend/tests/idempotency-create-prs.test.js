@@ -950,6 +950,175 @@ test("Test 3 — create-prs bloquea con aurum_existing_data_file_requires_manual
   }
 });
 
+// ─── Test 6: real Sandhouse audit.score shape no longer blocks create-prs ────
+// Reproduces the exact reported blocker: AURUM's real sandhouse.ts uses
+// `audit: { score: 88, ... }`, not the flat `digitalPresenceScore` shape.
+// create-prs must patch it surgically instead of blocking, while still
+// never touching the premium .tsx components or creating a parallel
+// sandhouseInmobiliaria.ts data file.
+test("Test 6 — create-prs stale parchea audit.score real (sandhouse.ts) y deja de bloquear", async (t) => {
+  const prevFlag = process.env.GITHUB_PR_AUTOMATION_ENABLED;
+  const prevToken = process.env.GITHUB_SERVER_TOKEN;
+  process.env.GITHUB_PR_AUTOMATION_ENABLED = "true";
+  process.env.GITHUB_SERVER_TOKEN = "fake-test-token";
+
+  const slug = "sandhouse-inmobiliaria";
+  const existingFiles = new Set([
+    `dynamic-motion-banner/${slug}/index.html`,
+    `dynamic-motion-banner/${slug}/banner-vertical.html`,
+    `dynamic-motion-banner/${slug}/banner-horizontal.html`,
+    `dynamic-motion-banner/${slug}/banner-pack/index.html`,
+    `production-manifests/${slug}.json`,
+    `src/App.tsx`,
+    `src/data/clientDemos/sandhouse.ts`,
+    `src/SandhouseLanding.tsx`,
+    `src/SandhouseWebCompleta.tsx`,
+    `src/SandhouseVisualExperience.tsx`,
+    `src/SandhouseBannerPack.tsx`,
+    `src/SandhouseBannerVertical.tsx`,
+    `src/SandhouseBannerHorizontal.tsx`,
+    `vercel.json`,
+  ]);
+  const existingRoutes = {
+    slug,
+    rubikRewrites: [
+      `/dynamic-motion-banner/${slug}/banner-pack/vertical`,
+      `/dynamic-motion-banner/${slug}/banner-pack/horizontal`,
+    ],
+    aurumRoutes: [`/${slug}`, `/${slug}-web-completa`, `/visual-experience/${slug}`, `/banners/${slug}`],
+  };
+  const premium = (name) => `import { Helmet } from "react-helmet-async";
+import { motion } from "framer-motion";
+import { sandhouseDemo } from "./data/clientDemos/sandhouse";
+
+export function ${name}() {
+  return (
+    <>
+      <Helmet><title>Sandhouse</title></Helmet>
+      <motion.main initial={{ opacity: 0 }} animate={{ opacity: 1 }}>{sandhouseDemo.client.name}</motion.main>
+    </>
+  );
+}`;
+  const fileContents = {
+    [`production-manifests/${slug}.json`]: JSON.stringify({
+      slug, generatedBy: "immersphere-production-orchestrator-v0.2",
+    }, null, 2),
+    // The real, reported AURUM data file shape: `audit: { score: 88 }`,
+    // not the flat digitalPresenceScore the old patcher only understood.
+    "src/data/clientDemos/sandhouse.ts": `export const sandhouseDemo = {
+  client: {
+    name: 'Sandhouse Inmobiliaria',
+  },
+  audit: {
+    score: 88,
+    priority: 'A',
+  },
+  visualExperience: {
+    embedUrl: 'https://rubik-sota-director-de-orquesta.vercel.app/dynamic-motion-banner/${slug}/?embed=1',
+    standaloneUrl: 'https://aurum-properties-boutique.vercel.app/${slug}/visual-experience',
+  },
+};
+`,
+    "src/App.tsx": `
+import { SandhouseLanding } from "./SandhouseLanding";
+import { SandhouseWebCompleta } from "./SandhouseWebCompleta";
+import { SandhouseVisualExperience } from "./SandhouseVisualExperience";
+import { SandhouseBannerPack } from "./SandhouseBannerPack";
+import { SandhouseBannerVertical } from "./SandhouseBannerVertical";
+import { SandhouseBannerHorizontal } from "./SandhouseBannerHorizontal";
+export function App() {
+  return (
+    <Routes>
+      <Route path="/${slug}" element={<SandhouseLanding />} />
+      <Route path="/${slug}-web-completa" element={<SandhouseWebCompleta />} />
+      <Route path="/visual-experience/${slug}" element={<SandhouseVisualExperience />} />
+      <Route path="/banners/${slug}" element={<SandhouseBannerPack />} />
+      <Route path="/banners/${slug}/vertical" element={<SandhouseBannerVertical />} />
+      <Route path="/banners/${slug}/horizontal" element={<SandhouseBannerHorizontal />} />
+    </Routes>
+  );
+}
+`,
+    "src/SandhouseLanding.tsx": premium("SandhouseLanding"),
+    "src/SandhouseWebCompleta.tsx": premium("SandhouseWebCompleta"),
+    "src/SandhouseVisualExperience.tsx": premium("SandhouseVisualExperience"),
+    "src/SandhouseBannerPack.tsx": premium("SandhouseBannerPack"),
+    "src/SandhouseBannerVertical.tsx": premium("SandhouseBannerVertical"),
+    "src/SandhouseBannerHorizontal.tsx": premium("SandhouseBannerHorizontal"),
+  };
+
+  const { calls } = installGithubFetchMock(t, existingFiles, existingRoutes, fileContents);
+
+  try {
+    await withServer(async (baseUrl) => {
+      const payload = validPayload({ slug });
+      payload.audit = { ...(payload.audit || {}), score: 56 };
+      const { status, body } = await postJson(baseUrl, "/api/production/create-prs", payload);
+
+      assert.equal(status, 200);
+      assert.equal(body.ok, true, "ya no bloquea por sandhouse.ts");
+      assert.equal(body.blocked, false);
+      assert.equal(body.writeAttempted, true);
+      assert.ok(
+        body.idempotencyNotes.includes(`aurum_existing_data_file_patched:src/data/clientDemos/sandhouse.ts`),
+        "incluye nota de data file parcheado",
+      );
+      assert.ok(body.idempotencyNotes.includes("aurum_existing_premium_components_preserved"));
+
+      const forbiddenFileUpdated = [
+        "file_updated:src/SandhouseLanding.tsx",
+        "file_updated:src/SandhouseWebCompleta.tsx",
+        "file_updated:src/SandhouseVisualExperience.tsx",
+        "file_updated:src/SandhouseBannerPack.tsx",
+        "file_updated:src/SandhouseBannerVertical.tsx",
+        "file_updated:src/SandhouseBannerHorizontal.tsx",
+        "file_updated:src/data/clientDemos/sandhouseInmobiliaria.ts",
+      ];
+      for (const note of forbiddenFileUpdated) {
+        assert.ok(!body.idempotencyNotes.includes(note), `no debe incluir ${note}`);
+      }
+
+      const putPath = (c) => decodeURIComponent(c.url.match(/\/contents\/([^?]+)/)[1]);
+      const filePuts = calls.filter((c) => c.url.includes("/contents/") && c.method === "PUT");
+      const putPaths = filePuts.map(putPath);
+
+      // Manifest still updates.
+      const manifestPut = filePuts.find((c) => c.url.includes("AURUM") && putPath(c) === `production-manifests/${slug}.json`);
+      assert.ok(manifestPut, "actualiza el manifest AURUM");
+      const manifestContent = Buffer.from(JSON.parse(manifestPut.body).content, "base64").toString("utf8");
+      assert.match(manifestContent, /immersphere-production-orchestrator-v0\.4\.0/);
+      assert.match(manifestContent, /"digitalPresenceScore":\s*56/);
+
+      // Data file patched in place, score + canonical URL only.
+      const dataFilePut = filePuts.find((c) => putPath(c) === "src/data/clientDemos/sandhouse.ts");
+      assert.ok(dataFilePut, "escribe el patch en sandhouse.ts");
+      const dataFileContent = Buffer.from(JSON.parse(dataFilePut.body).content, "base64").toString("utf8");
+      assert.match(dataFileContent, /score:\s*56/);
+      assert.doesNotMatch(dataFileContent, /score:\s*88/);
+      assert.match(dataFileContent, /standaloneUrl:\s*'https:\/\/aurum-properties-boutique\.vercel\.app\/visual-experience\/sandhouse-inmobiliaria'/);
+      assert.match(dataFileContent, /name: 'Sandhouse Inmobiliaria'/, "preserva el resto del archivo");
+
+      // Premium components and the parallel data file never appear in the write set.
+      for (const path of [
+        "src/SandhouseLanding.tsx",
+        "src/SandhouseWebCompleta.tsx",
+        "src/SandhouseVisualExperience.tsx",
+        "src/SandhouseBannerPack.tsx",
+        "src/SandhouseBannerVertical.tsx",
+        "src/SandhouseBannerHorizontal.tsx",
+        "src/data/clientDemos/sandhouseInmobiliaria.ts",
+      ]) {
+        assert.ok(!putPaths.includes(path), `${path} no se escribe`);
+      }
+    });
+  } finally {
+    if (prevFlag === undefined) delete process.env.GITHUB_PR_AUTOMATION_ENABLED;
+    else process.env.GITHUB_PR_AUTOMATION_ENABLED = prevFlag;
+    if (prevToken === undefined) delete process.env.GITHUB_SERVER_TOKEN;
+    else process.env.GITHUB_SERVER_TOKEN = prevToken;
+  }
+});
+
 // ─── Test 4: App.tsx no-op avoided when every route already exists ───────────
 test("Test 4 — create-prs no toca App.tsx cuando todas las rutas ya existen", async (t) => {
   const prevFlag = process.env.GITHUB_PR_AUTOMATION_ENABLED;
