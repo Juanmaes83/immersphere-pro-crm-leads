@@ -518,7 +518,7 @@ export function createRequestHandler() {
           sendJson(res, 400, { ok: false, error: "invalid_schema_version", expected: "operator-response-bundle/1.0", received: responseBundle.schemaVersion }, headers);
           return;
         }
-        const validStatuses = ["dry_run_ok", "pr_created", "needs_manual_merge", "published", "failed", "needs_existing_output_review"];
+        const validStatuses = ["dry_run_ok", "pr_created", "needs_manual_merge", "published", "failed", "needs_existing_output_review", "existing_outputs_current", "existing_outputs_update_required"];
         const bundleStatus = typeof responseBundle.status === "string" ? responseBundle.status : "unknown";
         if (!validStatuses.includes(bundleStatus)) {
           sendJson(res, 400, { ok: false, error: "invalid_status", status: bundleStatus, valid: validStatuses }, headers);

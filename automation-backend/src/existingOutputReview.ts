@@ -83,6 +83,19 @@ function safeJson(text: string): Record<string, unknown> | null {
   }
 }
 
+function resolveExpectedScore(payload: Record<string, unknown>): number | null {
+  const candidates = [
+    (payload.auditSnapshot as Record<string, unknown>)?.score,
+    (payload.audit as Record<string, unknown>)?.score,
+    (payload.leadIntelligenceProfile as Record<string, unknown>)?.readinessScore,
+  ];
+  for (const value of candidates) {
+    const n = Number(value);
+    if (Number.isFinite(n)) return n;
+  }
+  return null;
+}
+
 function expectedAurumRoutes(slug: string): string[] {
   return [
     `/${slug}`,
@@ -92,18 +105,29 @@ function expectedAurumRoutes(slug: string): string[] {
   ];
 }
 
-function extractComponentNamesFromAppTsx(appContent: string, slug: string): string[] {
-  const names: string[] = [];
-  const re = new RegExp(`import\\s*\\{\\s*([^}]+)\\s*\\}\\s*from\\s*['"]\\./([^'"]+)['"]`, "g");
-  let m;
-  while ((m = re.exec(appContent)) !== null) {
-    const imported = m[1];
-    const fromPath = m[2];
-    if (fromPath.toLowerCase().includes(slug.toLowerCase()) || imported.toLowerCase().includes(slug.toLowerCase().replace(/-/g, ""))) {
-      names.push(...imported.split(",").map((s) => s.trim()).filter(Boolean));
-    }
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function extractRouteComponentMap(appContent: string, slug: string): Record<string, string> {
+  const map: Record<string, string> = {};
+  const routes = [
+    `/${slug}`,
+    `/${slug}-web-completa`,
+    `/visual-experience/${slug}`,
+    `/banners/${slug}`,
+    `/banners/${slug}/vertical`,
+    `/banners/${slug}/horizontal`,
+  ];
+  for (const route of routes) {
+    const re = new RegExp(
+      `<Route\\s+path=["']${escapeRegex(route)}["']\\s+element=\\{\\s*<([A-Za-z0-9_]+)(?:\\s*/)?>\\s*\\}\\s*/?>`,
+      "i",
+    );
+    const m = appContent.match(re);
+    if (m) map[route] = m[1];
   }
-  return [...new Set(names)];
+  return map;
 }
 
 async function fetchText(repo: string, path: string, branch: string): Promise<{ exists: boolean; content: string }> {
@@ -154,8 +178,8 @@ async function reviewAurum(ctx: ReviewContext, existing: ExistingOutputResult, b
     const dangerous = hasAny(appInfo.content, DANGEROUS_CLIENT_FACING_STRINGS);
     if (dangerous) criticalWarnings.push(`client_facing_dangerous_copy:App.tsx:${dangerous}`);
 
-    const componentNames = extractComponentNamesFromAppTsx(appInfo.content, slug);
-    const webCompletaName = componentNames.find((n) => n.toLowerCase().includes("webcompleta") || n.toLowerCase().includes("web-completa"));
+    const routeComponentMap = extractRouteComponentMap(appInfo.content, slug);
+    const webCompletaName = routeComponentMap[`/${slug}-web-completa`];
     if (webCompletaName) {
       const webPath = `src/${webCompletaName}.tsx`;
       const webInfo = await fetchText(AURUM_REPO, webPath, branch);
@@ -173,21 +197,38 @@ async function reviewAurum(ctx: ReviewContext, existing: ExistingOutputResult, b
       }
     }
 
+    for (const [route, componentName] of Object.entries(routeComponentMap)) {
+      if (route === `/${slug}-web-completa`) continue;
+      const routeFilePath = `src/${componentName}.tsx`;
+      const routeFileInfo = await fetchText(AURUM_REPO, routeFilePath, branch);
+      if (routeFileInfo.exists) {
+        checkedFiles.push(routeFilePath);
+        const dangerousRoute = hasAny(routeFileInfo.content, DANGEROUS_CLIENT_FACING_STRINGS);
+        if (dangerousRoute) criticalWarnings.push(`client_facing_dangerous_copy:${routeFilePath}:${dangerousRoute}`);
+      }
+    }
+
     const dataFileCandidates = [
       `src/data/clientDemos/${ctx.camelBase}.ts`,
+      `src/data/clientDemos/${slug.split("-")[0]}.ts`,
       `src/data/clientDemos/sandhouse.ts`,
     ];
     for (const dataPath of dataFileCandidates) {
       const dataInfo = await fetchText(AURUM_REPO, dataPath, branch);
       if (dataInfo.exists) {
         checkedFiles.push(dataPath);
-        const auditPayload = (payload.audit as Record<string, unknown>) || {};
-        const payloadScore = Number(auditPayload.score ?? NaN);
-        const scoreMatch = dataInfo.content.match(/score\s*[:=]\s*(\d+)/);
-        const dataScore = scoreMatch ? Number(scoreMatch[1]) : NaN;
-        const expectedScore = Number.isNaN(payloadScore) ? 35 : payloadScore;
-        if (!Number.isNaN(dataScore) && expectedScore !== dataScore) {
-          mismatches.push(`audit_score_mismatch:expected_${expectedScore}_vs_aurum_${dataScore}`);
+        const expectedScore = resolveExpectedScore(payload);
+        const scoreRegex = /(digitalPresenceScore|readinessScore|score)\s*[:=]\s*(\d+)/gi;
+        const foundScores: Array<{ key: string; value: number }> = [];
+        let scoreMatch;
+        while ((scoreMatch = scoreRegex.exec(dataInfo.content)) !== null) {
+          foundScores.push({ key: scoreMatch[1], value: Number(scoreMatch[2]) });
+        }
+        const comparisonScore = expectedScore ?? 35;
+        for (const { key, value } of foundScores) {
+          if (value !== comparisonScore) {
+            mismatches.push(`score_mismatch:${key}:expected_${comparisonScore}_vs_aurum_${value}`);
+          }
         }
 
         const embedMatch = dataInfo.content.match(/embedUrl\s*:\s*["']([^"']+)["']/);

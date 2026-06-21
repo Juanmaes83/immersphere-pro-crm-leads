@@ -155,7 +155,7 @@ export function buildRubikFiles(payload: Record<string, unknown>): GeneratorResu
         path: `production-manifests/${slug}.json`,
         content: j({
           slug, clientName,
-          generatedBy: "immersphere-production-orchestrator-v${SERVICE_VERSION}",
+          generatedBy: `immersphere-production-orchestrator-v${SERVICE_VERSION}`,
           assetMode,
           files: [
             `gesture-lab/${slug}-v1.html`,
@@ -289,7 +289,7 @@ export function buildAurumFiles(payload: Record<string, unknown>, proposalPackag
         path: `production-manifests/${slug}.json`,
         content: j({
           slug, clientName, componentBase, camelBase,
-          generatedBy: "immersphere-production-orchestrator-v${SERVICE_VERSION}",
+          generatedBy: `immersphere-production-orchestrator-v${SERVICE_VERSION}`,
           assetMode,
           routes: {
             landing: `/${slug}`,
