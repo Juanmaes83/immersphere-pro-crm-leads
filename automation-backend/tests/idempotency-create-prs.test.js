@@ -116,6 +116,9 @@ function installGithubFetchMock(t, existingFiles = new Set(), existingRoutes = {
     if (u.includes("/contents/") && (!options.method || options.method === "GET")) {
       const pathMatch = u.match(/\/contents\/(.+?)\?/);
       const filePath = pathMatch ? decodeURIComponent(pathMatch[1]) : "";
+      if (Object.prototype.hasOwnProperty.call(fileContents, filePath)) {
+        return resp({ content: Buffer.from(getFileContent(filePath)).toString("base64"), sha: "filesha" });
+      }
       if (filePath === "vercel.json") {
         const rewrites = (existingRoutes.rubikRewrites || []).map((r) => ({ source: r, destination: `/dynamic-motion-banner/${existingRoutes.slug}/banner-vertical.html` }));
         return resp({ content: Buffer.from(JSON.stringify({ rewrites }, null, 2)).toString("base64"), sha: "vercelsha" });
@@ -315,6 +318,258 @@ test("create-prs para Sandhouse con outputs existentes stale crea PRs de actuali
 
       const prCreates = calls.filter((c) => c.url.includes("/pulls") && c.method === "POST");
       assert.equal(prCreates.length, 2, "crea dos PRs de actualización");
+    });
+  } finally {
+    if (prevFlag === undefined) delete process.env.GITHUB_PR_AUTOMATION_ENABLED;
+    else process.env.GITHUB_PR_AUTOMATION_ENABLED = prevFlag;
+    if (prevToken === undefined) delete process.env.GITHUB_SERVER_TOKEN;
+    else process.env.GITHUB_SERVER_TOKEN = prevToken;
+  }
+});
+
+// ─── Regresión: AURUM main limpio con Sandhouse* no debe generar duplicados ───
+// Reproduce el bug real reportado: AURUM main ya tiene SandhouseLanding,
+// SandhouseWebCompleta, etc. con sus rutas canónicas. create-prs en modo
+// stale/update debe reutilizarlos (incluyendo el data file que importan) y
+// nunca crear SandhouseInmobiliaria* ni nombres con sufijo doblado.
+test("create-prs con AURUM main limpio reutiliza Sandhouse* sin duplicar ni doblar sufijos", async (t) => {
+  const prevFlag = process.env.GITHUB_PR_AUTOMATION_ENABLED;
+  const prevToken = process.env.GITHUB_SERVER_TOKEN;
+  process.env.GITHUB_PR_AUTOMATION_ENABLED = "true";
+  process.env.GITHUB_SERVER_TOKEN = "fake-test-token";
+
+  const slug = "sandhouse-inmobiliaria";
+  const existingFiles = new Set([
+    `dynamic-motion-banner/${slug}/index.html`,
+    `dynamic-motion-banner/${slug}/banner-vertical.html`,
+    `dynamic-motion-banner/${slug}/banner-horizontal.html`,
+    `dynamic-motion-banner/${slug}/banner-pack/index.html`,
+    `production-manifests/${slug}.json`,
+    `src/App.tsx`,
+    `src/data/clientDemos/sandhouse.ts`,
+    `src/SandhouseLanding.tsx`,
+    `src/SandhouseWebCompleta.tsx`,
+    `src/SandhouseVisualExperience.tsx`,
+    `src/SandhouseBannerPack.tsx`,
+    `src/SandhouseBannerVertical.tsx`,
+    `src/SandhouseBannerHorizontal.tsx`,
+    `vercel.json`,
+  ]);
+  const existingRoutes = {
+    slug,
+    rubikRewrites: [
+      `/dynamic-motion-banner/${slug}/banner-pack/vertical`,
+      `/dynamic-motion-banner/${slug}/banner-pack/horizontal`,
+    ],
+    // Intentionally only the 4 routes checked by checkAurumExisting — the
+    // other 2 (bannerVertical/bannerHorizontal) still exist in src/App.tsx
+    // below, exercising the "partial" -> still-reconcile path too.
+    aurumRoutes: [`/${slug}`, `/${slug}-web-completa`, `/visual-experience/${slug}`, `/banners/${slug}`],
+  };
+  const fileContents = {
+    [`production-manifests/${slug}.json`]: JSON.stringify({
+      slug,
+      clientName: "Sandhouse Inmobiliaria",
+      generatedBy: "immersphere-production-orchestrator-v0.2",
+      routes: {
+        landing: `/${slug}`,
+        webCompleta: `/${slug}-web-completa`,
+        visualExperience: `/visual-experience/${slug}`,
+        bannerPack: `/banners/${slug}`,
+      },
+    }, null, 2),
+    "src/data/clientDemos/sandhouse.ts": `export const sandhouse = { audit: { digitalPresenceScore: 88 }, visualExperience: { embedUrl: "https://rubik-sota-director-de-orquesta.vercel.app/gesture-lab/${slug}-v1" } };`,
+    "src/App.tsx": `
+import { SandhouseLanding } from "./SandhouseLanding";
+import { SandhouseWebCompleta } from "./SandhouseWebCompleta";
+import { SandhouseVisualExperience } from "./SandhouseVisualExperience";
+import { SandhouseBannerPack } from "./SandhouseBannerPack";
+import { SandhouseBannerVertical } from "./SandhouseBannerVertical";
+import { SandhouseBannerHorizontal } from "./SandhouseBannerHorizontal";
+
+export function App() {
+  return (
+    <Routes>
+      <Route path="/${slug}" element={<SandhouseLanding />} />
+      <Route path="/${slug}-web-completa" element={<SandhouseWebCompleta />} />
+      <Route path="/visual-experience/${slug}" element={<SandhouseVisualExperience />} />
+      <Route path="/banners/${slug}" element={<SandhouseBannerPack />} />
+      <Route path="/banners/${slug}/vertical" element={<SandhouseBannerVertical />} />
+      <Route path="/banners/${slug}/horizontal" element={<SandhouseBannerHorizontal />} />
+    </Routes>
+  );
+}
+`,
+    "src/SandhouseLanding.tsx": `import { sandhouse } from "@/data/clientDemos/sandhouse";\nexport function SandhouseLanding() { return null; }`,
+    "src/SandhouseWebCompleta.tsx": `import { sandhouse } from "@/data/clientDemos/sandhouse";\nexport function SandhouseWebCompleta() { return null; }`,
+    [`dynamic-motion-banner/${slug}/index.html`]: `<!doctype html><html><body>Banner</body></html>`,
+  };
+
+  const { calls } = installGithubFetchMock(t, existingFiles, existingRoutes, fileContents);
+
+  try {
+    await withServer(async (baseUrl) => {
+      const payload = validPayload({ slug });
+      payload.audit = { ...(payload.audit || {}), score: 56 };
+      const { status, body } = await postJson(baseUrl, "/api/production/create-prs", payload);
+
+      assert.equal(status, 200);
+      assert.equal(body.ok, true);
+      assert.equal(body.writeAttempted, true);
+      assert.equal(body.status, "existing_outputs_update_required");
+      assert.ok(body.idempotencyNotes.includes("aurum_refresh_based_on_main"), "nota aurum_refresh_based_on_main presente");
+      assert.ok(body.idempotencyNotes.includes("aurum_reused_existing_components"), "nota aurum_reused_existing_components presente");
+      assert.ok(body.idempotencyNotes.includes("aurum_files_reconciled_with_existing_app_tsx"));
+
+      const putPath = (c) => decodeURIComponent(c.url.match(/\/contents\/([^?]+)/)[1]);
+      const filePuts = calls.filter((c) => c.url.includes("/contents/") && c.method === "PUT");
+      const putPaths = filePuts.map(putPath);
+
+      // Routed, client-facing components must never get a duplicate
+      // SandhouseInmobiliaria* sibling — internal bookkeeping files
+      // (src/generated/*ProductionPlan.ts, *ProposalPackage.ts) are not
+      // routes/components and stay keyed by slug, which is fine.
+      const routedComponentSuffixes = ["Landing.tsx", "WebCompleta.tsx", "VisualExperience.tsx", "BannerPack.tsx", "BannerVertical.tsx", "BannerHorizontal.tsx"];
+      for (const p of putPaths) {
+        if (!routedComponentSuffixes.some((suffix) => p.endsWith(suffix))) continue;
+        assert.ok(!p.includes("SandhouseInmobiliaria"), `no escribe rutas SandhouseInmobiliaria*: ${p}`);
+      }
+      assert.ok(!putPaths.includes("src/data/clientDemos/sandhouseInmobiliaria.ts"), "no crea data file paralelo");
+      assert.ok(putPaths.includes("src/data/clientDemos/sandhouse.ts"), "actualiza el data file existente");
+
+      const landingPut = filePuts.find((c) => putPath(c) === "src/SandhouseLanding.tsx");
+      assert.ok(landingPut, "escribe src/SandhouseLanding.tsx");
+      const landingContent = Buffer.from(JSON.parse(landingPut.body).content, "base64").toString("utf8");
+      assert.match(landingContent, /export function SandhouseLanding\(\)/);
+      assert.doesNotMatch(landingContent, /LandingLanding/);
+
+      const bannerPackPut = filePuts.find((c) => putPath(c) === "src/SandhouseBannerPack.tsx");
+      assert.ok(bannerPackPut, "escribe src/SandhouseBannerPack.tsx");
+      const bannerPackContent = Buffer.from(JSON.parse(bannerPackPut.body).content, "base64").toString("utf8");
+      assert.match(bannerPackContent, /export function SandhouseBannerPack\(\)/);
+      assert.doesNotMatch(bannerPackContent, /BannerPackBannerPack/);
+
+      const dataFilePut = filePuts.find((c) => putPath(c) === "src/data/clientDemos/sandhouse.ts");
+      const dataFileContent = Buffer.from(JSON.parse(dataFilePut.body).content, "base64").toString("utf8");
+      assert.match(dataFileContent, /export const sandhouse:/);
+      assert.match(dataFileContent, /digitalPresenceScore:\s*56/, "usa el score real del payload, no el 88 viejo");
+
+      // Branches must be cut from the live main SHA the mock advertises.
+      const aurumBranchCreate = calls.find((c) => c.url.includes("AURUM") && c.url.includes("/git/refs") && c.method === "POST");
+      assert.ok(aurumBranchCreate, "crea rama AURUM");
+      assert.equal(JSON.parse(aurumBranchCreate.body).sha, "mainsha123");
+    });
+  } finally {
+    if (prevFlag === undefined) delete process.env.GITHUB_PR_AUTOMATION_ENABLED;
+    else process.env.GITHUB_PR_AUTOMATION_ENABLED = prevFlag;
+    if (prevToken === undefined) delete process.env.GITHUB_SERVER_TOKEN;
+    else process.env.GITHUB_SERVER_TOKEN = prevToken;
+  }
+});
+
+test("create-prs bloquea con aurum_route_component_ambiguous y no escribe ni crea PR", async (t) => {
+  const prevFlag = process.env.GITHUB_PR_AUTOMATION_ENABLED;
+  const prevToken = process.env.GITHUB_SERVER_TOKEN;
+  process.env.GITHUB_PR_AUTOMATION_ENABLED = "true";
+  process.env.GITHUB_SERVER_TOKEN = "fake-test-token";
+
+  const slug = "sandhouse-inmobiliaria";
+  const existingFiles = new Set([
+    `dynamic-motion-banner/${slug}/index.html`,
+    `dynamic-motion-banner/${slug}/banner-vertical.html`,
+    `dynamic-motion-banner/${slug}/banner-horizontal.html`,
+    `dynamic-motion-banner/${slug}/banner-pack/index.html`,
+    `production-manifests/${slug}.json`,
+    `src/App.tsx`,
+    `vercel.json`,
+  ]);
+  const existingRoutes = {
+    slug,
+    rubikRewrites: [
+      `/dynamic-motion-banner/${slug}/banner-pack/vertical`,
+      `/dynamic-motion-banner/${slug}/banner-pack/horizontal`,
+    ],
+    aurumRoutes: [`/${slug}`, `/visual-experience/${slug}`, `/banners/${slug}`],
+  };
+  const fileContents = {
+    [`production-manifests/${slug}.json`]: JSON.stringify({ slug, generatedBy: "immersphere-production-orchestrator-v0.2" }, null, 2),
+    "src/App.tsx": `
+      <Route path="/${slug}" element={<SandhouseLanding />} />
+      <Route path="/${slug}-web-completa" element={<SandhouseWebCompleta />} />
+      <Route path="/${slug}/web-completa" element={<LegacyWebCompletaDraft />} />
+      <Route path="/visual-experience/${slug}" element={<SandhouseVisualExperience />} />
+      <Route path="/banners/${slug}" element={<SandhouseBannerPack />} />
+    `,
+  };
+
+  const { calls } = installGithubFetchMock(t, existingFiles, existingRoutes, fileContents);
+
+  try {
+    await withServer(async (baseUrl) => {
+      const payload = validPayload({ slug });
+      const { status, body } = await postJson(baseUrl, "/api/production/create-prs", payload);
+      assert.equal(status, 200);
+      assert.equal(body.ok, false);
+      assert.equal(body.blocked, true);
+      assert.ok(body.blockers.some((b) => b.startsWith("aurum_route_component_ambiguous")), "blocker presente");
+      assert.equal(body.writeAttempted, false);
+
+      const filePuts = calls.filter((c) => c.url.includes("/contents/") && c.method === "PUT");
+      const prCreates = calls.filter((c) => c.url.includes("/pulls") && c.method === "POST");
+      assert.equal(filePuts.length, 0, "no escribe nada");
+      assert.equal(prCreates.length, 0, "no crea PRs");
+    });
+  } finally {
+    if (prevFlag === undefined) delete process.env.GITHUB_PR_AUTOMATION_ENABLED;
+    else process.env.GITHUB_PR_AUTOMATION_ENABLED = prevFlag;
+    if (prevToken === undefined) delete process.env.GITHUB_SERVER_TOKEN;
+    else process.env.GITHUB_SERVER_TOKEN = prevToken;
+  }
+});
+
+test("create-prs bloquea con aurum_main_sha_unconfirmed si no puede leer el SHA de main", async (t) => {
+  const prevFlag = process.env.GITHUB_PR_AUTOMATION_ENABLED;
+  const prevToken = process.env.GITHUB_SERVER_TOKEN;
+  process.env.GITHUB_PR_AUTOMATION_ENABLED = "true";
+  process.env.GITHUB_SERVER_TOKEN = "fake-test-token";
+
+  const originalFetch = globalThis.fetch;
+  const calls = [];
+  globalThis.fetch = async (url, options = {}) => {
+    const u = String(url);
+    if (u.includes("127.0.0.1") || u.includes("localhost")) return originalFetch(url, options);
+    calls.push({ url: u, method: options.method || "GET" });
+    function resp(payload, status = 200) {
+      const body = JSON.stringify(payload);
+      return { ok: status >= 200 && status < 300, status, text: async () => body, json: async () => JSON.parse(body) };
+    }
+    if (u.includes("/repos/") && !u.includes("/git/") && !u.includes("/pulls") && !u.includes("/contents/")) {
+      return resp({ default_branch: "main" });
+    }
+    if (u.includes("/pulls")) return resp([], 200);
+    if (u.includes("/git/ref/heads/")) {
+      // Simulate AURUM main ref lookup failing (e.g. transient GitHub API issue);
+      // every other ref (Rubik's main, or any not-yet-created production branch)
+      // resolves normally so the failure is isolated to the SHA confirmation gate.
+      if (u.endsWith("/main") && u.includes("AURUM")) return resp({ message: "Not Found" }, 404);
+      if (u.endsWith("/main")) return resp({ object: { sha: "mainsha123" } });
+      return resp({ message: "Not Found" }, 404);
+    }
+    return resp({ message: "not mocked" }, 404);
+  };
+  t.after(() => { globalThis.fetch = originalFetch; });
+
+  try {
+    await withServer(async (baseUrl) => {
+      const { status, body } = await postJson(baseUrl, "/api/production/create-prs", validPayload({ slug: "sandhouse-inmobiliaria" }));
+      assert.equal(status, 200);
+      assert.equal(body.ok, false);
+      assert.equal(body.blocked, true);
+      assert.ok(body.blockers.includes("aurum_main_sha_unconfirmed"));
+      assert.equal(body.writeAttempted, false);
+
+      const branchCreates = calls.filter((c) => c.url.includes("/git/refs") && c.method === "POST");
+      assert.equal(branchCreates.length, 0, "no crea ninguna rama");
     });
   } finally {
     if (prevFlag === undefined) delete process.env.GITHUB_PR_AUTOMATION_ENABLED;

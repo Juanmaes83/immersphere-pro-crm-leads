@@ -57,6 +57,7 @@ export interface GeneratorResult {
   warnings: string[];
   errors: string[];
   assetMode: "client_real_asset" | "fallback_internal_library" | "mixed";
+  reusedComponentTypes?: string[];
 }
 
 // ─── Asset mode ───────────────────────────────────────────────────────────────
@@ -192,6 +193,7 @@ export function buildAurumFiles(
   options: {
     existingRouteComponentMap?: Record<string, string>;
     existingAppTsxContent?: string;
+    existingDataFile?: { path: string; exportName: string };
   } = {},
 ): GeneratorResult {
   const slug = sanitizeSlug(String((payload?.lead as Record<string, unknown>)?.slug ?? ""));
@@ -231,36 +233,67 @@ export function buildAurumFiles(
 
   const digitalPresenceScore = resolveProductionScore(payload as Record<string, unknown>);
 
+  // Each entry is either a resolvedComponentName (taken verbatim from AURUM main's
+  // App.tsx — already a complete, final symbol name) or a fallbackComponentName
+  // (synthesized here because no existing component covers that route). Both are
+  // already-complete names: nothing downstream may append a suffix to either.
   const existingRouteComponentMap = options.existingRouteComponentMap || {};
-  const routeComponentByType: Record<string, string> = {
-    landing: existingRouteComponentMap[`/${slug}`] || `${componentBase}Landing`,
-    webCompleta: existingRouteComponentMap[`/${slug}-web-completa`] || `${componentBase}WebCompleta`,
-    visualExperience: existingRouteComponentMap[`/visual-experience/${slug}`] || `${componentBase}VisualExperience`,
-    bannerPack: existingRouteComponentMap[`/banners/${slug}`] || `${componentBase}BannerPack`,
-    bannerVertical: existingRouteComponentMap[`/banners/${slug}/vertical`] || `${componentBase}BannerVertical`,
-    bannerHorizontal: existingRouteComponentMap[`/banners/${slug}/horizontal`] || `${componentBase}BannerHorizontal`,
+  const routeTypeToCanonicalRoute: Record<string, string> = {
+    landing: `/${slug}`,
+    webCompleta: `/${slug}-web-completa`,
+    visualExperience: `/visual-experience/${slug}`,
+    bannerPack: `/banners/${slug}`,
+    bannerVertical: `/banners/${slug}/vertical`,
+    bannerHorizontal: `/banners/${slug}/horizontal`,
   };
+  const fallbackComponentNameByType: Record<string, string> = {
+    landing: `${componentBase}Landing`,
+    webCompleta: `${componentBase}WebCompleta`,
+    visualExperience: `${componentBase}VisualExperience`,
+    bannerPack: `${componentBase}BannerPack`,
+    bannerVertical: `${componentBase}BannerVertical`,
+    bannerHorizontal: `${componentBase}BannerHorizontal`,
+  };
+  const routeComponentByType: Record<string, string> = {};
+  const reusedComponentTypes: string[] = [];
+  for (const type of Object.keys(routeTypeToCanonicalRoute)) {
+    const resolvedComponentName = existingRouteComponentMap[routeTypeToCanonicalRoute[type]];
+    if (resolvedComponentName) {
+      routeComponentByType[type] = resolvedComponentName;
+      reusedComponentTypes.push(type);
+    } else {
+      routeComponentByType[type] = fallbackComponentNameByType[type];
+    }
+  }
+
+  // Reuse the data file that existing Sandhouse* components already import from
+  // (e.g. src/data/clientDemos/sandhouse.ts) instead of always creating a new
+  // one keyed off the incoming slug. Only fall back to a fresh file when no
+  // existing data file was found.
+  const dataFilePath = options.existingDataFile?.path || `src/data/clientDemos/${camelBase}.ts`;
+  const dataExportName = options.existingDataFile?.exportName || camelBase;
+  const dataModuleSpecifier = dataFilePath.replace(/^src\//, "@/").replace(/\.ts$/, "");
 
   return {
     files: [
       {
         repo: AURUM_REPO,
-        path: `src/data/clientDemos/${camelBase}.ts`,
-        content: buildClientDemoData({ slug, camelBase, componentBase, clientName, sector, zone, website, logoUrl, heroImage, propertyImages, videoUrl, primaryColor, accentColor, waHref, telHref, emailHref, claim, digitalPresenceScore }),
+        path: dataFilePath,
+        content: buildClientDemoData({ slug, camelBase: dataExportName, componentBase, clientName, sector, zone, website, logoUrl, heroImage, propertyImages, videoUrl, primaryColor, accentColor, waHref, telHref, emailHref, claim, digitalPresenceScore }),
         message: `feat(data): add ${clientName} client demo data`,
         encoding: "utf8",
       },
       {
         repo: AURUM_REPO,
         path: `src/${routeComponentByType.landing}.tsx`,
-        content: buildLandingComponent({ slug, componentBase: routeComponentByType.landing, camelBase, clientName, heroImage, logoUrl, claim, waHref, accentColor }),
+        content: buildLandingComponent({ slug, componentBase: routeComponentByType.landing, camelBase: dataExportName, dataModuleSpecifier, clientName, heroImage, logoUrl, claim, waHref, accentColor }),
         message: `feat(landing): add ${clientName} landing page`,
         encoding: "utf8",
       },
       {
         repo: AURUM_REPO,
         path: `src/${routeComponentByType.webCompleta}.tsx`,
-        content: buildWebCompletaComponent({ slug, componentBase: routeComponentByType.webCompleta, camelBase, clientName }),
+        content: buildWebCompletaComponent({ slug, componentBase: routeComponentByType.webCompleta, camelBase: dataExportName, dataModuleSpecifier, clientName }),
         message: `feat(web-completa): add ${clientName} web completa`,
         encoding: "utf8",
       },
@@ -308,6 +341,7 @@ export function buildAurumFiles(
           slug, clientName, componentBase, camelBase,
           generatedBy: `immersphere-production-orchestrator-v${SERVICE_VERSION}`,
           assetMode,
+          digitalPresenceScore,
           routes: {
             landing: `/${slug}`,
             webCompleta: `/${slug}-web-completa`,
@@ -338,6 +372,7 @@ export function buildAurumFiles(
     warnings,
     errors,
     assetMode,
+    reusedComponentTypes,
   };
 }
 
@@ -654,18 +689,19 @@ export const ${camelBase}: ClientDemo = {
 `;
 }
 
-function buildLandingComponent({ slug, componentBase, camelBase, clientName, heroImage, logoUrl, claim, waHref, accentColor }) {
+function buildLandingComponent({ slug, componentBase, camelBase, dataModuleSpecifier, clientName, heroImage, logoUrl, claim, waHref, accentColor }) {
   const ac = safeText(accentColor, "#d4af37");
   const hi = safeText(heroImage, "");
   const lo = safeText(logoUrl, "");
   const cl = safeText(clientName, slug);
   const ck = safeText(claim, "Experiencia inmobiliaria premium");
   const wh = safeText(waHref, "#contact");
+  const moduleSpecifier = dataModuleSpecifier || `@/data/clientDemos/${camelBase}`;
   return `// Auto-generated by immersphere-production-orchestrator v${SERVICE_VERSION}
 import React from "react";
-import { ${camelBase} } from "@/data/clientDemos/${camelBase}";
+import { ${camelBase} } from "${moduleSpecifier}";
 
-export function ${componentBase}Landing() {
+export function ${componentBase}() {
   const cfg = ${camelBase};
   const ac = cfg.client.accentColor || "${ac}";
   return (
@@ -698,13 +734,14 @@ export function ${componentBase}Landing() {
 `;
 }
 
-function buildWebCompletaComponent({ slug, componentBase, camelBase, clientName }) {
+function buildWebCompletaComponent({ slug, componentBase, camelBase, dataModuleSpecifier, clientName }) {
   const gestureLabUrl = `https://${INTERNAL_ENGINE_DOMAIN}/gesture-lab/${slug}-v1`;
+  const moduleSpecifier = dataModuleSpecifier || `@/data/clientDemos/${camelBase}`;
   return `// Auto-generated by immersphere-production-orchestrator v${SERVICE_VERSION}
 import React, { useEffect, useRef } from "react";
-import { ${camelBase} } from "@/data/clientDemos/${camelBase}";
+import { ${camelBase} } from "${moduleSpecifier}";
 
-export function ${componentBase}WebCompleta() {
+export function ${componentBase}() {
   const cfg = ${camelBase};
   const videoRef = useRef<HTMLVideoElement>(null);
   useEffect(() => { videoRef.current?.play().catch(() => {}); }, []);
@@ -797,7 +834,6 @@ export function ${componentBase}WebCompleta() {
 }
 
 function buildIframeWrapper({ slug, componentBase, type }) {
-  const suffix = type.split("-").map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join("");
   const urlMap: Record<string, { url: string; w: string; h: string }> = {
     "visual-experience": { url: `https://${INTERNAL_ENGINE_DOMAIN}/gesture-lab/${slug}-v1`, w: "100%", h: "100vh" },
     "banner-pack": { url: `https://${INTERNAL_ENGINE_DOMAIN}/dynamic-motion-banner/${slug}/banner-pack`, w: "100%", h: "900px" },
@@ -809,7 +845,7 @@ function buildIframeWrapper({ slug, componentBase, type }) {
   return `// Auto-generated by immersphere-production-orchestrator v${SERVICE_VERSION}
 import React from "react";
 
-export function ${componentBase}${suffix}() {
+export function ${componentBase}() {
   return (
     <div style={{ ${needsCentering ? 'display: "flex", justifyContent: "center", padding: "40px 24px"' : 'width: "100%", height: "100vh", overflow: "hidden"'} }}>
       <iframe
@@ -833,7 +869,6 @@ function buildAppTsxPatch({
   componentNames: Record<string, string>;
   existingAppTsxContent?: string;
 }): object {
-  const lowerExisting = existingAppTsxContent.toLowerCase();
   const allRoutes = [
     { key: "landing", path: `/${slug}`, component: componentNames.landing },
     { key: "webCompleta", path: `/${slug}-web-completa`, component: componentNames.webCompleta },
@@ -843,7 +878,13 @@ function buildAppTsxPatch({
     { key: "bannerHorizontal", path: `/banners/${slug}/horizontal`, component: componentNames.bannerHorizontal },
   ];
 
-  const missingRoutes = allRoutes.filter((r) => !lowerExisting.includes(`path="${r.path}"`.toLowerCase()));
+  // Tolerant of single vs double quotes and surrounding whitespace — a naive
+  // literal `path="..."` substring check can miss an existing single-quoted
+  // route and re-add it, producing a duplicate <Route> entry.
+  const missingRoutes = allRoutes.filter((r) => {
+    const escapedPath = r.path.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    return !new RegExp(`path\\s*=\\s*["']${escapedPath}["']`, "i").test(existingAppTsxContent);
+  });
   const usedComponents = new Set(missingRoutes.map((r) => r.component));
   const imports = [...usedComponents].map((componentName) => `import { ${componentName} } from "./${componentName}";`).filter((imp) => !existingAppTsxContent.includes(imp));
 

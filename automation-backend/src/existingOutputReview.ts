@@ -97,25 +97,188 @@ export function escapeRegex(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+// Extracts every <Route .../> tag as a (path, component) pair without assuming
+// attribute order, quote style, or single-line formatting. We locate each
+// "<Route" tag start, then independently search for the nearest path= and
+// element=<Component within that tag's span (up to the next "<Route" or EOF).
+// This avoids the pitfall of a naive [^>]*> regex, which breaks because the
+// nested `<Component />` inside element={...} contains its own literal ">".
+export function extractAllRouteComponentPairs(appContent: string): Array<{ path: string; component: string }> {
+  const routeStarts: number[] = [];
+  const routeTagRe = /<Route\b/g;
+  let m: RegExpExecArray | null;
+  while ((m = routeTagRe.exec(appContent)) !== null) routeStarts.push(m.index);
+
+  const pathRe = /path\s*=\s*(["'])(.*?)\1/g;
+  const pathMatches: Array<{ index: number; value: string }> = [];
+  while ((m = pathRe.exec(appContent)) !== null) pathMatches.push({ index: m.index, value: m[2] });
+
+  const elementRe = /element\s*=\s*\{\s*<\s*([A-Za-z0-9_.]+)/g;
+  const elementMatches: Array<{ index: number; value: string }> = [];
+  while ((m = elementRe.exec(appContent)) !== null) elementMatches.push({ index: m.index, value: m[1] });
+
+  const pairs: Array<{ path: string; component: string }> = [];
+  for (let i = 0; i < routeStarts.length; i++) {
+    const start = routeStarts[i];
+    const end = i + 1 < routeStarts.length ? routeStarts[i + 1] : appContent.length;
+    const path = pathMatches.find((p) => p.index > start && p.index < end);
+    const element = elementMatches.find((e) => e.index > start && e.index < end);
+    if (path && element) pairs.push({ path: path.value, component: element.value });
+  }
+  return pairs;
+}
+
 export function extractRouteComponentMap(appContent: string, slug: string): Record<string, string> {
-  const map: Record<string, string> = {};
-  const routes = [
+  const relevantRoutes = new Set([
     `/${slug}`,
     `/${slug}-web-completa`,
     `/visual-experience/${slug}`,
     `/banners/${slug}`,
     `/banners/${slug}/vertical`,
     `/banners/${slug}/horizontal`,
-  ];
-  for (const route of routes) {
-    const re = new RegExp(
-      `<Route\\s+path=["']${escapeRegex(route)}["']\\s+element=\\{\\s*<([A-Za-z0-9_]+)(?:\\s*/)?>\\s*\\}\\s*/?>`,
-      "i",
-    );
-    const m = appContent.match(re);
-    if (m) map[route] = m[1];
+  ]);
+  const map: Record<string, string> = {};
+  for (const { path, component } of extractAllRouteComponentPairs(appContent)) {
+    if (relevantRoutes.has(path) && !(path in map)) map[path] = component;
   }
   return map;
+}
+
+export function findDuplicateRoutePaths(appContent: string): string[] {
+  const counts = new Map<string, number>();
+  for (const { path } of extractAllRouteComponentPairs(appContent)) {
+    counts.set(path, (counts.get(path) || 0) + 1);
+  }
+  return [...counts.entries()].filter(([, n]) => n > 1).map(([p]) => p);
+}
+
+// Routes that are functionally equivalent to a canonical route but use a
+// different URL shape. AURUM main may have grown these organically before
+// the generator's canonical scheme was finalized; we must reuse whatever
+// component they already point to rather than creating a duplicate.
+const ALIAS_ROUTE_TEMPLATES: Record<string, (slug: string) => string> = {
+  webCompleta: (slug) => `/${slug}/web-completa`,
+  visualExperience: (slug) => `/${slug}/visual-experience`,
+  bannerPack: (slug) => `/${slug}/banners`,
+};
+
+export interface AurumRouteResolution {
+  componentByCanonicalRoute: Record<string, string>;
+  reusedTypes: string[];
+  ambiguousTypes: string[];
+}
+
+// Resolves which existing component (if any) already serves each canonical
+// AURUM route, checking both the canonical path and any known alias path.
+// If the canonical and alias paths exist but point to two *different*
+// components, that is a genuine ambiguity — we cannot safely guess which one
+// is the "real" one, so the caller must block and ask for human review
+// instead of picking one and silently dropping the other.
+export function resolveAurumRouteComponents(appContent: string, slug: string): AurumRouteResolution {
+  const componentByPath: Record<string, string> = {};
+  for (const { path, component } of extractAllRouteComponentPairs(appContent)) {
+    if (!(path in componentByPath)) componentByPath[path] = component;
+  }
+
+  const canonicalRouteByType: Record<string, string> = {
+    landing: `/${slug}`,
+    webCompleta: `/${slug}-web-completa`,
+    visualExperience: `/visual-experience/${slug}`,
+    bannerPack: `/banners/${slug}`,
+    bannerVertical: `/banners/${slug}/vertical`,
+    bannerHorizontal: `/banners/${slug}/horizontal`,
+  };
+
+  const componentByCanonicalRoute: Record<string, string> = {};
+  const reusedTypes: string[] = [];
+  const ambiguousTypes: string[] = [];
+
+  for (const type of Object.keys(canonicalRouteByType)) {
+    const canonicalPath = canonicalRouteByType[type];
+    const canonicalComponent = componentByPath[canonicalPath];
+    const aliasPath = ALIAS_ROUTE_TEMPLATES[type]?.(slug);
+    const aliasComponent = aliasPath ? componentByPath[aliasPath] : undefined;
+
+    if (canonicalComponent && aliasComponent && canonicalComponent !== aliasComponent) {
+      ambiguousTypes.push(type);
+      continue;
+    }
+    const resolved = canonicalComponent || aliasComponent;
+    if (resolved) {
+      componentByCanonicalRoute[canonicalPath] = resolved;
+      reusedTypes.push(type);
+    }
+  }
+
+  return { componentByCanonicalRoute, reusedTypes, ambiguousTypes };
+}
+
+// Pulls the data-file import out of an existing AURUM component, e.g.
+// `import { sandhouse } from "@/data/clientDemos/sandhouse";` ->
+// { path: "src/data/clientDemos/sandhouse.ts", exportName: "sandhouse" }.
+// Returns null when the component doesn't import from clientDemos at all.
+export function extractExistingDataFileRef(componentContent: string): { path: string; exportName: string } | null {
+  const m = componentContent.match(
+    /import\s*\{\s*([A-Za-z0-9_]+)\s*\}\s*from\s*["']@\/data\/clientDemos\/([A-Za-z0-9_]+)["']/,
+  );
+  if (!m) return null;
+  return { path: `src/data/clientDemos/${m[2]}.ts`, exportName: m[1] };
+}
+
+const FORBIDDEN_DOUBLED_NAME_PATTERNS = [
+  /LandingLanding/,
+  /WebCompletaWebCompleta/,
+  /VisualExperienceVisualExperience/,
+  /BannerPackBannerPack/,
+  /BannerVerticalBannerVertical/,
+  /BannerHorizontalBannerHorizontal/,
+];
+
+function hasUnsafeGestureLabReference(content: string): boolean {
+  const idxRe = /\/gesture-lab\//g;
+  let m: RegExpExecArray | null;
+  while ((m = idxRe.exec(content)) !== null) {
+    const windowStart = Math.max(0, m.index - 80);
+    if (!content.slice(windowStart, m.index).includes(INTERNAL_ENGINE_DOMAIN)) return true;
+  }
+  return false;
+}
+
+// Hard gate: scans freshly generated/patched AURUM file content for the
+// known failure signatures (doubled component names, gesture-lab leaking
+// into client-facing output) before anything is written to GitHub.
+export function scanForbiddenGeneratedPatterns(
+  files: Array<{ path: string; content?: string }>,
+): string[] {
+  const violations: string[] = [];
+  for (const file of files) {
+    const content = file.content || "";
+    for (const pattern of FORBIDDEN_DOUBLED_NAME_PATTERNS) {
+      if (pattern.test(file.path) || pattern.test(content)) {
+        violations.push(`forbidden_doubled_component_name:${file.path}:${pattern.source}`);
+      }
+    }
+    if (content && hasUnsafeGestureLabReference(content)) {
+      violations.push(`gesture_lab_leak_in_client_facing_output:${file.path}`);
+    }
+  }
+  return violations;
+}
+
+// Hard gate: given the existing App.tsx content and the list of route path
+// strings the patch is about to add, returns any path that would end up
+// duplicated. Must be checked against the *patch* output, not just the raw
+// generator output, since buildAppTsxPatch already filters routes it thinks
+// are missing — this is the final safety net before writing to GitHub.
+export function wouldIntroduceDuplicateRoutes(existingAppTsxContent: string, newRoutePaths: string[]): string[] {
+  const existingPaths = new Set(extractAllRouteComponentPairs(existingAppTsxContent).map((p) => p.path));
+  const dups: string[] = [];
+  const seen = new Set<string>();
+  for (const path of newRoutePaths) {
+    if (existingPaths.has(path) || seen.has(path)) dups.push(path);
+    seen.add(path);
+  }
+  return dups;
 }
 
 async function fetchText(repo: string, path: string, branch: string): Promise<{ exists: boolean; content: string }> {
