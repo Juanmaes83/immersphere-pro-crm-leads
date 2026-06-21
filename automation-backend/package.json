@@ -1,6 +1,6 @@
 {
   "name": "immersphere-production-orchestrator",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "type": "module",
   "description": "Dry-run production orchestrator foundation for Immersphere CRM.",

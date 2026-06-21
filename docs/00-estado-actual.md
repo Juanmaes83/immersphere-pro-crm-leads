@@ -1,6 +1,6 @@
 # Estado Actual del Sistema Immersphere CRM
 
-**Ultima actualizacion:** 2026-06-20
+**Ultima actualizacion:** 2026-06-21
 
 ---
 
@@ -9,7 +9,7 @@
 | Componente | Estado |
 |---|---|
 | CRM panel estatico | Activo — https://juanmaes83.github.io/immersphere-pro-crm-leads/ |
-| Backend Railway | Activo v0.3.0 — https://automation-backend-production-02e5.up.railway.app |
+| Backend Railway | Activo v0.4.0 — https://automation-backend-production-02e5.up.railway.app |
 | Operator Console | Activo — /operator |
 | GitHub PR automation | Activo (`GITHUB_PR_AUTOMATION_ENABLED=true`) |
 

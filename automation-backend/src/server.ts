@@ -16,7 +16,7 @@ import {
   sanitizeGithubError,
 } from "./githubClient.ts";
 import { logInfo, logWarn } from "./logger.ts";
-import { MAX_BODY_BYTES, MODE, SERVICE_NAME, SERVICE_VERSION } from "./schemas.ts";
+import { getMode, MAX_BODY_BYTES, SERVICE_NAME, SERVICE_VERSION } from "./schemas.ts";
 import { buildProposalPackage } from "./proposalPackage.ts";
 import { validateProductionPackage } from "./validateProductionPackage.ts";
 import {
@@ -265,7 +265,7 @@ export function createRequestHandler() {
     }
 
     if (req.method === "GET" && url.pathname === "/health") {
-      sendJson(res, 200, { ok: true, service: SERVICE_NAME, version: SERVICE_VERSION, mode: MODE }, headers);
+      sendJson(res, 200, { ok: true, service: SERVICE_NAME, version: SERVICE_VERSION, mode: getMode() }, headers);
       return;
     }
 
@@ -274,7 +274,7 @@ export function createRequestHandler() {
       sendJson(res, 200, {
         ok: true,
         version: SERVICE_VERSION,
-        mode: MODE,
+        mode: getMode(),
         dryRunEnabled: true,
         prAutomationAvailable: true,
         prAutomationEnabled: enabled,
@@ -316,7 +316,7 @@ export function createRequestHandler() {
         const message = error instanceof Error ? error.message : "request_failed";
         sendJson(res, message === "payload_too_large" ? 413 : 400, {
           ok: false,
-          mode: MODE,
+          mode: getMode(),
           validation: { passed: false, errors: [message], warnings: [] },
           blocked: true,
         }, headers);
