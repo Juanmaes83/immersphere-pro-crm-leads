@@ -77,9 +77,16 @@ async function postJson(baseUrl, path, payload, extraHeaders = {}) {
   return { status: res.status, body: await res.json() };
 }
 
-function installGithubFetchMock(t, existingFiles = new Set(), existingRoutes = {}) {
+function installGithubFetchMock(t, existingFiles = new Set(), existingRoutes = {}, fileContents = {}) {
   const originalFetch = globalThis.fetch;
   const calls = [];
+
+  function getFileContent(path) {
+    if (Object.prototype.hasOwnProperty.call(fileContents, path)) {
+      return String(fileContents[path] ?? "");
+    }
+    return "existing";
+  }
 
   globalThis.fetch = async (url, options = {}) => {
     const u = String(url);
@@ -118,7 +125,7 @@ function installGithubFetchMock(t, existingFiles = new Set(), existingRoutes = {
         return resp({ content: Buffer.from(routes.join("\n")).toString("base64"), sha: "appsha" });
       }
       if (existingFiles.has(filePath)) {
-        return resp({ content: Buffer.from("existing").toString("base64"), sha: "filesha" });
+        return resp({ content: Buffer.from(getFileContent(filePath)).toString("base64"), sha: "filesha" });
       }
       return resp({ message: "Not Found" }, 404);
     }
@@ -175,7 +182,7 @@ test("create-prs para lead nuevo sin outputs existentes crea PRs", async (t) => 
   }
 });
 
-test("create-prs para Sandhouse con outputs existentes no crea PRs", async (t) => {
+test("create-prs para Sandhouse con outputs existentes actuales no crea PRs", async (t) => {
   const prevFlag = process.env.GITHUB_PR_AUTOMATION_ENABLED;
   const prevToken = process.env.GITHUB_SERVER_TOKEN;
   process.env.GITHUB_PR_AUTOMATION_ENABLED = "true";
@@ -188,7 +195,9 @@ test("create-prs para Sandhouse con outputs existentes no crea PRs", async (t) =
     `dynamic-motion-banner/${slug}/banner-horizontal.html`,
     `dynamic-motion-banner/${slug}/banner-pack/index.html`,
     `production-manifests/${slug}.json`,
-    `production-manifests/${slug}.json`,
+    `src/App.tsx`,
+    `src/data/clientDemos/sandhouse.ts`,
+    `vercel.json`,
   ]);
   const existingRoutes = {
     slug,
@@ -198,8 +207,25 @@ test("create-prs para Sandhouse con outputs existentes no crea PRs", async (t) =
     ],
     aurumRoutes: [`/${slug}`, `/${slug}-web-completa`, `/visual-experience/${slug}`, `/banners/${slug}`],
   };
+  const fileContents = {
+    [`production-manifests/${slug}.json`]: JSON.stringify({
+      slug,
+      clientName: "Sandhouse Inmobiliaria",
+      generatedBy: `immersphere-production-orchestrator-v${SERVICE_VERSION}`,
+      routes: {
+        landing: `/${slug}`,
+        webCompleta: `/${slug}-web-completa`,
+        visualExperience: `/visual-experience/${slug}`,
+        bannerPack: `/banners/${slug}`,
+        bannerVertical: `/banners/${slug}/vertical`,
+        bannerHorizontal: `/banners/${slug}/horizontal`,
+      },
+    }, null, 2),
+    "src/data/clientDemos/sandhouse.ts": `export const sandhouse = { audit: { digitalPresenceScore: 35 }, visualExperience: { embedUrl: "https://rubik-sota-director-de-orquesta.vercel.app/gesture-lab/${slug}-v1" } };`,
+    "src/App.tsx": existingRoutes.aurumRoutes.map((r) => `<Route path="${r}" element={<div />} />`).join("\n"),
+  };
 
-  const { calls } = installGithubFetchMock(t, existingFiles, existingRoutes);
+  const { calls } = installGithubFetchMock(t, existingFiles, existingRoutes, fileContents);
 
   try {
     await withServer(async (baseUrl) => {
@@ -207,10 +233,10 @@ test("create-prs para Sandhouse con outputs existentes no crea PRs", async (t) =
       assert.equal(status, 200);
       assert.equal(body.ok, true);
       assert.equal(body.writeAttempted, false);
-      assert.equal(body.status, "existing_outputs_found");
+      assert.equal(body.status, "existing_outputs_current");
       assert.deepEqual(body.pullRequests, {});
-      assert.equal(body.responseBundle.status, "needs_existing_output_review");
-      assert.ok(body.responseBundle.warnings.some((w) => w.includes("existing_outputs_detected")), "warning de outputs existentes");
+      assert.equal(body.responseBundle.status, "existing_outputs_current");
+      assert.equal(body.existingOutputReview.status, "current");
 
       const branchCreates = calls.filter((c) => c.url.includes("/git/refs") && c.method === "POST");
       const filePuts = calls.filter((c) => c.url.includes("/contents/") && c.method === "PUT");
@@ -218,6 +244,77 @@ test("create-prs para Sandhouse con outputs existentes no crea PRs", async (t) =
       assert.equal(branchCreates.length, 0, "no crea ramas");
       assert.equal(filePuts.length, 0, "no escribe archivos");
       assert.equal(prCreates.length, 0, "no crea PRs");
+    });
+  } finally {
+    if (prevFlag === undefined) delete process.env.GITHUB_PR_AUTOMATION_ENABLED;
+    else process.env.GITHUB_PR_AUTOMATION_ENABLED = prevFlag;
+    if (prevToken === undefined) delete process.env.GITHUB_SERVER_TOKEN;
+    else process.env.GITHUB_SERVER_TOKEN = prevToken;
+  }
+});
+
+test("create-prs para Sandhouse con outputs existentes stale crea PRs de actualización", async (t) => {
+  const prevFlag = process.env.GITHUB_PR_AUTOMATION_ENABLED;
+  const prevToken = process.env.GITHUB_SERVER_TOKEN;
+  process.env.GITHUB_PR_AUTOMATION_ENABLED = "true";
+  process.env.GITHUB_SERVER_TOKEN = "fake-test-token";
+
+  const slug = "sandhouse-inmobiliaria";
+  const existingFiles = new Set([
+    `dynamic-motion-banner/${slug}/index.html`,
+    `dynamic-motion-banner/${slug}/banner-vertical.html`,
+    `dynamic-motion-banner/${slug}/banner-horizontal.html`,
+    `dynamic-motion-banner/${slug}/banner-pack/index.html`,
+    `production-manifests/${slug}.json`,
+    `src/App.tsx`,
+    `src/data/clientDemos/sandhouse.ts`,
+    `src/SandhouseInmobiliariaWebCompleta.tsx`,
+    `vercel.json`,
+  ]);
+  const existingRoutes = {
+    slug,
+    rubikRewrites: [
+      `/dynamic-motion-banner/${slug}/banner-pack/vertical`,
+      `/dynamic-motion-banner/${slug}/banner-pack/horizontal`,
+    ],
+    aurumRoutes: [`/${slug}`, `/${slug}-web-completa`, `/visual-experience/${slug}`, `/banners/${slug}`],
+  };
+  const fileContents = {
+    [`production-manifests/${slug}.json`]: JSON.stringify({
+      slug,
+      clientName: "Sandhouse Inmobiliaria",
+      generatedBy: "immersphere-production-orchestrator-v0.2",
+      routes: {
+        landing: `/${slug}`,
+        webCompleta: `/${slug}-web-completa`,
+        visualExperience: `/visual-experience/${slug}`,
+        bannerPack: `/banners/${slug}`,
+      },
+    }, null, 2),
+    "src/data/clientDemos/sandhouse.ts": `export const sandhouse = { audit: { digitalPresenceScore: 88 }, visualExperience: { embedUrl: "https://rubik-sota-director-de-orquesta.vercel.app/gesture-lab/${slug}-v1" } };`,
+    "src/App.tsx": `import { SandhouseInmobiliariaWebCompleta } from "./SandhouseInmobiliariaWebCompleta";\n` + existingRoutes.aurumRoutes.map((r) => `<Route path="${r}" element={<div />} />`).join("\n"),
+    "src/SandhouseInmobiliariaWebCompleta.tsx": `export function SandhouseInmobiliariaWebCompleta() { return <div>Internal draft — Apartamento Torrevieja Centro</div>; }`,
+    [`dynamic-motion-banner/${slug}/index.html`]: `<!doctype html><html><body>Internal draft</body></html>`,
+  };
+
+  const { calls } = installGithubFetchMock(t, existingFiles, existingRoutes, fileContents);
+
+  try {
+    await withServer(async (baseUrl) => {
+      const payload = validPayload({ slug });
+      payload.audit = { ...(payload.audit || {}), score: 56 };
+      const { status, body } = await postJson(baseUrl, "/api/production/create-prs", payload);
+      assert.equal(status, 200);
+      assert.equal(body.ok, true);
+      assert.equal(body.writeAttempted, true);
+      assert.equal(body.status, "existing_outputs_update_required");
+      assert.ok(body.existingOutputReview.status === "stale" || body.existingOutputReview.status === "unsafe", "review marca stale/unsafe");
+      assert.ok(body.existingOutputReview.mismatches.length > 0, "hay mismatches detectados");
+      assert.ok(body.pullRequests[AURUM_REPO], "aurum PR creado");
+      assert.ok(body.pullRequests[RUBIK_REPO], "rubik PR creado");
+
+      const prCreates = calls.filter((c) => c.url.includes("/pulls") && c.method === "POST");
+      assert.equal(prCreates.length, 2, "crea dos PRs de actualización");
     });
   } finally {
     if (prevFlag === undefined) delete process.env.GITHUB_PR_AUTOMATION_ENABLED;
