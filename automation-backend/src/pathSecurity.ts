@@ -89,7 +89,19 @@ export function validateRepoPath(repo, filePath, slug) {
   ]);
 
   if (repo === RUBIK_REPO) return rubikAllowed.has(filePath) ? null : "rubik_path_not_allowed";
-  if (repo === AURUM_REPO) return aurumAllowed.has(filePath) ? null : "aurum_path_not_allowed";
+  if (repo === AURUM_REPO) {
+    if (aurumAllowed.has(filePath)) return null;
+    const aurumComponentSuffixes = ["Landing.tsx", "WebCompleta.tsx", "VisualExperience.tsx", "BannerPack.tsx", "BannerVertical.tsx", "BannerHorizontal.tsx"];
+    if (
+      filePath.startsWith("src/") &&
+      aurumComponentSuffixes.some((suffix) => filePath.endsWith(suffix)) &&
+      !filePath.includes("..") &&
+      !filePath.split("/").some((part) => ALWAYS_FORBIDDEN_SEGMENTS.has(part))
+    ) {
+      return null;
+    }
+    return "aurum_path_not_allowed";
+  }
   return "repo_not_allowed";
 }
 
