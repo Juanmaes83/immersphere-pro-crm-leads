@@ -93,11 +93,11 @@ function expectedAurumRoutes(slug: string): string[] {
   ];
 }
 
-function escapeRegex(value: string): string {
+export function escapeRegex(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-function extractRouteComponentMap(appContent: string, slug: string): Record<string, string> {
+export function extractRouteComponentMap(appContent: string, slug: string): Record<string, string> {
   const map: Record<string, string> = {};
   const routes = [
     `/${slug}`,
