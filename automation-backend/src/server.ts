@@ -983,6 +983,28 @@ async function createProductionPullRequests(payload, plan, preflight = {}) {
       existingDataFile,
     });
 
+    // Every critical existing output (App.tsx, manifest, the reused Sandhouse*
+    // components, the reused data file) must actually be part of this write
+    // set in stale/update mode — there is no such thing as a legitimate
+    // "skip" for these in that mode. If buildAurumFiles ever fails to cover
+    // one (e.g. a future refactor drops it), block instead of silently
+    // leaving stale content in place.
+    const criticalAurumPaths = [
+      AURUM_APP_TSX,
+      `production-manifests/${plan.leadSlug}.json`,
+      ...reusedComponentNames.map((name) => `src/${name}.tsx`),
+      ...(existingDataFile ? [existingDataFile.path] : []),
+    ];
+    const reconciledAurumPaths = new Set(reconciledAurum.files.map((f) => f.path));
+    const unupdatedCriticalAurumFiles = criticalAurumPaths.filter((p) => !reconciledAurumPaths.has(p));
+    if (unupdatedCriticalAurumFiles.length > 0) {
+      return blockedResult(
+        unupdatedCriticalAurumFiles.map((p) => `aurum_critical_file_not_updated:${p}`),
+        idempotencyNotes,
+        existingOutputReview.overall,
+      );
+    }
+
     const forbiddenPatternViolations = scanForbiddenGeneratedPatterns(reconciledAurum.files);
     if (forbiddenPatternViolations.length > 0) {
       return blockedResult(forbiddenPatternViolations, idempotencyNotes, existingOutputReview.overall);
@@ -1055,8 +1077,26 @@ async function createProductionPullRequests(payload, plan, preflight = {}) {
       continue;
     }
 
-    for (const skipped of existing.skippedFiles) {
-      idempotencyNotes.push(`skipped_existing_file:${repo}:${skipped}`);
+    if (hasExistingOutputs) {
+      // In stale/update mode `files` is the full unfiltered set (nothing is
+      // dropped — see the ternary above), so every file GitHub already has
+      // is about to be overwritten with fresh content. Labeling that
+      // "skipped" is actively misleading. Instead, verify it really is in
+      // the write set and block if a critical file would otherwise be left
+      // stale.
+      const writePaths = new Set(files.map((f) => String(f.path)));
+      const unupdatedCriticalFiles = existing.skippedFiles.filter((p) => !writePaths.has(p));
+      if (unupdatedCriticalFiles.length > 0) {
+        return blockedResult(
+          unupdatedCriticalFiles.map((p) => `${repoKey}_critical_file_not_updated:${p}`),
+          idempotencyNotes,
+          existingOutputReview.overall,
+        );
+      }
+    } else {
+      for (const skipped of existing.skippedFiles) {
+        idempotencyNotes.push(`skipped_existing_file:${repo}:${skipped}`);
+      }
     }
 
     const branchInfo = await ensureUpdateBranch(repo, target.headBranch, "main");

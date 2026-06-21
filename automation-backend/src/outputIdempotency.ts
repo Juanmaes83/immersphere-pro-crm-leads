@@ -72,12 +72,19 @@ async function checkRubikExisting(repo: string, slug: string, baseBranch: string
     `dynamic-motion-banner/${slug}/banner-pack/index.html`,
     `production-manifests/${slug}.json`,
   ];
+  // dynamic-motion-banner/<slug>/index.html is a legacy artifact from an
+  // older generator version. buildRubikFiles never writes to that path
+  // (gesture-lab/<slug>-v1.html is the current visual-experience entry
+  // point), so it can never be "the file we're about to refresh" — it's only
+  // useful here as a signal that something was deployed before, not as a
+  // file create-prs must update.
+  const generatorManagedKeyFiles = new Set(keyFiles.filter((f) => !f.endsWith("/index.html")));
 
   for (const filePath of keyFiles) {
     const info = await getFileContent(repo, filePath, baseBranch);
     if (info.exists) {
       result.existing.push(filePath);
-      result.skippedFiles.push(filePath);
+      if (generatorManagedKeyFiles.has(filePath)) result.skippedFiles.push(filePath);
     } else {
       result.missing.push(filePath);
     }

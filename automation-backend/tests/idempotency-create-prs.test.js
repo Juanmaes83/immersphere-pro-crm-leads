@@ -77,7 +77,7 @@ async function postJson(baseUrl, path, payload, extraHeaders = {}) {
   return { status: res.status, body: await res.json() };
 }
 
-function installGithubFetchMock(t, existingFiles = new Set(), existingRoutes = {}, fileContents = {}) {
+function installGithubFetchMock(t, existingFiles = new Set(), existingRoutes = {}, fileContents = {}, existingBranches = {}) {
   const originalFetch = globalThis.fetch;
   const calls = [];
 
@@ -106,6 +106,11 @@ function installGithubFetchMock(t, existingFiles = new Set(), existingRoutes = {
 
     if (u.includes("/git/ref/heads/")) {
       if (u.endsWith("/main")) return resp({ object: { sha: "mainsha123" } });
+      const branchMatch = u.match(/\/git\/ref\/heads\/(.+)$/);
+      const branchName = branchMatch ? decodeURIComponent(branchMatch[1]) : "";
+      if (Object.prototype.hasOwnProperty.call(existingBranches, branchName)) {
+        return resp({ object: { sha: existingBranches[branchName] } });
+      }
       return resp({ message: "Not Found" }, 404);
     }
 
@@ -421,6 +426,15 @@ export function App() {
       assert.ok(body.idempotencyNotes.includes("aurum_reused_existing_components"), "nota aurum_reused_existing_components presente");
       assert.ok(body.idempotencyNotes.includes("aurum_files_reconciled_with_existing_app_tsx"));
 
+      // Every critical file (manifest, App.tsx, reused Sandhouse* components,
+      // data file, Rubik banners/wrappers) is actually updated in this run —
+      // none of them may be reported as "skipped_existing_file", since that
+      // would falsely imply they were left stale.
+      const skippedNotes = body.idempotencyNotes.filter((n) => n.startsWith("skipped_existing_file:"));
+      assert.deepEqual(skippedNotes, [], "no hay skipped_existing_file en modo stale/update");
+      const skippedWarnings = body.responseBundle.warnings.filter((w) => String(w).startsWith("skipped_existing_file:"));
+      assert.deepEqual(skippedWarnings, [], "responseBundle.warnings tampoco contiene skipped_existing_file");
+
       const putPath = (c) => decodeURIComponent(c.url.match(/\/contents\/([^?]+)/)[1]);
       const filePuts = calls.filter((c) => c.url.includes("/contents/") && c.method === "PUT");
       const putPaths = filePuts.map(putPath);
@@ -458,6 +472,143 @@ export function App() {
       const aurumBranchCreate = calls.find((c) => c.url.includes("AURUM") && c.url.includes("/git/refs") && c.method === "POST");
       assert.ok(aurumBranchCreate, "crea rama AURUM");
       assert.equal(JSON.parse(aurumBranchCreate.body).sha, "mainsha123");
+    });
+  } finally {
+    if (prevFlag === undefined) delete process.env.GITHUB_PR_AUTOMATION_ENABLED;
+    else process.env.GITHUB_PR_AUTOMATION_ENABLED = prevFlag;
+    if (prevToken === undefined) delete process.env.GITHUB_SERVER_TOKEN;
+    else process.env.GITHUB_SERVER_TOKEN = prevToken;
+  }
+});
+
+// ─── Rama vieja contaminada: el refresh debe partir de main, no de ella ───────
+// AURUM main está limpio (Sandhouse* ya correctos), pero la rama
+// production/sandhouse-inmobiliaria-public-pages de un run viejo sigue
+// existiendo y está contaminada con SandhouseInmobiliaria*. create-prs en
+// modo stale debe detectar que esa rama ya existe, cortar el refresh desde
+// el SHA de main (no desde el tip contaminado) y el contenido generado no
+// debe arrastrar ningún resto de la contaminación.
+test("create-prs con rama vieja contaminada crea refresh desde main, no desde la rama vieja", async (t) => {
+  const prevFlag = process.env.GITHUB_PR_AUTOMATION_ENABLED;
+  const prevToken = process.env.GITHUB_SERVER_TOKEN;
+  process.env.GITHUB_PR_AUTOMATION_ENABLED = "true";
+  process.env.GITHUB_SERVER_TOKEN = "fake-test-token";
+
+  const slug = "sandhouse-inmobiliaria";
+  const existingFiles = new Set([
+    `dynamic-motion-banner/${slug}/index.html`,
+    `dynamic-motion-banner/${slug}/banner-vertical.html`,
+    `dynamic-motion-banner/${slug}/banner-horizontal.html`,
+    `dynamic-motion-banner/${slug}/banner-pack/index.html`,
+    `production-manifests/${slug}.json`,
+    `src/App.tsx`,
+    `src/data/clientDemos/sandhouse.ts`,
+    `src/SandhouseLanding.tsx`,
+    `src/SandhouseWebCompleta.tsx`,
+    `src/SandhouseVisualExperience.tsx`,
+    `src/SandhouseBannerPack.tsx`,
+    `src/SandhouseBannerVertical.tsx`,
+    `src/SandhouseBannerHorizontal.tsx`,
+    `vercel.json`,
+  ]);
+  const existingRoutes = {
+    slug,
+    rubikRewrites: [
+      `/dynamic-motion-banner/${slug}/banner-pack/vertical`,
+      `/dynamic-motion-banner/${slug}/banner-pack/horizontal`,
+    ],
+    aurumRoutes: [`/${slug}`, `/${slug}-web-completa`, `/visual-experience/${slug}`, `/banners/${slug}`],
+  };
+  const fileContents = {
+    [`production-manifests/${slug}.json`]: JSON.stringify({
+      slug,
+      clientName: "Sandhouse Inmobiliaria",
+      generatedBy: "immersphere-production-orchestrator-v0.2",
+      routes: {
+        landing: `/${slug}`,
+        webCompleta: `/${slug}-web-completa`,
+        visualExperience: `/visual-experience/${slug}`,
+        bannerPack: `/banners/${slug}`,
+      },
+    }, null, 2),
+    "src/data/clientDemos/sandhouse.ts": `export const sandhouse = { audit: { digitalPresenceScore: 88 }, visualExperience: { embedUrl: "https://rubik-sota-director-de-orquesta.vercel.app/gesture-lab/${slug}-v1" } };`,
+    // AURUM main: clean, canonical Sandhouse* components only.
+    "src/App.tsx": `
+import { SandhouseLanding } from "./SandhouseLanding";
+import { SandhouseWebCompleta } from "./SandhouseWebCompleta";
+import { SandhouseVisualExperience } from "./SandhouseVisualExperience";
+import { SandhouseBannerPack } from "./SandhouseBannerPack";
+import { SandhouseBannerVertical } from "./SandhouseBannerVertical";
+import { SandhouseBannerHorizontal } from "./SandhouseBannerHorizontal";
+
+export function App() {
+  return (
+    <Routes>
+      <Route path="/${slug}" element={<SandhouseLanding />} />
+      <Route path="/${slug}-web-completa" element={<SandhouseWebCompleta />} />
+      <Route path="/visual-experience/${slug}" element={<SandhouseVisualExperience />} />
+      <Route path="/banners/${slug}" element={<SandhouseBannerPack />} />
+      <Route path="/banners/${slug}/vertical" element={<SandhouseBannerVertical />} />
+      <Route path="/banners/${slug}/horizontal" element={<SandhouseBannerHorizontal />} />
+    </Routes>
+  );
+}
+`,
+    "src/SandhouseLanding.tsx": `import { sandhouse } from "@/data/clientDemos/sandhouse";\nexport function SandhouseLanding() { return null; }`,
+    "src/SandhouseWebCompleta.tsx": `import { sandhouse } from "@/data/clientDemos/sandhouse";\nexport function SandhouseWebCompleta() { return null; }`,
+    [`dynamic-motion-banner/${slug}/index.html`]: `<!doctype html><html><body>Banner</body></html>`,
+  };
+
+  // The old production branch from a previous, contaminated run still
+  // exists in AURUM with a tip SHA that is NOT main's — if the refresh ever
+  // got cut from this instead of main, the contamination would leak back in.
+  const contaminatedBranch = `production/${slug}-public-pages`;
+  const existingBranches = { [contaminatedBranch]: "oldcontaminatedsha999" };
+
+  const { calls } = installGithubFetchMock(t, existingFiles, existingRoutes, fileContents, existingBranches);
+
+  try {
+    await withServer(async (baseUrl) => {
+      const payload = validPayload({ slug });
+      payload.audit = { ...(payload.audit || {}), score: 56 };
+      const { status, body } = await postJson(baseUrl, "/api/production/create-prs", payload);
+
+      assert.equal(status, 200);
+      assert.equal(body.ok, true);
+      assert.equal(body.writeAttempted, true);
+      assert.equal(body.status, "existing_outputs_update_required");
+      assert.ok(body.idempotencyNotes.includes("aurum_refresh_based_on_main"));
+      assert.ok(body.idempotencyNotes.includes("aurum_reused_existing_components"));
+
+      // The branch was refreshed (not reused) because it already existed,
+      // and the refresh ref must be cut from main's SHA, never the old
+      // branch's contaminated tip.
+      const aurumRefreshedNote = body.idempotencyNotes.find((n) => n.startsWith(`branch_refreshed:${contaminatedBranch}->`));
+      assert.ok(aurumRefreshedNote, "rama AURUM detectada como ya existente y refrescada");
+
+      const aurumBranchCreate = calls.find((c) => c.url.includes("AURUM") && c.url.includes("/git/refs") && c.method === "POST");
+      assert.ok(aurumBranchCreate, "crea rama de refresh para AURUM");
+      const createdRef = JSON.parse(aurumBranchCreate.body);
+      assert.equal(createdRef.sha, "mainsha123", "la rama de refresh se corta del SHA de main, no del viejo");
+      assert.notEqual(createdRef.sha, "oldcontaminatedsha999");
+      assert.match(createdRef.ref, new RegExp(`^refs/heads/${contaminatedBranch.replace(/\//g, "\\/")}-refresh-`));
+
+      const putPath = (c) => decodeURIComponent(c.url.match(/\/contents\/([^?]+)/)[1]);
+      const filePuts = calls.filter((c) => c.url.includes("/contents/") && c.method === "PUT");
+      const allWrittenContent = filePuts.map((c) => Buffer.from(JSON.parse(c.body).content, "base64").toString("utf8")).join("\n---\n");
+      const allWrittenPaths = filePuts.map(putPath);
+
+      for (const forbidden of ["SandhouseInmobiliariaLanding", "SandhouseInmobiliariaWebCompleta", "SandhouseInmobiliariaVisualExperience", "BannerPackBannerPack"]) {
+        assert.ok(!allWrittenContent.includes(forbidden), `contenido generado no contiene ${forbidden}`);
+        assert.ok(!allWrittenPaths.some((p) => p.includes(forbidden)), `ninguna ruta escrita contiene ${forbidden}`);
+      }
+
+      const appTsxPut = filePuts.find((c) => putPath(c) === "src/App.tsx");
+      assert.ok(appTsxPut, "App.tsx fue parcheado");
+      const appTsxContent = Buffer.from(JSON.parse(appTsxPut.body).content, "base64").toString("utf8");
+      const routeMatches = [...appTsxContent.matchAll(/path="([^"]+)"/g)].map((m) => m[1]);
+      const uniqueRoutes = new Set(routeMatches);
+      assert.equal(routeMatches.length, uniqueRoutes.size, "App.tsx parcheado no tiene rutas duplicadas");
     });
   } finally {
     if (prevFlag === undefined) delete process.env.GITHUB_PR_AUTOMATION_ENABLED;
