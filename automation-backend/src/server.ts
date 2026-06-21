@@ -1001,11 +1001,12 @@ async function createProductionPullRequests(payload, plan, preflight = {}) {
     // byte-for-byte. If that field can't be located safely, block instead of
     // guessing at the file's structure and risking destroying it.
     let dataFileOverrideContent: string | undefined;
+    let dataFilePatched = false;
     if (existingDataFile) {
       const dataFileInfo = await getFileContent(AURUM_REPO, existingDataFile.path, "main");
       if (dataFileInfo.exists) {
         const realScore = resolveProductionScore(payload as Record<string, unknown>);
-        const patched = patchAurumDataFileScoreSafely(dataFileInfo.content || "", realScore);
+        const patched = patchAurumDataFileScoreSafely(dataFileInfo.content || "", realScore, plan.leadSlug);
         if (!patched) {
           return blockedResult(
             [`aurum_existing_data_file_requires_manual_review:${existingDataFile.path}`],
@@ -1014,6 +1015,7 @@ async function createProductionPullRequests(payload, plan, preflight = {}) {
           );
         }
         dataFileOverrideContent = patched;
+        dataFilePatched = true;
       }
     }
 
@@ -1090,6 +1092,7 @@ async function createProductionPullRequests(payload, plan, preflight = {}) {
     if (preserveComponentTypes.length > 0) idempotencyNotes.push("aurum_existing_premium_components_preserved");
     if (!appTsxPatchFile) idempotencyNotes.push("aurum_app_tsx_unchanged_routes_already_present");
     if (existingDataFile) idempotencyNotes.push(`aurum_existing_data_file_detected:${existingDataFile.path}`);
+    if (dataFilePatched) idempotencyNotes.push(`aurum_existing_data_file_patched:${existingDataFile!.path}`);
     idempotencyNotes.push("aurum_manifest_updated");
   }
 
