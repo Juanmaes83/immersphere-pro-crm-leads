@@ -58,6 +58,7 @@ export interface GeneratorResult {
   errors: string[];
   assetMode: "client_real_asset" | "fallback_internal_library" | "mixed";
   reusedComponentTypes?: string[];
+  preservedComponentTypes?: string[];
 }
 
 // ─── Asset mode ───────────────────────────────────────────────────────────────
@@ -194,6 +195,16 @@ export function buildAurumFiles(
     existingRouteComponentMap?: Record<string, string>;
     existingAppTsxContent?: string;
     existingDataFile?: { path: string; exportName: string };
+    // Route types (landing/webCompleta/visualExperience/bannerPack/
+    // bannerVertical/bannerHorizontal) whose existing component is
+    // hand-authored premium content and must not be regenerated at all —
+    // reusing its name is not the same as overwriting its content.
+    preserveComponentTypes?: string[];
+    // When present, used verbatim as the data file's content instead of a
+    // full regeneration via buildClientDemoData — the result of a surgical,
+    // non-destructive patch performed by the caller against the real
+    // existing file content.
+    dataFileOverrideContent?: string;
   } = {},
 ): GeneratorResult {
   const slug = sanitizeSlug(String((payload?.lead as Record<string, unknown>)?.slug ?? ""));
@@ -274,105 +285,109 @@ export function buildAurumFiles(
   const dataExportName = options.existingDataFile?.exportName || camelBase;
   const dataModuleSpecifier = dataFilePath.replace(/^src\//, "@/").replace(/\.ts$/, "");
 
+  const preserveComponentTypes = new Set(options.preserveComponentTypes || []);
+  const componentBuilders: Record<string, () => string> = {
+    landing: () => buildLandingComponent({ slug, componentBase: routeComponentByType.landing, camelBase: dataExportName, dataModuleSpecifier, clientName, heroImage, logoUrl, claim, waHref, accentColor }),
+    webCompleta: () => buildWebCompletaComponent({ slug, componentBase: routeComponentByType.webCompleta, camelBase: dataExportName, dataModuleSpecifier, clientName }),
+    visualExperience: () => buildIframeWrapper({ slug, componentBase: routeComponentByType.visualExperience, type: "visual-experience" }),
+    bannerPack: () => buildIframeWrapper({ slug, componentBase: routeComponentByType.bannerPack, type: "banner-pack" }),
+    bannerVertical: () => buildIframeWrapper({ slug, componentBase: routeComponentByType.bannerVertical, type: "banner-vertical" }),
+    bannerHorizontal: () => buildIframeWrapper({ slug, componentBase: routeComponentByType.bannerHorizontal, type: "banner-horizontal" }),
+  };
+  const componentMessages: Record<string, string> = {
+    landing: `feat(landing): add ${clientName} landing page`,
+    webCompleta: `feat(web-completa): add ${clientName} web completa`,
+    visualExperience: `feat(visual-experience): add ${clientName} visual experience wrapper`,
+    bannerPack: `feat(banners): add ${clientName} banner pack wrapper`,
+    bannerVertical: `feat(banners): add ${clientName} banner vertical wrapper`,
+    bannerHorizontal: `feat(banners): add ${clientName} banner horizontal wrapper`,
+  };
+  const preservedComponentTypes: string[] = [];
+
+  const files: GeneratedFile[] = [
+    {
+      repo: AURUM_REPO,
+      path: dataFilePath,
+      content: options.dataFileOverrideContent ?? buildClientDemoData({ slug, camelBase: dataExportName, componentBase, clientName, sector, zone, website, logoUrl, heroImage, propertyImages, videoUrl, primaryColor, accentColor, waHref, telHref, emailHref, claim, digitalPresenceScore }),
+      message: options.dataFileOverrideContent ? `chore(data): refresh ${clientName} score/metadata only` : `feat(data): add ${clientName} client demo data`,
+      encoding: "utf8",
+    },
+  ];
+
+  for (const type of Object.keys(componentBuilders)) {
+    if (preserveComponentTypes.has(type)) {
+      preservedComponentTypes.push(type);
+      continue;
+    }
+    files.push({
+      repo: AURUM_REPO,
+      path: `src/${routeComponentByType[type]}.tsx`,
+      content: componentBuilders[type](),
+      message: componentMessages[type],
+      encoding: "utf8",
+    });
+  }
+
+  // Only patch App.tsx when there is something real to add — touching the
+  // file when every target route/import already exists would be a no-op
+  // diff that still shows up as a write.
+  const appTsxPatch = buildAppTsxPatch({ slug, componentNames: routeComponentByType, existingAppTsxContent: options.existingAppTsxContent || "" });
+  if (appTsxPatch.routes.length > 0 || appTsxPatch.imports.length > 0) {
+    files.push({
+      repo: AURUM_REPO,
+      path: AURUM_APP_TSX,
+      content: j(appTsxPatch),
+      message: `feat(routing): add ${clientName} routes to App.tsx`,
+      encoding: "utf8",
+      isPatchTarget: true,
+      patchType: "app-tsx-routes",
+    });
+  }
+
+  files.push(
+    {
+      repo: AURUM_REPO,
+      path: `production-manifests/${slug}.json`,
+      content: j({
+        slug, clientName, componentBase, camelBase,
+        generatedBy: `immersphere-production-orchestrator-v${SERVICE_VERSION}`,
+        assetMode,
+        digitalPresenceScore,
+        routes: {
+          landing: `/${slug}`,
+          webCompleta: `/${slug}-web-completa`,
+          visualExperience: `/visual-experience/${slug}`,
+          bannerPack: `/banners/${slug}`,
+          bannerVertical: `/banners/${slug}/vertical`,
+          bannerHorizontal: `/banners/${slug}/horizontal`,
+        },
+      }),
+      message: `feat(manifests): add ${clientName} AURUM production manifest`,
+      encoding: "utf8",
+    },
+    {
+      repo: AURUM_REPO,
+      path: `src/generated/${componentBase}ProductionPlan.ts`,
+      content: `// Auto-generated by immersphere-production-orchestrator v${SERVICE_VERSION}\nexport const productionPlan = { slug: ${JSON.stringify(slug)}, componentBase: ${JSON.stringify(componentBase)}, camelBase: ${JSON.stringify(camelBase)}, status: "review_required" } as const;\n`,
+      message: `feat(generated): add ${clientName} production plan`,
+      encoding: "utf8",
+    },
+    {
+      repo: AURUM_REPO,
+      path: `src/generated/${componentBase}ProposalPackage.ts`,
+      content: `// Auto-generated by immersphere-production-orchestrator v${SERVICE_VERSION}\nexport const proposalPackage = ${JSON.stringify(proposalPackage || { slug, clientName, status: "review_required" }, null, 2)} as const;\n`,
+      message: `feat(generated): add ${clientName} proposal package`,
+      encoding: "utf8",
+    },
+  );
+
   return {
-    files: [
-      {
-        repo: AURUM_REPO,
-        path: dataFilePath,
-        content: buildClientDemoData({ slug, camelBase: dataExportName, componentBase, clientName, sector, zone, website, logoUrl, heroImage, propertyImages, videoUrl, primaryColor, accentColor, waHref, telHref, emailHref, claim, digitalPresenceScore }),
-        message: `feat(data): add ${clientName} client demo data`,
-        encoding: "utf8",
-      },
-      {
-        repo: AURUM_REPO,
-        path: `src/${routeComponentByType.landing}.tsx`,
-        content: buildLandingComponent({ slug, componentBase: routeComponentByType.landing, camelBase: dataExportName, dataModuleSpecifier, clientName, heroImage, logoUrl, claim, waHref, accentColor }),
-        message: `feat(landing): add ${clientName} landing page`,
-        encoding: "utf8",
-      },
-      {
-        repo: AURUM_REPO,
-        path: `src/${routeComponentByType.webCompleta}.tsx`,
-        content: buildWebCompletaComponent({ slug, componentBase: routeComponentByType.webCompleta, camelBase: dataExportName, dataModuleSpecifier, clientName }),
-        message: `feat(web-completa): add ${clientName} web completa`,
-        encoding: "utf8",
-      },
-      {
-        repo: AURUM_REPO,
-        path: `src/${routeComponentByType.visualExperience}.tsx`,
-        content: buildIframeWrapper({ slug, componentBase: routeComponentByType.visualExperience, type: "visual-experience" }),
-        message: `feat(visual-experience): add ${clientName} visual experience wrapper`,
-        encoding: "utf8",
-      },
-      {
-        repo: AURUM_REPO,
-        path: `src/${routeComponentByType.bannerPack}.tsx`,
-        content: buildIframeWrapper({ slug, componentBase: routeComponentByType.bannerPack, type: "banner-pack" }),
-        message: `feat(banners): add ${clientName} banner pack wrapper`,
-        encoding: "utf8",
-      },
-      {
-        repo: AURUM_REPO,
-        path: `src/${routeComponentByType.bannerVertical}.tsx`,
-        content: buildIframeWrapper({ slug, componentBase: routeComponentByType.bannerVertical, type: "banner-vertical" }),
-        message: `feat(banners): add ${clientName} banner vertical wrapper`,
-        encoding: "utf8",
-      },
-      {
-        repo: AURUM_REPO,
-        path: `src/${routeComponentByType.bannerHorizontal}.tsx`,
-        content: buildIframeWrapper({ slug, componentBase: routeComponentByType.bannerHorizontal, type: "banner-horizontal" }),
-        message: `feat(banners): add ${clientName} banner horizontal wrapper`,
-        encoding: "utf8",
-      },
-      {
-        repo: AURUM_REPO,
-        path: AURUM_APP_TSX,
-        content: j(buildAppTsxPatch({ slug, componentNames: routeComponentByType, existingAppTsxContent: options.existingAppTsxContent || "" })),
-        message: `feat(routing): add ${clientName} routes to App.tsx`,
-        encoding: "utf8",
-        isPatchTarget: true,
-        patchType: "app-tsx-routes",
-      },
-      {
-        repo: AURUM_REPO,
-        path: `production-manifests/${slug}.json`,
-        content: j({
-          slug, clientName, componentBase, camelBase,
-          generatedBy: `immersphere-production-orchestrator-v${SERVICE_VERSION}`,
-          assetMode,
-          digitalPresenceScore,
-          routes: {
-            landing: `/${slug}`,
-            webCompleta: `/${slug}-web-completa`,
-            visualExperience: `/visual-experience/${slug}`,
-            bannerPack: `/banners/${slug}`,
-            bannerVertical: `/banners/${slug}/vertical`,
-            bannerHorizontal: `/banners/${slug}/horizontal`,
-          },
-        }),
-        message: `feat(manifests): add ${clientName} AURUM production manifest`,
-        encoding: "utf8",
-      },
-      {
-        repo: AURUM_REPO,
-        path: `src/generated/${componentBase}ProductionPlan.ts`,
-        content: `// Auto-generated by immersphere-production-orchestrator v${SERVICE_VERSION}\nexport const productionPlan = { slug: ${JSON.stringify(slug)}, componentBase: ${JSON.stringify(componentBase)}, camelBase: ${JSON.stringify(camelBase)}, status: "review_required" } as const;\n`,
-        message: `feat(generated): add ${clientName} production plan`,
-        encoding: "utf8",
-      },
-      {
-        repo: AURUM_REPO,
-        path: `src/generated/${componentBase}ProposalPackage.ts`,
-        content: `// Auto-generated by immersphere-production-orchestrator v${SERVICE_VERSION}\nexport const proposalPackage = ${JSON.stringify(proposalPackage || { slug, clientName, status: "review_required" }, null, 2)} as const;\n`,
-        message: `feat(generated): add ${clientName} proposal package`,
-        encoding: "utf8",
-      },
-    ],
+    files,
     warnings,
     errors,
     assetMode,
     reusedComponentTypes,
+    preservedComponentTypes,
   };
 }
 
@@ -683,7 +698,7 @@ export const ${camelBase}: ClientDemo = {
     landing: ${JSON.stringify(standaloneLanding)},
     webCompleta: ${JSON.stringify(`${aurumBase}/${slug}-web-completa`)},
     visualExperience: ${JSON.stringify(standaloneVisual)},
-    bannerPack: ${JSON.stringify(bannerPackUrl)},
+    bannerPack: ${JSON.stringify(`${aurumBase}/banners/${slug}`)},
   },
 };
 `;
@@ -868,7 +883,7 @@ function buildAppTsxPatch({
   slug: string;
   componentNames: Record<string, string>;
   existingAppTsxContent?: string;
-}): object {
+}): { slug: string; imports: string[]; routes: string[] } {
   const allRoutes = [
     { key: "landing", path: `/${slug}`, component: componentNames.landing },
     { key: "webCompleta", path: `/${slug}-web-completa`, component: componentNames.webCompleta },
