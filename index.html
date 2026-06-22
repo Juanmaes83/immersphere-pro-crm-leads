@@ -3024,6 +3024,7 @@ async function auditLeadWebsite(leadId){
     if(!data.ok) throw new Error(data.error||'No se pudo auditar la web.');
     applyWebsiteAuditToLead(l,websiteAuditFromResponse(data,l));
     saveState();renderAll();setTimeout(()=>openModal(leadId),80);
+    if(l.id>0) persistAuditRunBestEffort(l.id,l.websiteAudit);
   }catch(err){
     l.websiteAudit={...(l.websiteAudit||{}),status:'failed',auditedAt:new Date().toISOString(),website:web,error:String(err&&err.message||err),weaknesses:['No se pudo completar la auditoría local.'],opportunities:['Revisar web manualmente antes de contactar.'],websiteOpportunityScore:l.websiteAudit&&l.websiteAudit.websiteOpportunityScore||0,recommendedService:l.websiteAudit&&l.websiteAudit.recommendedService||'',recommendedNextAction:'Revisar disponibilidad de la web o arrancar el bridge local.',confidence:'baja'};
     saveState();renderAll();setTimeout(()=>openModal(leadId),80);
@@ -4222,7 +4223,87 @@ function renderWebsiteAudit(l){
         <button class="contact-btn btn-web" id="audit-web-btn-${l.id}" onclick="auditLeadWebsite(${l.id})">${a.status==='success'?'Reauditar web':'Auditar web'}</button>
         <button class="contact-btn btn-email" onclick="copyWebsiteAuditSummary(${l.id})">Copiar resumen de oportunidad</button>
       </div>
+      ${renderCrmPersistenceStatus(l.id)}
     </div>`;
+}
+// ── Fase 8A: CRM persistence (AuditRun only) ─────────────────────────────────
+// Token lives ONLY in sessionStorage (Fase 6B decision) - never localStorage,
+// never hardcoded, never prompted automatically. Only the explicit "Conectar
+// persistencia" button triggers the prompt(). With no token present, the CRM
+// makes zero network calls for persistence and behaves exactly as before
+// this feature existed (pure localStorage). EnrichmentProfile/
+// ApprovedMediaAssets/ProductionPackage persistence are explicitly NOT part
+// of this fase.
+const CRM_PERSISTENCE_TOKEN_KEY='crm_persistence_token';
+function getCrmPersistenceToken(){
+  try{return sessionStorage.getItem(CRM_PERSISTENCE_TOKEN_KEY)||'';}catch(e){return '';}
+}
+function hasCrmPersistenceToken(){return !!getCrmPersistenceToken();}
+function connectCrmPersistence(){
+  const current=getCrmPersistenceToken();
+  const value=prompt(current?'Token de persistencia CRM (ya hay uno guardado en esta pestaña; pega uno nuevo para sustituirlo, o cancela para mantenerlo):':'Pega el token de persistencia CRM (CRM_PERSISTENCE_TOKEN). Se guarda solo en esta pestaña (sessionStorage) y se borra al cerrarla.');
+  if(value===null) return;
+  const trimmed=value.trim();
+  if(!trimmed){_showToast('Token vacío — no se ha guardado.','var(--text3)');return;}
+  try{sessionStorage.setItem(CRM_PERSISTENCE_TOKEN_KEY,trimmed);}catch(e){}
+  _showToast('Token de persistencia guardado para esta pestaña.','var(--green)');
+  renderAll();
+}
+function clearCrmPersistenceToken(){
+  try{sessionStorage.removeItem(CRM_PERSISTENCE_TOKEN_KEY);}catch(e){}
+  _showToast('Token de persistencia eliminado.','var(--accent2)');
+  renderAll();
+}
+function crmPersistenceApiBase(){return IMMERSPHERE_BACKEND_URL;}
+function renderCrmPersistenceStatus(leadId){
+  const has=hasCrmPersistenceToken();
+  return '<div style="margin-top:8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:10px;color:var(--text3)">'
+    +'<span>'+(has?'☁ Persistencia conectada (esta pestaña)':'☁ Sin token de persistencia')+'</span>'
+    +'<button class="contact-btn btn-maps" style="font-size:9px;padding:3px 8px" onclick="connectCrmPersistence()">🔌 Conectar persistencia</button>'
+    +(has?'<button class="contact-btn btn-tel" style="font-size:9px;padding:3px 8px" onclick="clearCrmPersistenceToken()">Limpiar token</button>':'')
+    +'</div>';
+}
+// POST best-effort: never throws, never blocks the caller. A 401 (wrong
+// token) surfaces a discrete toast so the operator knows to fix/clear it;
+// any other outcome (network down, 503, 500) is silent - localStorage
+// already has the data, this is purely a best-effort mirror.
+async function persistAuditRunBestEffort(leadId,websiteAudit){
+  if(!leadId||leadId<=0||!hasCrmPersistenceToken()) return;
+  const a=websiteAudit||{};
+  const payload={
+    website:a.finalUrl||a.website||a.inputUrl||'',
+    auditVersion:a.auditVersion||'',
+    status:a.status||'',
+    httpStatus:typeof a.httpStatus==='number'?a.httpStatus:null,
+    score:typeof a.websiteOpportunityScore==='number'?a.websiteOpportunityScore:null,
+    pagesReviewed:typeof a.pagesAudited==='number'?a.pagesAudited:null,
+    urlsReviewed:(a.enrichmentCandidates&&a.enrichmentCandidates.pageDiscovery&&a.enrichmentCandidates.pageDiscovery.urlsReviewed)||[],
+    weaknesses:a.weaknesses||[],
+    opportunities:a.opportunities||[],
+    recommendedService:a.recommendedService||'',
+    rawAudit:a
+  };
+  try{
+    const res=await fetch(crmPersistenceApiBase()+'/api/crm/leads/'+leadId+'/audit-runs',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','X-CRM-Persistence-Token':getCrmPersistenceToken()},
+      body:JSON.stringify(payload)
+    });
+    if(res.status===401) _showToast('Token de persistencia incorrecto — usa "Limpiar token" y vuelve a pegarlo.','var(--red)');
+  }catch(e){ /* backend down / network error: silent, localStorage already saved */ }
+}
+// GET best-effort: only called if a token is present. Never overwrites local
+// data with something older or equal (compares auditedAt vs createdAt).
+async function fetchLatestAuditRunBestEffort(leadId){
+  if(!leadId||leadId<=0||!hasCrmPersistenceToken()) return null;
+  try{
+    const res=await fetch(crmPersistenceApiBase()+'/api/crm/leads/'+leadId+'/audit-runs/latest',{
+      headers:{'X-CRM-Persistence-Token':getCrmPersistenceToken()}
+    });
+    if(!res.ok) return null;
+    const data=await res.json();
+    return (data&&data.ok&&data.auditRun)?data.auditRun:null;
+  }catch(e){ return null; }
 }
 
 // ── Temperature ───────────────────────────────────────────────────────────────
@@ -6945,6 +7026,26 @@ function openModal(id){
 
   document.getElementById('modal-overlay').classList.add('open');
   document.body.style.overflow='hidden';
+
+  // Fase 8A: best-effort background fetch. The modal above already rendered
+  // synchronously from local data (zero behavior change) - this only kicks
+  // in if a persistence token is present, and only overwrites local data if
+  // the backend's copy is strictly newer. Safe to call openModal(id) again
+  // from inside the resolved promise: on the second pass local data already
+  // matches remote, so the freshness check makes it a no-op (no loop risk).
+  if(l.id>0 && hasCrmPersistenceToken()){
+    fetchLatestAuditRunBestEffort(l.id).then(auditRun=>{
+      if(!auditRun) return;
+      const localAt=l.websiteAudit&&l.websiteAudit.auditedAt?new Date(l.websiteAudit.auditedAt).getTime():0;
+      const remoteAt=auditRun.createdAt?new Date(auditRun.createdAt).getTime():0;
+      if(!remoteAt||remoteAt<=localAt) return;
+      const rebuilt=websiteAuditFromResponse({ok:true,website:auditRun.website,finalUrl:auditRun.website,auditedAt:auditRun.createdAt,audit:(auditRun.rawAudit&&typeof auditRun.rawAudit==='object'?auditRun.rawAudit:{})},l);
+      applyWebsiteAuditToLead(l,rebuilt);
+      saveState();
+      const overlay=document.getElementById('modal-overlay');
+      if(overlay&&overlay.classList.contains('open')) openModal(id);
+    }).catch(()=>{});
+  }
 }
 
 function copyPrev(btn){
