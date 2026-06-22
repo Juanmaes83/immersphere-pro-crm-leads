@@ -2318,6 +2318,7 @@ function loadState(){
         if(r.previewEngine!==undefined) l.previewEngine=r.previewEngine;
         if(r.commercialHooks!==undefined) l.commercialHooks=r.commercialHooks;
         if(r.mediaAssetsManual!==undefined) l.mediaAssetsManual=r.mediaAssetsManual;
+        if(r.enrichmentProfile!==undefined) l.enrichmentProfile=r.enrichmentProfile;
         if(r.hookHistory!==undefined) l._hookHistory=r.hookHistory;
         if(r._hookHistory!==undefined) l._hookHistory=r._hookHistory;
         ensureVisualPipeline(l);
@@ -2354,6 +2355,7 @@ function saveState(){
       websiteAudit:l.websiteAudit||null,auditOpportunity:l.auditOpportunity||'',auditPain:l.auditPain||'',auditNextBestAction:l.auditNextBestAction||'',previewEngine:l.previewEngine||null,
       commercialHooks:commercialHooks||null,hookHistory:l._hookHistory||[],
       mediaAssetsManual:l.mediaAssetsManual||null,
+      enrichmentProfile:l.enrichmentProfile||null,
       comercial:{valorPotencial:l._valorPotencial||0,probabilidad:l._probabilidad||10,presupuesto:l._presupuesto||'',packRec:l._packRec||'',ultimoContacto:l._ultimoContacto||''}
     };
   });
@@ -2837,6 +2839,21 @@ function defaultAuditLabels(profile){
   };
   return map[profile]||map.generic;
 }
+// Defensive passthrough for audit.enrichmentCandidates (Fase 7B-local).
+// Never invents data: returns null if absent/malformed, otherwise a safe
+// shape with the same arrays/objects the backend already produced.
+function normalizeEnrichmentCandidates(raw){
+  const r=raw&&typeof raw==='object'?raw:null;
+  if(!r) return null;
+  return {
+    status:typeof r.status==='string'?r.status:'unknown',
+    contactCandidates:r.contactCandidates&&typeof r.contactCandidates==='object'?r.contactCandidates:{},
+    assetCandidates:r.assetCandidates&&typeof r.assetCandidates==='object'?r.assetCandidates:{},
+    brandSignals:r.brandSignals&&typeof r.brandSignals==='object'?r.brandSignals:{},
+    warnings:Array.isArray(r.warnings)?r.warnings:[],
+    rawSource:r.rawSource&&typeof r.rawSource==='object'?r.rawSource:{}
+  };
+}
 function normalizeWebsiteAudit(a,lead){
   const raw=a||{};
   const signals=raw.signals||{};
@@ -2888,7 +2905,8 @@ function normalizeWebsiteAudit(a,lead){
     recommendedService:raw.recommendedService||'',
     recommendedNextAction:raw.recommendedNextAction||'',
     confidence:raw.confidence||'media',
-    error:raw.error||''
+    error:raw.error||'',
+    enrichmentCandidates:normalizeEnrichmentCandidates(raw.enrichmentCandidates)
   };
 }
 function websiteAuditFromResponse(data,lead){
@@ -2941,7 +2959,8 @@ function websiteAuditFromResponse(data,lead){
     recommendedService:audit.recommendedService||'',
     recommendedNextAction:audit.recommendedNextAction||'',
     confidence:audit.confidence||'media',
-    error:audit.error||''
+    error:audit.error||'',
+    enrichmentCandidates:audit.enrichmentCandidates||null
   },lead);
 }
 function websiteAuditSkipped(lead){
@@ -2951,12 +2970,37 @@ function websiteAuditSkipped(lead){
     verticalSignals:{},evidence:{},technologySignals:[],weaknesses:['Sin web detectada.'],opportunities:['Proponer landing/ficha inmersiva básica antes de una campaña.'],websiteOpportunityScore:65,recommendedService:'Landing inmersiva básica + ficha comercial 360',recommendedNextAction:'Validar contacto y preparar propuesta de presencia visual mínima.',confidence:'baja',error:''
   },lead);
 }
+// Fase 7C: builds the normalized CRM-facing view of audit.enrichmentCandidates.
+// Returns null when the audit didn't include enrichmentCandidates (older
+// auditVersion, failed audit, etc.) so callers can skip overwriting any
+// previously saved lead.enrichmentProfile instead of wiping it.
+function buildEnrichmentProfileFromAudit(audit,lead){
+  const ec=audit&&audit.enrichmentCandidates;
+  if(!ec) return null;
+  const rs=ec.rawSource||{};
+  return {
+    schemaVersion:'enrichment-profile/1.0',
+    source:'website-audit-local',
+    status:ec.status||'unknown',
+    updatedAt:new Date().toISOString(),
+    auditUrl:audit.website||audit.inputUrl||(lead&&(lead.web||lead.website))||'',
+    finalUrl:rs.finalUrl||audit.finalUrl||'',
+    httpStatus:typeof rs.httpStatus==='number'?rs.httpStatus:(typeof audit.httpStatus==='number'?audit.httpStatus:null),
+    contactCandidates:ec.contactCandidates||{},
+    assetCandidates:ec.assetCandidates||{},
+    brandSignals:ec.brandSignals||{},
+    warnings:ec.warnings||[],
+    rawSource:rs
+  };
+}
 function applyWebsiteAuditToLead(lead,audit){
   audit=normalizeWebsiteAudit(audit,lead);
   lead.websiteAudit=audit;
   if(!nbeHas(lead.auditOpportunity)&&audit.opportunities&&audit.opportunities.length) lead.auditOpportunity=audit.opportunities[0];
   if(!nbeHas(lead.auditPain)&&audit.weaknesses&&audit.weaknesses.length) lead.auditPain=audit.weaknesses[0];
   if(!nbeHas(lead.auditNextBestAction)&&audit.recommendedNextAction) lead.auditNextBestAction=audit.recommendedNextAction;
+  const enrichmentProfile=buildEnrichmentProfileFromAudit(audit,lead);
+  if(enrichmentProfile) lead.enrichmentProfile=enrichmentProfile;
   lead._actividad=lead._actividad||[];
   lead._actividad.push({tipo:'audit',texto:'Auditoría web '+auditStatusLabel(audit)+' · oportunidad '+(audit.websiteOpportunityScore||0)+'/100',fecha:new Date().toLocaleString('es-ES')});
   lead.updatedAt=new Date().toISOString();
@@ -3657,6 +3701,110 @@ function clearLeadAssetIntakeForm(leadId){
   if(!confirm('¿Borrar los assets visuales guardados para este lead?')) return;
   clearLeadManualAssets(leadId);
   _showToast('Assets limpiados','var(--accent2)');
+  renderAll();
+  openModal(leadId);
+}
+
+// ── Fase 7C: Enriquecimiento detectado (read-only summary) ──────────────────
+// Pure display of lead.enrichmentProfile, built from audit.enrichmentCandidates
+// (Fase 7B-local). Nothing here writes to mediaAssetsManual, sets
+// assetsApproved, or feeds buildMediaAssetsFromLead/Production Package —
+// these are signals for human review, not approved assets. "Aplicar a
+// Assets visuales" / "usar como logo" etc. are explicitly out of scope here
+// (Fase 7E).
+function getLeadEnrichmentProfile(lead){
+  const l=lead||{},p=l.enrichmentProfile;
+  if(!p||typeof p!=='object') return null;
+  return p;
+}
+function summarizeLeadEnrichment(lead){
+  const p=getLeadEnrichmentProfile(lead);
+  if(!p) return null;
+  const cc=p.contactCandidates||{},ac=p.assetCandidates||{};
+  const count=v=>Array.isArray(v)?v.length:0;
+  return {
+    profile:p,
+    status:p.status||'unknown',
+    phones:count(cc.phones),emails:count(cc.emails),whatsapp:count(cc.whatsappLinks),social:count(cc.socialLinks),
+    logos:count(ac.logos),images:count(ac.allImages),ogImages:count(ac.openGraphImages),favicons:count(ac.favicons),
+    warnings:count(p.warnings),updatedAt:p.updatedAt||''
+  };
+}
+function enrichmentStateLabel(status){
+  return {complete:'Completo',partial:'Parcial',empty:'Sin datos',failed:'Error'}[status]||'Sin datos';
+}
+function enrichmentStateClass(status){
+  return {complete:'est-cerrado',partial:'est-visual',empty:'est-pendiente',failed:'est-pendiente'}[status]||'est-pendiente';
+}
+function renderLeadEnrichmentBlock(l){
+  const s=summarizeLeadEnrichment(l);
+  if(!s){
+    return '<div class="modal-section" data-section="lead-enrichment" style="border-top:2px solid rgba(196,169,106,0.3)">'
+      +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;flex-wrap:wrap;gap:6px">'
+      +'<div class="modal-section-title" style="margin:0">🔎 Enriquecimiento detectado</div>'
+      +'<span class="tag est-pendiente">Sin enriquecimiento</span>'
+      +'</div>'
+      +'<div style="font-size:10px;color:var(--text3);background:rgba(196,169,106,0.06);border-radius:6px;padding:6px 10px">'
+      +'Lanza "Reauditar web" con el bridge local activo para detectar candidatos de contacto e imágenes.'
+      +'</div>'
+      +'</div>';
+  }
+  const stateLabel=enrichmentStateLabel(s.status);
+  const stateClass=enrichmentStateClass(s.status);
+  return '<div class="modal-section" data-section="lead-enrichment" style="border-top:2px solid rgba(196,169,106,0.3)">'
+    +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;flex-wrap:wrap;gap:6px">'
+    +'<div class="modal-section-title" style="margin:0">🔎 Enriquecimiento detectado</div>'
+    +'<span class="tag '+stateClass+'">'+stateLabel+'</span>'
+    +'</div>'
+    +'<div style="font-size:10px;color:var(--text3);background:rgba(196,169,106,0.06);border-radius:6px;padding:6px 10px;margin-bottom:10px">'
+    +'Candidatos detectados automáticamente. Ninguno se aplica como asset aprobado todavía — requieren revisión humana.'
+    +'</div>'
+    +'<div style="background:var(--bg2);border-radius:6px;padding:8px;font-size:11px;color:var(--text2);margin-bottom:10px">'
+    +'<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px">'
+    +'<div>Teléfonos: '+s.phones+'</div>'
+    +'<div>Emails: '+s.emails+'</div>'
+    +'<div>WhatsApp: '+s.whatsapp+'</div>'
+    +'<div>Redes sociales: '+s.social+'</div>'
+    +'<div>Logos: '+s.logos+'</div>'
+    +'<div>Imágenes: '+s.images+'</div>'
+    +'<div>Imágenes OG: '+s.ogImages+'</div>'
+    +'<div>Favicons: '+s.favicons+'</div>'
+    +'<div>Warnings: '+s.warnings+'</div>'
+    +'</div>'
+    +'<div style="margin-top:6px;font-size:10px;color:var(--text3)">Última actualización: '+(s.updatedAt?new Date(s.updatedAt).toLocaleString('es-ES'):'—')+'</div>'
+    +'</div>'
+    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'
+    +'<button class="contact-btn btn-email" onclick="copyLeadEnrichmentSummary('+l.id+')" style="text-align:center;font-weight:700">📋 Ver resumen</button>'
+    +'<button class="contact-btn btn-maps" onclick="clearLeadEnrichment('+l.id+')" style="text-align:center">🗑 Limpiar enriquecimiento</button>'
+    +'</div>'
+    +'</div>';
+}
+function leadEnrichmentSummaryText(l){
+  const s=summarizeLeadEnrichment(l);
+  if(!s) return 'ENRIQUECIMIENTO DETECTADO · '+(l.empresa||'Lead')+'\nSin enriquecimiento todavía.';
+  const p=s.profile;
+  return 'ENRIQUECIMIENTO DETECTADO · '+(l.empresa||'Lead')+'\n'+
+    'Estado: '+enrichmentStateLabel(s.status)+'\n'+
+    'Web auditada: '+(p.finalUrl||p.auditUrl||'—')+'\n'+
+    'Teléfonos candidatos: '+s.phones+' · Emails: '+s.emails+' · WhatsApp: '+s.whatsapp+' · Redes sociales: '+s.social+'\n'+
+    'Logos candidatos: '+s.logos+' · Imágenes OG: '+s.ogImages+' · Favicons: '+s.favicons+' · Imágenes totales: '+s.images+'\n'+
+    'Warnings: '+(s.warnings?(p.warnings||[]).join(' | '):'Ninguno')+'\n'+
+    'Última actualización: '+(s.updatedAt?new Date(s.updatedAt).toLocaleString('es-ES'):'—')+'\n'+
+    'Nota: candidatos sin aprobar. Requieren revisión humana antes de usarse como assets.';
+}
+function copyLeadEnrichmentSummary(leadId){
+  const l=leads.find(x=>x.id===leadId);if(!l) return;
+  const txt=leadEnrichmentSummaryText(l);
+  navigator.clipboard.writeText(txt).then(()=>_showToast('✓ Resumen de enriquecimiento copiado.','var(--green)')).catch(()=>{
+    const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta);_showToast('✓ Resumen de enriquecimiento copiado.','var(--green)');
+  });
+}
+function clearLeadEnrichment(leadId){
+  const l=leads.find(x=>x.id===leadId);if(!l) return;
+  if(!confirm('¿Borrar el resumen de enriquecimiento guardado para este lead? (la auditoría web completa no se borra)')) return;
+  l.enrichmentProfile=null;
+  saveState();
+  _showToast('Enriquecimiento limpiado','var(--accent2)');
   renderAll();
   openModal(leadId);
 }
@@ -6148,6 +6296,7 @@ function openModal(id){
     ${safeRenderSection('Auditoría Web',()=>renderWebsiteAudit(l))}
     ${safeRenderSection('Base de Producción IA',()=>renderProductionBase(l))}
     ${safeRenderSection('Assets Visuales',()=>renderLeadAssetIntakeBlock(l))}
+    ${safeRenderSection('Enriquecimiento Detectado',()=>renderLeadEnrichmentBlock(l))}
 
     <!-- INTELIGENCIA -->
     <div class="modal-section">
