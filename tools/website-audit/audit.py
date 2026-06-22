@@ -723,9 +723,16 @@ def page_summary(page: FetchResult) -> dict[str, Any]:
 
 PHONE_PATTERN = re.compile(r"(\+?\d[\d\s()./-]{6,}\d)")
 EMAIL_PATTERN = re.compile(r"[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}", re.I)
-WHATSAPP_HREF_PATTERN = re.compile(r'href=["\']([^"\']*(?:wa\.me|api\.whatsapp\.com)[^"\']*)["\']', re.I)
+# Fase 7K: (?<![a-z0-9]) before the domain alternation stops a *substring*
+# false-positive — without it "x\.com" matched inside "dropbox.com" (the
+# literal "x.com" tail of that word), which is exactly how a Dropbox
+# gallery link on the real Duly Investment site ended up mislabeled as a
+# social link. The boundary requires the domain to start right after a
+# non-alphanumeric character (protocol "//", a subdomain ".", etc.), so
+# legitimate "https://x.com/..." or "https://www.x.com/..." still match.
+WHATSAPP_HREF_PATTERN = re.compile(r'href=["\']([^"\']*(?<![a-z0-9])(?:wa\.me|api\.whatsapp\.com)[^"\']*)["\']', re.I)
 SOCIAL_HREF_PATTERN = re.compile(
-    r'href=["\']([^"\']*(?:instagram\.com|facebook\.com|linkedin\.com|tiktok\.com|youtube\.com|twitter\.com|x\.com|pinterest\.com)[^"\']*)["\']',
+    r'href=["\']([^"\']*(?<![a-z0-9])(?:instagram\.com|facebook\.com|linkedin\.com|tiktok\.com|youtube\.com|twitter\.com|x\.com|pinterest\.com)[^"\']*)["\']',
     re.I,
 )
 LOGO_HINT_RE = re.compile(r"logo|brand|marca", re.I)
