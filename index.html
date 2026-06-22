@@ -3899,6 +3899,62 @@ function candidatesGroupBlock(title,leadId,group,items,rowFn,maxShow){
     +(rest>0?'<div style="font-size:9px;color:var(--text3);padding:3px 0">+'+rest+' más (ver resumen completo en Enriquecimiento Detectado)</div>':'')
     +'</div>';
 }
+// ── Fase 7K (FASE 2): logo candidate ranking ─────────────────────────────────
+// Pure display/ordering logic — never changes which candidates exist, never
+// applies anything. audit.py already computes confidence/reason (Fase 7I
+// B3); this groups what's already there so a human can't accidentally pick
+// a residencial/promotion photo over the real Duly logo.
+const LOGO_DUBIOUS_RE=/residencial|vivienda|amanecer|lo-marabu|villa|apartment|property|listing|promotion|piscina|sal[oó]n|fachada|dormitorio/i;
+const LOGO_WARNING_RE=/warning|posible|plantilla|proveedor/i;
+function classifyLogoCandidate(c){
+  const haystack=(c.url||'')+' '+(c.alt||'')+' '+(c.reason||'');
+  if(c.confidence==='low'||LOGO_WARNING_RE.test(c.reason||'')||LOGO_DUBIOUS_RE.test(haystack)) return 'dubious';
+  if(c.confidence==='high') return 'recommended';
+  return 'alternative';
+}
+function renderLogoCandidatesSection(leadId,logos){
+  if(!Array.isArray(logos)||!logos.length) return '';
+  const buckets={recommended:[],alternative:[],dubious:[]};
+  logos.forEach((c,i)=>{buckets[classifyLogoCandidate(c)].push({c,i});});
+  const section=(title,items,note)=>{
+    if(!items.length) return '';
+    return '<div style="margin-bottom:4px"><div style="font-size:9px;color:var(--text3);text-transform:uppercase;font-weight:700;margin-bottom:3px">'+title+' ('+items.length+')</div>'
+      +(note?'<div style="font-size:9px;color:var(--accent2);margin-bottom:3px">'+note+'</div>':'')
+      +items.map(({c,i})=>imageCandidateRow(leadId,'logos',i,c)).join('')
+      +'</div>';
+  };
+  return '<div style="margin-bottom:8px">'
+    +section('🏆 Logo recomendado',buckets.recommended)
+    +section('Logos alternativos',buckets.alternative)
+    +section('⚠ Candidatos dudosos',buckets.dubious,'Revisar antes de usar — probablemente no es el logo del cliente (imagen de propiedad/promoción o plantilla del proveedor).')
+    +'</div>';
+}
+// ── Fase 7K (FASE 4): social vs video vs document/external link split ───────
+// audit.py keeps emitting a single contactCandidates.socialLinks array
+// (backward compatible, Opción A) — this only re-groups it visually by
+// domain so a Dropbox/Drive link never shows up labeled as a social network.
+function classifySocialLink(url){
+  const u=String(url||'').toLowerCase();
+  if(/(?:^|\/\/|\.)instagram\.com|(?:^|\/\/|\.)facebook\.com|(?:^|\/\/|\.)linkedin\.com|(?:^|\/\/|\.)tiktok\.com|(?:^|\/\/|\.)x\.com|(?:^|\/\/|\.)twitter\.com|(?:^|\/\/|\.)pinterest\.com/.test(u)) return 'social';
+  if(/(?:^|\/\/|\.)youtube\.com|youtu\.be|(?:^|\/\/|\.)vimeo\.com/.test(u)) return 'video';
+  return 'document';
+}
+function renderSocialLinksSection(leadId,socialLinks){
+  if(!Array.isArray(socialLinks)||!socialLinks.length) return '';
+  const buckets={social:[],video:[],document:[]};
+  socialLinks.forEach((c,i)=>{buckets[classifySocialLink(c.value)].push({c,i});});
+  const section=(title,items)=>{
+    if(!items.length) return '';
+    return '<div style="margin-bottom:4px"><div style="font-size:9px;color:var(--text3);text-transform:uppercase;font-weight:700;margin-bottom:3px">'+title+' ('+items.length+')</div>'
+      +items.map(({c,i})=>contactCandidateRow(leadId,'socialLinks',i,c)).join('')
+      +'</div>';
+  };
+  return '<div style="margin-bottom:8px">'
+    +section('Redes sociales',buckets.social)
+    +section('Canales de vídeo',buckets.video)
+    +section('Documentos / enlaces externos',buckets.document)
+    +'</div>';
+}
 function renderLeadCandidatesPanel(l){
   const src=getLeadCandidatesSource(l);
   if(!src){
@@ -3915,7 +3971,6 @@ function renderLeadCandidatesPanel(l){
   const bs=src.brandSignals||{};
   const lowConfCount=['phones','emails','whatsappLinks','addresses','socialLinks','favicons','logos','openGraphImages','twitterImages','heroImages','propertyImages','allImages']
     .reduce((sum,g)=>sum+(cache[g]||[]).filter(c=>c.confidence==='low').length,0);
-  const logoProviderWarning=(cache.logos||[]).some(c=>/ego.?real.?estate|wordpress|wix|squarespace|webflow|shopify|template|plantilla/i.test((c.alt||'')+' '+(c.url||'')));
   return '<div class="modal-section" data-section="lead-candidates" style="border-top:2px solid rgba(196,169,106,0.3)">'
     +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;flex-wrap:wrap;gap:6px">'
     +'<div class="modal-section-title" style="margin:0">🧩 Candidatos Detectados</div>'
@@ -3925,22 +3980,21 @@ function renderLeadCandidatesPanel(l){
     +'⚠ Candidato detectado automáticamente. <strong>Requiere revisión humana. No aprobado todavía.</strong>'
     +'</div>'
     +(lowConfCount?'<div style="font-size:10px;color:var(--accent2);background:rgba(239,68,68,0.06);border-radius:6px;padding:6px 10px;margin-bottom:8px">⚠ '+lowConfCount+' candidato(s) de baja confianza — revisar con especial cuidado.</div>':'')
-    +(logoProviderWarning?'<div style="font-size:10px;color:var(--accent2);background:rgba(239,68,68,0.06);border-radius:6px;padding:6px 10px;margin-bottom:8px">⚠ Posible logo del proveedor de la plantilla web, no del cliente. Revisar antes de usar.</div>':'')
     +'<div style="font-size:10px;color:var(--accent2);font-weight:700;text-transform:uppercase;margin:8px 0 4px">Contacto detectado</div>'
     +(candidatesGroupBlock('Teléfonos',l.id,'phones',cache.phones,contactCandidateRow,3)
       +candidatesGroupBlock('Emails',l.id,'emails',cache.emails,contactCandidateRow,3)
       +candidatesGroupBlock('WhatsApp',l.id,'whatsappLinks',cache.whatsappLinks,contactCandidateRow,2)
       +candidatesGroupBlock('Direcciones',l.id,'addresses',cache.addresses,contactCandidateRow,2)
-      +candidatesGroupBlock('Redes sociales',l.id,'socialLinks',cache.socialLinks,contactCandidateRow,4)
+      +renderSocialLinksSection(l.id,cache.socialLinks)
       ||'<div style="font-size:10px;color:var(--text3)">Sin contacto candidato detectado.</div>')
     +'<div style="font-size:10px;color:var(--accent2);font-weight:700;text-transform:uppercase;margin:10px 0 4px">Assets detectados</div>'
     +(candidatesGroupBlock('Favicons',l.id,'favicons',cache.favicons,imageCandidateRow,2)
-      +candidatesGroupBlock('Logos candidatos',l.id,'logos',cache.logos,imageCandidateRow,3)
+      +renderLogoCandidatesSection(l.id,cache.logos)
       +candidatesGroupBlock('Imágenes Open Graph',l.id,'openGraphImages',cache.openGraphImages,imageCandidateRow,2)
       +candidatesGroupBlock('Imágenes Twitter',l.id,'twitterImages',cache.twitterImages,imageCandidateRow,2)
       +candidatesGroupBlock('Hero candidatas',l.id,'heroImages',cache.heroImages,imageCandidateRow,3)
       +candidatesGroupBlock('Imágenes de propiedad',l.id,'propertyImages',cache.propertyImages,imageCandidateRow,4)
-      +candidatesGroupBlock('Todas las imágenes',l.id,'allImages',cache.allImages,imageCandidateRow,4)
+      +candidatesGroupBlock('Todas las imágenes (revisar candidata por candidata — la miniatura puede verse mal aunque la imagen abierta en grande sea correcta)',l.id,'allImages',cache.allImages,imageCandidateRow,4)
       ||'<div style="font-size:10px;color:var(--text3)">Sin assets candidatos detectados.</div>')
     +(bs.title||bs.description||(bs.headings||[]).length||(bs.colors||[]).length?(
       '<div style="font-size:10px;color:var(--accent2);font-weight:700;text-transform:uppercase;margin:10px 0 4px">Señales de marca</div>'
@@ -6537,8 +6591,26 @@ function openModal(id){
     <div class="score-bar-track"><div class="score-bar-fill" style="width:${v*10}%"></div></div>
   </div>`;};
 
-  const waNum=l.whatsapp?l.whatsapp.replace(/\D/g,''):'';
-  const waUrl=waNum?'https://wa.me/'+waNum+(l.whatsapp1?'?text='+encodeURIComponent(l.whatsapp1):''):'#';
+  // Fase 7K (FASE 1): the top "WhatsApp" action button used to build a
+  // wa.me link from l.whatsapp's digits regardless of whether that field
+  // was ever validated as a real WhatsApp number — exactly the
+  // phone-shown-as-WhatsApp contradiction Duly Investment surfaced
+  // (lead.whatsapp was just a copy of lead.telefono). Now it only shows an
+  // active link when there's real evidence (getWebHasWhatsapp/getCrmHasWhatsapp,
+  // same functions Preflight already uses), and is hidden otherwise — never
+  // an active-looking button built from an unconfirmed phone number.
+  const webHasWhatsappTop=getWebHasWhatsapp(l);
+  const crmHasWhatsappTop=getCrmHasWhatsapp(l);
+  const whatsappConfirmedTop=webHasWhatsappTop||crmHasWhatsappTop;
+  let waUrl='#';
+  if(crmHasWhatsappTop){
+    waUrl=String(l.whatsapp||'').trim();
+  }else if(webHasWhatsappTop){
+    const epTop=getLeadEnrichmentProfile(l);
+    const ecTop=l.websiteAudit&&l.websiteAudit.enrichmentCandidates;
+    const waLinks=(epTop&&epTop.contactCandidates&&epTop.contactCandidates.whatsappLinks)||(ecTop&&ecTop.contactCandidates&&ecTop.contactCandidates.whatsappLinks)||[];
+    waUrl=(waLinks[0]&&waLinks[0].value)||'#';
+  }
   const mailUrl=l.email?'mailto:'+l.email+(l.emailAsunto?'?subject='+encodeURIComponent(l.emailAsunto)+(l.emailCuerpo?'&body='+encodeURIComponent(l.emailCuerpo):''):''):'#';
   const mapsUrl='https://www.google.com/maps/search/?api=1&query='+encodeURIComponent((l.empresa+' '+(l.direccion||l.zona)).trim());
   const safeWeb=nbeSafeUrl(l.web);
@@ -6586,7 +6658,7 @@ function openModal(id){
         ${isImportedLead(l)?'<div class="info-item"><label>Fuente</label><span>'+safeHtml(l.source||'CSV importado')+'</span></div><div class="info-item"><label>Rating / reseñas</label><span>'+safeHtml((l.rating||'—')+' / '+(l.reviewCount||0))+'</span></div><div class="info-item"><label>Búsqueda</label><span>'+safeHtml(l.searchPlanLabel||l.searchQuery||'—')+'</span></div><div class="info-item"><label>Google Maps</label><span>'+(safeMaps?'<a href="'+safeHtml(safeMaps)+'" target="_blank" rel="noopener noreferrer">Abrir ficha</a>':'—')+'</span></div>':''}
       </div>
       <div class="contact-actions">
-        ${waNum?'<a href="'+waUrl+'" target="_blank" rel="noopener noreferrer" class="contact-btn btn-wa">💬 WhatsApp</a>':''}
+        ${whatsappConfirmedTop?'<a href="'+safeHtml(waUrl)+'" target="_blank" rel="noopener noreferrer" class="contact-btn btn-wa">💬 WhatsApp</a>':''}
         ${l.email?'<a href="'+mailUrl+'" class="contact-btn btn-email">📧 Email</a>':''}
         ${l.telefono?'<a href="tel:'+l.telefono+'" class="contact-btn btn-tel">📞 Llamar</a>':''}
         <a href="${safeMaps}" target="_blank" rel="noopener noreferrer" class="contact-btn btn-maps">📍 Maps</a>
