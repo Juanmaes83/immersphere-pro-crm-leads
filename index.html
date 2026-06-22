@@ -4251,6 +4251,33 @@ function reopenCurrentModalIfOpen(){
   const overlay=document.getElementById('modal-overlay');
   if(overlay&&overlay.classList.contains('open')&&_currentModalLeadId!=null) openModal(_currentModalLeadId);
 }
+// Revisión de PR #38: los 6 guards "intentado" de abajo (uno por recurso)
+// se fijan en true ANTES de que el fetch resuelva, y nada los revertía si
+// el intento fallaba (token incorrecto -> 401, o backend caído). Resultado:
+// un token corregido o un backend que vuelve a estar disponible nunca
+// disparaban un nuevo intento - la ficha se quedaba vacía para siempre en
+// esa sesión. Esta función limpia solo esos 6 booleanos de control, nunca
+// los datos ya recuperados con éxito (_syncCheck/_commercialActionsHistory
+// se sobrescriben con la respuesta nueva al re-fetch, no se borran aquí).
+// Se llama únicamente en los 3 puntos donde el estado de auth/conexión
+// cambia de verdad por una acción explícita del operador: conectar token,
+// limpiar token, y el botón "↻ Reintentar" ya existente del panel de
+// sincronización. Nunca se llama desde dentro de un fetch en curso, así
+// que no reintroduce el bucle de peticiones que motivó los guards en
+// primer lugar - el reset ocurre una vez por acción humana, no en cascada.
+function resetCrmRecoveryFlagsForLead(lead){
+  if(!lead) return;
+  lead._auditRecoveryAttempted=undefined;
+  lead._enrichmentRecoveryAttempted=undefined;
+  lead._assetsRecoveryAttempted=undefined;
+  lead._packageRecoveryAttempted=undefined;
+  lead._syncCheckRequested=undefined;
+  lead._commercialActionsRequested=undefined;
+}
+function resetCrmRecoveryFlagsForCurrentModalLead(){
+  if(_currentModalLeadId==null) return;
+  resetCrmRecoveryFlagsForLead(leads.find(x=>x.id===_currentModalLeadId));
+}
 function connectCrmPersistence(){
   const current=getCrmPersistenceToken();
   const value=prompt(current?'Token de persistencia CRM (ya hay uno guardado en esta pestaña; pega uno nuevo para sustituirlo, o cancela para mantenerlo):':'Pega el token de persistencia CRM (CRM_PERSISTENCE_TOKEN). Se guarda solo en esta pestaña (sessionStorage) y se borra al cerrarla.');
@@ -4259,11 +4286,17 @@ function connectCrmPersistence(){
   if(!trimmed){_showToast('Token vacío — no se ha guardado.','var(--text3)');return;}
   try{sessionStorage.setItem(CRM_PERSISTENCE_TOKEN_KEY,trimmed);}catch(e){}
   _showToast('Token de persistencia guardado para esta pestaña.','var(--green)');
+  // Un token nuevo (sea para corregir uno incorrecto, o el primero de la
+  // sesión) siempre merece un intento de recuperación fresco - se resetea
+  // incondicionalmente, sin necesidad de distinguir si el anterior falló
+  // por 401 o por cualquier otra causa.
+  resetCrmRecoveryFlagsForCurrentModalLead();
   renderAll();
   reopenCurrentModalIfOpen();
 }
 function clearCrmPersistenceToken(){
   try{sessionStorage.removeItem(CRM_PERSISTENCE_TOKEN_KEY);}catch(e){}
+  resetCrmRecoveryFlagsForCurrentModalLead();
   _showToast('Token de persistencia eliminado.','var(--accent2)');
   renderAll();
   reopenCurrentModalIfOpen();
@@ -4588,7 +4621,7 @@ function keepLocalForLead(leadId){
   _showToast('Manteniendo datos locales — no se ha sobrescrito nada.','var(--text3)');
   renderAll();openModal(leadId);
 }
-function retrySyncForLead(leadId){ renderAll();openModal(leadId); }
+function retrySyncForLead(leadId){ resetCrmRecoveryFlagsForLead(leads.find(x=>x.id===leadId));renderAll();openModal(leadId); }
 function renderSyncStatusPanel(lead,sync){
   const l=lead;
   const overall=sync.overall;
