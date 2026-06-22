@@ -2850,6 +2850,7 @@ function normalizeEnrichmentCandidates(raw){
     contactCandidates:r.contactCandidates&&typeof r.contactCandidates==='object'?r.contactCandidates:{},
     assetCandidates:r.assetCandidates&&typeof r.assetCandidates==='object'?r.assetCandidates:{},
     brandSignals:r.brandSignals&&typeof r.brandSignals==='object'?r.brandSignals:{},
+    pageDiscovery:r.pageDiscovery&&typeof r.pageDiscovery==='object'?r.pageDiscovery:{pagesReviewed:0,urlsReviewed:[]},
     warnings:Array.isArray(r.warnings)?r.warnings:[],
     rawSource:r.rawSource&&typeof r.rawSource==='object'?r.rawSource:{}
   };
@@ -2989,6 +2990,7 @@ function buildEnrichmentProfileFromAudit(audit,lead){
     contactCandidates:ec.contactCandidates||{},
     assetCandidates:ec.assetCandidates||{},
     brandSignals:ec.brandSignals||{},
+    pageDiscovery:ec.pageDiscovery||{pagesReviewed:0,urlsReviewed:[]},
     warnings:ec.warnings||[],
     rawSource:rs
   };
@@ -4011,6 +4013,25 @@ function applyCandidateContact(leadId,group,index,field){
 // ── Fase 7F: Preflight de Producción ─────────────────────────────────────────
 // Read-only readiness traffic light. Never blocks manual work; only asks for
 // an explicit confirm() before opening Operator Console when not green.
+// Fase 7I-B (B4): Teléfono ≠ WhatsApp. A phone number copied into
+// lead.whatsapp is NOT evidence of a real WhatsApp presence — Preflight
+// must never show "WhatsApp presente" on that basis alone.
+// webHasWhatsapp: real evidence from the audited site (a real wa.me/
+// api.whatsapp.com link in enrichmentProfile/websiteAudit.enrichmentCandidates).
+function getWebHasWhatsapp(lead){
+  const l=lead||{};
+  const ep=getLeadEnrichmentProfile(l);
+  if(ep&&ep.contactCandidates&&Array.isArray(ep.contactCandidates.whatsappLinks)&&ep.contactCandidates.whatsappLinks.length) return true;
+  const ec=l.websiteAudit&&l.websiteAudit.enrichmentCandidates;
+  if(ec&&ec.contactCandidates&&Array.isArray(ec.contactCandidates.whatsappLinks)&&ec.contactCandidates.whatsappLinks.length) return true;
+  return false;
+}
+// crmHasWhatsapp: lead.whatsapp only counts as validated if it actually
+// looks like a WhatsApp link, not a phone number string.
+function getCrmHasWhatsapp(lead){
+  const w=String((lead&&lead.whatsapp)||'').trim();
+  return /wa\.me\/|api\.whatsapp\.com|whatsapp:\/\//i.test(w);
+}
 function computeProductionPreflight(lead){
   const l=lead||{};
   const items=[];
@@ -4020,10 +4041,13 @@ function computeProductionPreflight(lead){
   const stale=isProductionPackageStale(l);
   const cachedPkg=getStoredFourHooksPayload(l);
   const validation=cachedPkg?validateProductionPackageLocal(cachedPkg):null;
+  const webHasWhatsapp=getWebHasWhatsapp(l);
+  const crmHasWhatsapp=getCrmHasWhatsapp(l);
+  const whatsappConfirmed=webHasWhatsapp||crmHasWhatsapp;
 
   items.push({label:'Teléfono presente',ok:!!l.telefono,critical:false});
   items.push({label:'Email presente',ok:!!l.email,critical:false});
-  items.push({label:'WhatsApp presente',ok:!!l.whatsapp,critical:false});
+  items.push({label:whatsappConfirmed?'WhatsApp presente':'WhatsApp no confirmado/no presente',ok:whatsappConfirmed,critical:false});
   items.push({label:'Web presente',ok:!!(l.web||l.website),critical:true});
   items.push({label:'Dirección presente',ok:!!l.direccion,critical:false});
 
