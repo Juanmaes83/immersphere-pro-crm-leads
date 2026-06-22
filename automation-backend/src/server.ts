@@ -45,6 +45,14 @@ import {
 } from "./operatorSession.ts";
 import { buildOperatorConsoleHtml } from "./operatorConsoleHtml.ts";
 import { sanitizeLog } from "./security.ts";
+import {
+  getLatestAuditRun,
+  insertAuditRun,
+  isCrmPersistenceAuthorized,
+  isCrmPersistenceConfigured,
+  validateAuditRunPayload,
+  validateLeadIdParam,
+} from "./crmPersistence.ts";
 
 const DEFAULT_ALLOWED_ORIGINS = [
   "http://localhost:5500",
@@ -99,7 +107,7 @@ function corsHeaders(req) {
       "Access-Control-Allow-Origin": origin,
       "Vary": "Origin",
       "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
-      "Access-Control-Allow-Headers": "Content-Type,Authorization,X-Internal-Api-Token,X-Csrf-Token",
+      "Access-Control-Allow-Headers": "Content-Type,Authorization,X-Internal-Api-Token,X-Csrf-Token,X-CRM-Persistence-Token",
       "Access-Control-Allow-Credentials": "true",
     };
   }
@@ -107,7 +115,7 @@ function corsHeaders(req) {
     "Access-Control-Allow-Origin": "null",
     "Vary": "Origin",
     "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type,Authorization,X-Internal-Api-Token,X-Csrf-Token",
+    "Access-Control-Allow-Headers": "Content-Type,Authorization,X-Internal-Api-Token,X-Csrf-Token,X-CRM-Persistence-Token",
   };
 }
 
@@ -178,6 +186,86 @@ function readJsonBody(req) {
 async function readAndSanitizeProductionPackage(req) {
   const rawPayload = await readJsonBody(req);
   return sanitizeProductionPackageForPrAutomation(rawPayload);
+}
+
+// Fase 8A handlers. Kept in server.ts (not crmPersistence.ts) since they
+// deal with HTTP request/response plumbing (auth, body parsing, status
+// codes) - crmPersistence.ts stays pure data/validation, same separation
+// already used elsewhere in this file (e.g. buildPrAutomationPlan.ts vs the
+// route handler that calls it).
+async function handleCreateAuditRun(req, res, headers, leadIdRaw) {
+  if (!isCrmPersistenceConfigured()) {
+    sendJson(res, 503, { ok: false, error: "persistence_not_configured" }, headers);
+    return;
+  }
+  if (!isCrmPersistenceAuthorized(req)) {
+    sendJson(res, 401, { ok: false, error: "unauthorized" }, headers);
+    return;
+  }
+  const leadId = validateLeadIdParam(leadIdRaw);
+  if (leadId === null) {
+    sendJson(res, 400, { ok: false, error: "lead_id_must_be_positive_integer" }, headers);
+    return;
+  }
+  let payload;
+  try {
+    payload = await readJsonBody(req);
+  } catch (err) {
+    const status = err && err.message === "payload_too_large" ? 413 : 400;
+    sendJson(res, status, { ok: false, error: err && err.message === "payload_too_large" ? "payload_too_large" : "invalid_json" }, headers);
+    return;
+  }
+  const validation = validateAuditRunPayload(payload);
+  if (!validation.valid) {
+    sendJson(res, 400, { ok: false, error: "invalid_payload", details: validation.errors }, headers);
+    return;
+  }
+  try {
+    const auditRun = await insertAuditRun(leadId, payload);
+    sendJson(res, 201, { ok: true, auditRun }, headers);
+  } catch (err) {
+    if (err && err.code === "PERSISTENCE_NOT_CONFIGURED") {
+      sendJson(res, 503, { ok: false, error: "persistence_not_configured" }, headers);
+      return;
+    }
+    if (err && err.code === "PERSISTENCE_UNAVAILABLE") {
+      sendJson(res, 503, { ok: false, error: "persistence_unavailable" }, headers);
+      return;
+    }
+    logWarn("crm_audit_run_insert_failed", { message: sanitizeLog(err && err.message) });
+    sendJson(res, 500, { ok: false, error: "internal_error" }, headers);
+  }
+}
+
+async function handleLatestAuditRun(req, res, headers, leadIdRaw) {
+  if (!isCrmPersistenceConfigured()) {
+    sendJson(res, 503, { ok: false, error: "persistence_not_configured" }, headers);
+    return;
+  }
+  if (!isCrmPersistenceAuthorized(req)) {
+    sendJson(res, 401, { ok: false, error: "unauthorized" }, headers);
+    return;
+  }
+  const leadId = validateLeadIdParam(leadIdRaw);
+  if (leadId === null) {
+    sendJson(res, 400, { ok: false, error: "lead_id_must_be_positive_integer" }, headers);
+    return;
+  }
+  try {
+    const auditRun = await getLatestAuditRun(leadId);
+    sendJson(res, 200, { ok: true, auditRun }, headers);
+  } catch (err) {
+    if (err && err.code === "PERSISTENCE_NOT_CONFIGURED") {
+      sendJson(res, 503, { ok: false, error: "persistence_not_configured" }, headers);
+      return;
+    }
+    if (err && err.code === "PERSISTENCE_UNAVAILABLE") {
+      sendJson(res, 503, { ok: false, error: "persistence_unavailable" }, headers);
+      return;
+    }
+    logWarn("crm_audit_run_fetch_failed", { message: sanitizeLog(err && err.message) });
+    sendJson(res, 500, { ok: false, error: "internal_error" }, headers);
+  }
 }
 
 function getOperatorSession(req) {
@@ -273,7 +361,12 @@ export function createRequestHandler() {
     // endpoints are protected by OPERATOR_ADMIN_TOKEN (login) and session+CSRF
     // (all other operator POSTs).
     const isOperatorEndpoint = url.pathname.startsWith("/api/operator/");
-    if (req.method === "POST" && !isOperatorEndpoint && !isAuthorized(req)) {
+    // Fase 8A fix: this endpoint has its own independent auth
+    // (isCrmPersistenceAuthorized / CRM_PERSISTENCE_TOKEN, checked inside
+    // handleCreateAuditRun) and must never require INTERNAL_API_TOKEN - same
+    // reasoning as the operator-endpoint exemption above.
+    const isCrmAuditRunPostEndpoint = req.method === "POST" && url.pathname.startsWith("/api/crm/leads/") && url.pathname.endsWith("/audit-runs");
+    if (req.method === "POST" && !isOperatorEndpoint && !isCrmAuditRunPostEndpoint && !isAuthorized(req)) {
       sendJson(res, 401, { ok: false, error: "unauthorized" }, headers);
       return;
     }
@@ -304,6 +397,24 @@ export function createRequestHandler() {
         writeMode: enabled ? "enabled" : "disabled",
         allowedRepos: allowedRepos(),
       }, headers);
+      return;
+    }
+
+    // Fase 8A: AuditRun persistence only (EnrichmentProfile/ApprovedMediaAssets/
+    // ProductionPackage are explicitly out of scope here). Both routes require
+    // CRM_PERSISTENCE_TOKEN via X-CRM-Persistence-Token - never
+    // INTERNAL_API_TOKEN or OPERATOR_ADMIN_TOKEN, kept deliberately separate
+    // (Fase 6B). If DATABASE_URL/CRM_PERSISTENCE_TOKEN aren't configured, both
+    // return a controlled 503 - /health and every other route are unaffected.
+    if (req.method === "POST" && url.pathname.startsWith("/api/crm/leads/") && url.pathname.endsWith("/audit-runs")) {
+      const leadIdRaw = url.pathname.slice("/api/crm/leads/".length, -"/audit-runs".length);
+      await handleCreateAuditRun(req, res, headers, leadIdRaw);
+      return;
+    }
+
+    if (req.method === "GET" && url.pathname.startsWith("/api/crm/leads/") && url.pathname.endsWith("/audit-runs/latest")) {
+      const leadIdRaw = url.pathname.slice("/api/crm/leads/".length, -"/audit-runs/latest".length);
+      await handleLatestAuditRun(req, res, headers, leadIdRaw);
       return;
     }
 
