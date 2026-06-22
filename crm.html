@@ -4466,6 +4466,293 @@ async function fetchLatestProductionPackageBestEffort(leadId){
   }catch(e){ return null; }
 }
 
+// ── Fase 8E: Persisted State Aggregator (frontend) ────────────────────────
+// One call instead of 4 separate GET-on-open calls. fourHooks/
+// outreachMessages come back verbatim from the latest persisted Production
+// Package - never regenerated here.
+async function fetchPersistedStateBestEffort(leadId){
+  if(!leadId||leadId<=0||!hasCrmPersistenceToken()) return {ok:false,reason:'no_token'};
+  try{
+    const res=await fetch(crmPersistenceApiBase()+'/api/crm/leads/'+leadId+'/persisted-state',{
+      headers:{'X-CRM-Persistence-Token':getCrmPersistenceToken()}
+    });
+    if(res.status===401) return {ok:false,reason:'unauthorized'};
+    if(!res.ok) return {ok:false,reason:'server_error'};
+    const data=await res.json();
+    return data&&data.ok?{ok:true,state:data}:{ok:false,reason:'server_error'};
+  }catch(e){ return {ok:false,reason:'network_error'}; }
+}
+
+// ── Fase 8F: localStorage <-> backend sync engine ─────────────────────────
+// Pure comparison function - never mutates anything itself. Covers every
+// case Juanma listed explicitly: backend_newer, local_newer, equal,
+// backend_only (local vacio/backend con datos), local_only (backend
+// vacio/local con datos), both_empty, conflict (can't tell - missing
+// timestamp on one side), token_absent, token_incorrect, backend_down.
+function syncCompareResource(localAt,remoteAt,localHas,remoteHas){
+  if(!localHas&&!remoteHas) return 'both_empty';
+  if(!localHas&&remoteHas) return 'backend_only';
+  if(localHas&&!remoteHas) return 'local_only';
+  if(!localAt||!remoteAt) return 'conflict';
+  const lt=new Date(localAt).getTime(),rt=new Date(remoteAt).getTime();
+  if(Number.isNaN(lt)||Number.isNaN(rt)) return 'conflict';
+  if(rt>lt) return 'backend_newer';
+  if(lt>rt) return 'local_newer';
+  return 'equal';
+}
+function computeSyncStatusForLead(lead,fetchResult){
+  if(!hasCrmPersistenceToken()) return {overall:'token_absent',resources:{}};
+  if(!fetchResult||fetchResult.ok!==true){
+    const reason=fetchResult&&fetchResult.reason;
+    if(reason==='unauthorized') return {overall:'token_incorrect',resources:{}};
+    return {overall:'backend_down',resources:{}};
+  }
+  const st=fetchResult.state;
+  const ts=(st.syncStatus&&st.syncStatus.timestamps)||{};
+  const l=lead||{};
+  const resources={
+    auditRun:syncCompareResource(l.websiteAudit&&l.websiteAudit.auditedAt,ts.auditRun,!!(l.websiteAudit&&l.websiteAudit.status==='success'),!!st.latestAuditRun),
+    enrichmentProfile:syncCompareResource(l.enrichmentProfile&&l.enrichmentProfile.updatedAt,ts.enrichmentProfile,!!l.enrichmentProfile,!!st.latestEnrichmentProfile),
+    approvedAssets:syncCompareResource(l.mediaAssetsManual&&l.mediaAssetsManual.updatedAt,ts.approvedAssets,!!(l.mediaAssetsManual&&l.mediaAssetsManual.assetsApproved),!!(st.approvedAssets&&st.approvedAssets.assetsApproved)),
+    productionPackage:syncCompareResource(l.previewEngine&&l.previewEngine.packageGeneratedAt,ts.productionPackage,!!(l.previewEngine&&l.previewEngine.productionPackagePayload),!!st.latestProductionPackage)
+  };
+  const states=Object.values(resources);
+  let overall='equal';
+  if(states.includes('conflict')) overall='conflict';
+  else if(states.some(s=>s==='backend_only'||s==='backend_newer')) overall='backend_ahead';
+  else if(states.some(s=>s==='local_only'||s==='local_newer')) overall='local_ahead';
+  return {overall,resources,state:st};
+}
+const SYNC_STATUS_LABELS={
+  checking:'Comprobando sincronización…',
+  token_absent:'Sin token de persistencia',
+  token_incorrect:'Token incorrecto',
+  backend_down:'Backend no disponible — usando local',
+  conflict:'Conflicto — revisar manualmente',
+  backend_ahead:'Backend tiene datos más recientes',
+  local_ahead:'Hay cambios locales sin sincronizar',
+  equal:'Sincronizado',
+  both_empty:'Sin datos todavía'
+};
+// "Cargar desde backend": explicit pull, only on user action. Never automatic.
+async function loadFromBackendForLead(leadId){
+  const l=leads.find(x=>x.id===leadId);if(!l) return;
+  const fr=await fetchPersistedStateBestEffort(leadId);
+  if(!fr.ok){ _showToast('No se pudo cargar desde backend.','var(--red)'); return; }
+  const st=fr.state;
+  if(st.latestAuditRun){
+    const rebuilt=websiteAuditFromResponse({ok:true,website:st.latestAuditRun.website,finalUrl:st.latestAuditRun.website,auditedAt:st.latestAuditRun.createdAt,audit:(st.latestAuditRun.rawAudit&&typeof st.latestAuditRun.rawAudit==='object'?st.latestAuditRun.rawAudit:{})},l);
+    applyWebsiteAuditToLead(l,rebuilt);
+  }
+  if(st.latestEnrichmentProfile&&st.latestEnrichmentProfile.rawEnrichmentProfile) l.enrichmentProfile=st.latestEnrichmentProfile.rawEnrichmentProfile;
+  if(st.approvedAssets){
+    const aa=st.approvedAssets.approvedAssets||{};
+    l.mediaAssetsManual={
+      logoUrl:st.approvedAssets.logoUrl||null,heroImage:st.approvedAssets.heroUrl||null,
+      propertyImages:Array.isArray(st.approvedAssets.imageUrls)?st.approvedAssets.imageUrls:[],
+      videoUrl:(aa.video&&aa.video.url)||null,brandColors:Array.isArray(aa.brandColors)?aa.brandColors:[],
+      assetNotes:aa.notes||'',assetsApproved:st.approvedAssets.assetsApproved===true,
+      updatedAt:st.approvedAssets.approvedAt||st.approvedAssets.createdAt
+    };
+  }
+  if(st.latestProductionPackage&&st.latestProductionPackage.packagePayload){
+    saveFourHooksProposalToLead(l,st.latestProductionPackage.packagePayload,{errors:st.latestProductionPackage.validationErrors||[],warnings:[]});
+  }
+  saveState();renderAll();openModal(leadId);
+  _showToast('Cargado desde backend.','var(--gold)');
+}
+// "Guardar local en backend": explicit push, only on user action.
+async function saveLocalToBackendForLead(leadId){
+  const l=leads.find(x=>x.id===leadId);if(!l) return;
+  await persistAuditRunBestEffort(l.id,l.websiteAudit);
+  await persistEnrichmentProfileBestEffort(l);
+  await persistApprovedMediaAssetsBestEffort(l);
+  await persistProductionPackageBestEffort(l);
+  _showToast('Guardado local enviado a backend.','var(--gold)');
+  renderAll();openModal(leadId);
+}
+function keepLocalForLead(leadId){
+  _showToast('Manteniendo datos locales — no se ha sobrescrito nada.','var(--text3)');
+  renderAll();openModal(leadId);
+}
+function retrySyncForLead(leadId){ renderAll();openModal(leadId); }
+function renderSyncStatusPanel(lead,sync){
+  const l=lead;
+  const overall=sync.overall;
+  const label=SYNC_STATUS_LABELS[overall]||'Estado desconocido';
+  const color=overall==='equal'?'var(--green)':(overall==='token_absent'||overall==='both_empty'?'var(--text3)':(overall==='token_incorrect'||overall==='conflict'?'var(--red)':'var(--gold)'));
+  const resourceLabels={auditRun:'Auditoría',enrichmentProfile:'Enriquecimiento',approvedAssets:'Assets aprobados',productionPackage:'Production Package'};
+  const rows=Object.keys(sync.resources||{}).map(k=>'<div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text3);padding:2px 0"><span>'+resourceLabels[k]+'</span><span>'+(sync.resources[k]||'—')+'</span></div>').join('');
+  const showActions=overall!=='token_absent'&&overall!=='checking';
+  return `<div class="modal-section">
+    <div class="modal-section-title">Estado de sincronización</div>
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+      <span class="tag" style="background:${color};color:#111">${safeHtml(label)}</span>
+    </div>
+    ${rows?'<div style="background:var(--bg3);border-radius:8px;padding:8px;margin-bottom:10px">'+rows+'</div>':''}
+    <div class="contact-actions">
+      ${showActions?'<button class="contact-btn btn-web" onclick="loadFromBackendForLead('+l.id+')">⬇ Cargar desde backend</button>':''}
+      ${showActions?'<button class="contact-btn btn-maps" onclick="saveLocalToBackendForLead('+l.id+')">⬆ Guardar local en backend</button>':''}
+      ${showActions?'<button class="contact-btn btn-tel" onclick="keepLocalForLead('+l.id+')">Mantener local</button>':''}
+      <button class="contact-btn btn-email" onclick="retrySyncForLead(${l.id})">↻ Reintentar</button>
+      ${overall==='token_incorrect'?'<button class="contact-btn" style="color:var(--red);border-color:rgba(239,68,68,.3)" onclick="clearCrmPersistenceToken()">Limpiar token</button>':''}
+    </div>
+  </div>`;
+}
+
+// ── Fase 8E/8F/8G/8H: commercial actions (registro, nunca envío automático) ─
+async function persistCommercialActionBestEffort(lead,actionPayload){
+  if(!lead||lead.id<=0||!hasCrmPersistenceToken()) return;
+  try{
+    await fetch(crmPersistenceApiBase()+'/api/crm/leads/'+lead.id+'/commercial-actions',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','X-CRM-Persistence-Token':getCrmPersistenceToken()},
+      body:JSON.stringify(actionPayload)
+    });
+  }catch(e){ /* best-effort only - the copy/open action itself already happened locally */ }
+}
+async function fetchCommercialActionsHistoryBestEffort(leadId){
+  if(!leadId||leadId<=0||!hasCrmPersistenceToken()) return [];
+  try{
+    const res=await fetch(crmPersistenceApiBase()+'/api/crm/leads/'+leadId+'/commercial-actions',{
+      headers:{'X-CRM-Persistence-Token':getCrmPersistenceToken()}
+    });
+    if(!res.ok) return [];
+    const data=await res.json();
+    return (data&&data.ok&&Array.isArray(data.commercialActions))?data.commercialActions:[];
+  }catch(e){ return []; }
+}
+
+// ── Outreach desde los 4 ganchos ya generados (nunca se regeneran aqui) ───
+const COMMERCIAL_HOOK_LABELS={
+  fullWebDemo:'Web completa',
+  visualExperience:'Banderola-WebGL',
+  bannerPack:'Banners vertical-horizontal',
+  landingPage:'Landing personalizada'
+};
+const COMMERCIAL_HOOK_ORDER=['visualExperience','landingPage','fullWebDemo','bannerPack'];
+function getLeadFourHooks(lead){
+  const pe=(lead&&lead.previewEngine)||{};
+  return pe.fourHooks||(pe.productionPackagePayload&&pe.productionPackagePayload.fourHooks)||null;
+}
+function getLeadOutreachMessages(lead){
+  const pe=(lead&&lead.previewEngine)||{};
+  return pe.outreachMessages||(pe.productionPackagePayload&&pe.productionPackagePayload.outreachMessages)||null;
+}
+// Builds per-hook actionable text from the EXISTING hook content + the
+// existing combined outreachMessages - never invents new diagnosis/copy,
+// just reformats what regenerateProductionPackageForLead already produced.
+function buildHookOutreachText(hookKey,lead){
+  const hooks=getLeadFourHooks(lead);
+  const outreach=getLeadOutreachMessages(lead);
+  if(!hooks||!hooks[hookKey]||!outreach) return null;
+  const h=hooks[hookKey];
+  const label=COMMERCIAL_HOOK_LABELS[hookKey]||hookKey;
+  const title=h.title||h.headline||h.mainClaim||label;
+  const argument=h.mainMessage||h.subheadline||h.valueProposition||h.secondaryClaims&&h.secondaryClaims[0]||'';
+  const cta=h.cta||'';
+  const route=h.route||'';
+  const whatsappMessage=(title?title+'\n\n':'')+(outreach.whatsappMessage||'')+(route?'\n\nEnlace: '+route:'');
+  const emailSubject='['+label+'] '+(outreach.emailSubject||('Propuesta para '+(lead.empresa||'')));
+  const emailBody=(title?title+'\n\n':'')+(argument?argument+'\n\n':'')+(outreach.emailBody||'')+(route?'\n\nEnlace: '+route:'');
+  return {label,title,argument,cta,route,whatsappMessage,emailSubject,emailBody};
+}
+function hookCommercialActionMeta(leadId,hookKey){
+  return {hookId:hookKey,hookType:hookKey};
+}
+function copyHookWhatsApp(leadId,hookKey){
+  const l=leads.find(x=>x.id===leadId);if(!l) return;
+  const t=buildHookOutreachText(hookKey,l);if(!t) return;
+  navigator.clipboard.writeText(t.whatsappMessage).catch(()=>{
+    const ta=document.createElement('textarea');ta.value=t.whatsappMessage;document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta);
+  });
+  _showToast('✓ Mensaje de WhatsApp copiado ('+t.label+').','var(--green)');
+  persistCommercialActionBestEffort(l,{...hookCommercialActionMeta(leadId,hookKey),actionType:'copied_whatsapp',channel:'whatsapp',status:'copied',messageSnapshot:t.whatsappMessage});
+}
+function copyHookEmail(leadId,hookKey){
+  const l=leads.find(x=>x.id===leadId);if(!l) return;
+  const t=buildHookOutreachText(hookKey,l);if(!t) return;
+  const full='Asunto: '+t.emailSubject+'\n\n'+t.emailBody;
+  navigator.clipboard.writeText(full).catch(()=>{
+    const ta=document.createElement('textarea');ta.value=full;document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta);
+  });
+  _showToast('✓ Email copiado ('+t.label+').','var(--green)');
+  persistCommercialActionBestEffort(l,{...hookCommercialActionMeta(leadId,hookKey),actionType:'copied_email',channel:'email',status:'copied',emailSubjectSnapshot:t.emailSubject,emailBodySnapshot:t.emailBody});
+}
+function openHookWhatsApp(leadId,hookKey){
+  const l=leads.find(x=>x.id===leadId);if(!l) return;
+  const t=buildHookOutreachText(hookKey,l);if(!t) return;
+  const raw=String(l.whatsapp||l.telefono||'').replace(/\D/g,'');
+  if(!raw) return;
+  window.open('https://wa.me/'+raw+'?text='+encodeURIComponent(t.whatsappMessage),'_blank','noopener,noreferrer');
+  persistCommercialActionBestEffort(l,{...hookCommercialActionMeta(leadId,hookKey),actionType:'opened_whatsapp',channel:'whatsapp',status:'opened',messageSnapshot:t.whatsappMessage});
+}
+function openHookEmail(leadId,hookKey){
+  const l=leads.find(x=>x.id===leadId);if(!l) return;
+  const t=buildHookOutreachText(hookKey,l);if(!t) return;
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(l.email||'').trim())) return;
+  window.location.href='mailto:'+encodeURIComponent(l.email)+'?subject='+encodeURIComponent(t.emailSubject)+'&body='+encodeURIComponent(t.emailBody);
+  persistCommercialActionBestEffort(l,{...hookCommercialActionMeta(leadId,hookKey),actionType:'opened_email',channel:'email',status:'opened',emailSubjectSnapshot:t.emailSubject,emailBodySnapshot:t.emailBody});
+}
+function markHookSentManually(leadId,hookKey){
+  const l=leads.find(x=>x.id===leadId);if(!l) return;
+  const t=buildHookOutreachText(hookKey,l);
+  _showToast('Marcado como enviado manualmente ('+(t?t.label:hookKey)+').','var(--gold)');
+  persistCommercialActionBestEffort(l,{...hookCommercialActionMeta(leadId,hookKey),actionType:'sent_manual',channel:'manual',status:'sent_manual',messageSnapshot:t?t.whatsappMessage:null,emailSubjectSnapshot:t?t.emailSubject:null,emailBodySnapshot:t?t.emailBody:null});
+}
+function renderCommercialOutreachPanel(lead){
+  const l=lead;
+  const hooks=getLeadFourHooks(l);
+  const outreach=getLeadOutreachMessages(l);
+  if(!hooks||!outreach){
+    return `<div class="modal-section">
+      <div class="modal-section-title">Outreach comercial (4 ganchos)</div>
+      <div style="font-size:12px;color:var(--text3);text-align:center;padding:12px;background:var(--bg3);border:1px dashed var(--border);border-radius:8px">
+        Todavía no hay Production Package generado para este lead. Genera el Production Package primero para poder preparar el outreach.
+      </div>
+    </div>`;
+  }
+  const assets=summarizeLeadAssets(l);
+  const missingAssetsNote=assets.hasAny&&!assets.manual.assetsApproved?'<div style="font-size:11px;color:var(--gold);margin-bottom:8px">⚠ Faltan assets aprobados — revisa antes de enviar.</div>':'';
+  // "No localizado" es un placeholder real y frecuente en los datos semilla
+  // (whatsapp/telefono/email) - no cuenta como canal real disponible.
+  const hasWhatsapp=/\d{6,}/.test(String(l.whatsapp||l.telefono||'').replace(/\D/g,''));
+  const hasEmail=/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(l.email||'').trim());
+  const cards=COMMERCIAL_HOOK_ORDER.map(key=>{
+    const t=buildHookOutreachText(key,l);
+    if(!t) return '';
+    return `<div class="objecion-box" style="margin-bottom:10px">
+      <div style="font-size:10px;color:var(--accent2);font-weight:700;text-transform:uppercase;margin-bottom:5px">${safeHtml(t.label)}</div>
+      <div style="font-size:13px;color:var(--text);font-weight:600;margin-bottom:4px">${safeHtml(t.title)}</div>
+      ${t.argument?'<div style="font-size:12px;color:var(--text2);margin-bottom:6px">'+safeHtml(t.argument)+'</div>':''}
+      ${t.cta?'<div style="font-size:11px;color:var(--text3);margin-bottom:8px"><strong>CTA:</strong> '+safeHtml(t.cta)+'</div>':''}
+      <div class="contact-actions">
+        <button class="contact-btn btn-wa" onclick="copyHookWhatsApp(${l.id},'${key}')">📋 Copiar WhatsApp</button>
+        <button class="contact-btn btn-email" onclick="copyHookEmail(${l.id},'${key}')">📋 Copiar email</button>
+        ${hasWhatsapp?`<button class="contact-btn btn-wa" onclick="openHookWhatsApp(${l.id},'${key}')">💬 Abrir WhatsApp</button>`:''}
+        ${hasEmail?`<button class="contact-btn btn-email" onclick="openHookEmail(${l.id},'${key}')">📧 Abrir email</button>`:''}
+        <button class="contact-btn btn-tel" onclick="markHookSentManually(${l.id},'${key}')">✓ Marcar enviado</button>
+      </div>
+    </div>`;
+  }).join('');
+  const noChannelNote=(!hasWhatsapp&&!hasEmail)?'<div style="font-size:11px;color:var(--text3);margin-top:6px">Sin teléfono/WhatsApp ni email registrados — solo disponible copiar texto.</div>':'';
+  return `<div class="modal-section">
+    <div class="modal-section-title">Outreach comercial (4 ganchos)</div>
+    ${missingAssetsNote}
+    ${cards}
+    ${noChannelNote}
+  </div>`;
+}
+function renderCommercialActionsHistoryBlock(actions){
+  if(!Array.isArray(actions)||!actions.length) return '';
+  const ACTION_LABELS={copied_whatsapp:'Copió WhatsApp',copied_email:'Copió email',opened_whatsapp:'Abrió WhatsApp',opened_email:'Abrió email',sent_manual:'Marcado enviado',followup_needed:'Seguimiento pendiente'};
+  const rows=actions.slice(0,10).map(a=>'<div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text3);padding:2px 0"><span>'+safeHtml(ACTION_LABELS[a.actionType]||a.actionType)+(a.hookType?' · '+safeHtml(COMMERCIAL_HOOK_LABELS[a.hookType]||a.hookType):'')+'</span><span>'+safeHtml(a.createdAt?new Date(a.createdAt).toLocaleString('es-ES'):'')+'</span></div>').join('');
+  return `<div class="modal-section">
+    <div class="modal-section-title">Histórico de acciones comerciales</div>
+    <div style="background:var(--bg3);border-radius:8px;padding:8px">${rows}</div>
+  </div>`;
+}
+
 // ── Temperature ───────────────────────────────────────────────────────────────
 function calcTemp(l){
   if(l._temp) return l._temp;
@@ -6914,6 +7201,9 @@ function openModal(id){
     ${safeRenderSection('Fallback Visual Interno',()=>renderInternalFallbackBlock(l))}
     ${safeRenderSection('Enriquecimiento Detectado',()=>renderLeadEnrichmentBlock(l))}
     ${safeRenderSection('Candidatos Detectados',()=>renderLeadCandidatesPanel(l))}
+    ${safeRenderSection('Estado de sincronización',()=>renderSyncStatusPanel(l,!hasCrmPersistenceToken()?{overall:'token_absent',resources:{}}:(l._syncCheck||{overall:'checking',resources:{}})))}
+    ${safeRenderSection('Outreach comercial (4 ganchos)',()=>renderCommercialOutreachPanel(l))}
+    ${safeRenderSection('Histórico de acciones comerciales',()=>renderCommercialActionsHistoryBlock(l._commercialActionsHistory||[]))}
 
     <!-- INTELIGENCIA -->
     <div class="modal-section">
@@ -7254,6 +7544,25 @@ function openModal(id){
       const overlay=document.getElementById('modal-overlay');
       if(overlay&&overlay.classList.contains('open')) openModal(id);
     }).catch(()=>{});
+
+    // Fase 8E/8F: one aggregator call to compute sync status (read-only,
+    // never auto-applies anything - the operator decides via the sync panel
+    // buttons). Only re-renders once per open to avoid any reopen loop.
+    if(l._syncCheck===undefined){
+      fetchPersistedStateBestEffort(l.id).then(fr=>{
+        l._syncCheck=computeSyncStatusForLead(l,fr);
+        const overlay=document.getElementById('modal-overlay');
+        if(overlay&&overlay.classList.contains('open')) openModal(id);
+      }).catch(()=>{ l._syncCheck={overall:'backend_down',resources:{}}; });
+    }
+    // Fase 8E/8F/8G/8H: commercial actions history, same one-shot pattern.
+    if(l._commercialActionsHistory===undefined){
+      fetchCommercialActionsHistoryBestEffort(l.id).then(history=>{
+        l._commercialActionsHistory=history;
+        const overlay=document.getElementById('modal-overlay');
+        if(overlay&&overlay.classList.contains('open')) openModal(id);
+      }).catch(()=>{ l._commercialActionsHistory=[]; });
+    }
   }
 }
 

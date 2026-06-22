@@ -32,6 +32,7 @@ const MIGRATION_FILES = [
   "002_create_crm_enrichment_profiles.sql",
   "003_create_crm_approved_media_assets.sql",
   "004_create_crm_production_packages.sql",
+  "005_create_crm_commercial_actions.sql",
 ];
 
 // Lazy, idempotent (CREATE TABLE/INDEX IF NOT EXISTS). Never runs at server

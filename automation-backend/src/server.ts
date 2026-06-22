@@ -68,6 +68,12 @@ import {
   insertProductionPackage,
   validateProductionPackagePayload,
 } from "./crmProductionPackagePersistence.ts";
+import {
+  getCommercialActionsHistory,
+  insertCommercialAction,
+  validateCommercialActionPayload,
+} from "./crmCommercialActionsPersistence.ts";
+import { getPersistedStateForLead } from "./crmPersistedState.ts";
 
 const DEFAULT_ALLOWED_ORIGINS = [
   "http://localhost:5500",
@@ -409,6 +415,80 @@ async function handleLatestProductionPackage(req, res, headers, leadIdRaw) {
   });
 }
 
+async function handleCreateCommercialAction(req, res, headers, leadIdRaw) {
+  await handleCreatePersistedResource(req, res, headers, leadIdRaw, {
+    validate: validateCommercialActionPayload,
+    insert: insertCommercialAction,
+    logLabel: "crm_commercial_action",
+  });
+}
+
+// Fase 8E. Auth/leadId checks mirror handleLatestPersistedResource, but the
+// response shape (full history list, not a single "latest" record) and
+// the aggregation logic (Promise.all across 4 tables) don't fit that
+// helper, so this stays its own function.
+async function handlePersistedState(req, res, headers, leadIdRaw) {
+  if (!isCrmPersistenceConfigured()) {
+    sendJson(res, 503, { ok: false, error: "persistence_not_configured" }, headers);
+    return;
+  }
+  if (!isCrmPersistenceAuthorized(req)) {
+    sendJson(res, 401, { ok: false, error: "unauthorized" }, headers);
+    return;
+  }
+  const leadId = validateLeadIdParam(leadIdRaw);
+  if (leadId === null) {
+    sendJson(res, 400, { ok: false, error: "lead_id_must_be_positive_integer" }, headers);
+    return;
+  }
+  try {
+    const state = await getPersistedStateForLead(leadId);
+    sendJson(res, 200, { ok: true, ...state }, headers);
+  } catch (err) {
+    if (err && err.code === "PERSISTENCE_NOT_CONFIGURED") {
+      sendJson(res, 503, { ok: false, error: "persistence_not_configured" }, headers);
+      return;
+    }
+    if (err && err.code === "PERSISTENCE_UNAVAILABLE") {
+      sendJson(res, 503, { ok: false, error: "persistence_unavailable" }, headers);
+      return;
+    }
+    logWarn("crm_persisted_state_fetch_failed", { message: sanitizeLog(err && err.message) });
+    sendJson(res, 500, { ok: false, error: "internal_error" }, headers);
+  }
+}
+
+async function handleCommercialActionsHistory(req, res, headers, leadIdRaw) {
+  if (!isCrmPersistenceConfigured()) {
+    sendJson(res, 503, { ok: false, error: "persistence_not_configured" }, headers);
+    return;
+  }
+  if (!isCrmPersistenceAuthorized(req)) {
+    sendJson(res, 401, { ok: false, error: "unauthorized" }, headers);
+    return;
+  }
+  const leadId = validateLeadIdParam(leadIdRaw);
+  if (leadId === null) {
+    sendJson(res, 400, { ok: false, error: "lead_id_must_be_positive_integer" }, headers);
+    return;
+  }
+  try {
+    const commercialActions = await getCommercialActionsHistory(leadId, 20);
+    sendJson(res, 200, { ok: true, commercialActions }, headers);
+  } catch (err) {
+    if (err && err.code === "PERSISTENCE_NOT_CONFIGURED") {
+      sendJson(res, 503, { ok: false, error: "persistence_not_configured" }, headers);
+      return;
+    }
+    if (err && err.code === "PERSISTENCE_UNAVAILABLE") {
+      sendJson(res, 503, { ok: false, error: "persistence_unavailable" }, headers);
+      return;
+    }
+    logWarn("crm_commercial_actions_history_fetch_failed", { message: sanitizeLog(err && err.message) });
+    sendJson(res, 500, { ok: false, error: "internal_error" }, headers);
+  }
+}
+
 function getOperatorSession(req) {
   const sessionId = parseSessionCookie(req.headers.cookie);
   return { sessionId, session: getSession(sessionId) };
@@ -509,7 +589,7 @@ export function createRequestHandler() {
     // exemption above. Listed explicitly (not a generic /api/crm/ prefix
     // match) so a future unrelated /api/crm/* POST doesn't get silently
     // exempted too.
-    const CRM_PERSISTENCE_POST_SUFFIXES = ["/audit-runs", "/enrichment-profiles", "/approved-media-assets", "/production-packages"];
+    const CRM_PERSISTENCE_POST_SUFFIXES = ["/audit-runs", "/enrichment-profiles", "/approved-media-assets", "/production-packages", "/commercial-actions"];
     const isCrmPersistencePostEndpoint = req.method === "POST" && url.pathname.startsWith("/api/crm/leads/")
       && CRM_PERSISTENCE_POST_SUFFIXES.some((suffix) => url.pathname.endsWith(suffix));
     if (req.method === "POST" && !isOperatorEndpoint && !isCrmPersistencePostEndpoint && !isAuthorized(req)) {
@@ -601,6 +681,30 @@ export function createRequestHandler() {
     if (req.method === "GET" && url.pathname.startsWith("/api/crm/leads/") && url.pathname.endsWith("/production-packages/latest")) {
       const leadIdRaw = url.pathname.slice("/api/crm/leads/".length, -"/production-packages/latest".length);
       await handleLatestProductionPackage(req, res, headers, leadIdRaw);
+      return;
+    }
+
+    // Fase 8E: Persisted State Aggregator. Read-only - combines the latest
+    // record from each Fase 8A-8D table plus commercial-actions history.
+    // fourHooks/outreachMessages are read verbatim from the latest
+    // ProductionPackage, never regenerated here.
+    if (req.method === "GET" && url.pathname.startsWith("/api/crm/leads/") && url.pathname.endsWith("/persisted-state")) {
+      const leadIdRaw = url.pathname.slice("/api/crm/leads/".length, -"/persisted-state".length);
+      await handlePersistedState(req, res, headers, leadIdRaw);
+      return;
+    }
+
+    // Fase 8E/8F/8G/8H: commercial action log. Never sends anything itself -
+    // only records that copy/open/mark-as-sent happened in the CRM.
+    if (req.method === "POST" && url.pathname.startsWith("/api/crm/leads/") && url.pathname.endsWith("/commercial-actions")) {
+      const leadIdRaw = url.pathname.slice("/api/crm/leads/".length, -"/commercial-actions".length);
+      await handleCreateCommercialAction(req, res, headers, leadIdRaw);
+      return;
+    }
+
+    if (req.method === "GET" && url.pathname.startsWith("/api/crm/leads/") && url.pathname.endsWith("/commercial-actions")) {
+      const leadIdRaw = url.pathname.slice("/api/crm/leads/".length, -"/commercial-actions".length);
+      await handleCommercialActionsHistory(req, res, headers, leadIdRaw);
       return;
     }
 
