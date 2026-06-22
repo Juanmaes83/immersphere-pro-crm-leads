@@ -4240,6 +4240,17 @@ function getCrmPersistenceToken(){
   try{return sessionStorage.getItem(CRM_PERSISTENCE_TOKEN_KEY)||'';}catch(e){return '';}
 }
 function hasCrmPersistenceToken(){return !!getCrmPersistenceToken();}
+// Bug real encontrado en QA manual (no detectado por pruebas automatizadas
+// que abrían la ficha vía openModal() directamente, saltándose este flujo):
+// conectar/limpiar el token con la ficha YA abierta no disparaba la
+// recuperación de datos, porque esa lógica vive dentro de openModal() y
+// aquí solo se llamaba a renderAll() (que no reabre el modal). Si el
+// operador pegaba el token con la ficha abierta - el flujo natural - nunca
+// veía nada recuperarse hasta cerrar y reabrir manualmente.
+function reopenCurrentModalIfOpen(){
+  const overlay=document.getElementById('modal-overlay');
+  if(overlay&&overlay.classList.contains('open')&&_currentModalLeadId!=null) openModal(_currentModalLeadId);
+}
 function connectCrmPersistence(){
   const current=getCrmPersistenceToken();
   const value=prompt(current?'Token de persistencia CRM (ya hay uno guardado en esta pestaña; pega uno nuevo para sustituirlo, o cancela para mantenerlo):':'Pega el token de persistencia CRM (CRM_PERSISTENCE_TOKEN). Se guarda solo en esta pestaña (sessionStorage) y se borra al cerrarla.');
@@ -4249,11 +4260,13 @@ function connectCrmPersistence(){
   try{sessionStorage.setItem(CRM_PERSISTENCE_TOKEN_KEY,trimmed);}catch(e){}
   _showToast('Token de persistencia guardado para esta pestaña.','var(--green)');
   renderAll();
+  reopenCurrentModalIfOpen();
 }
 function clearCrmPersistenceToken(){
   try{sessionStorage.removeItem(CRM_PERSISTENCE_TOKEN_KEY);}catch(e){}
   _showToast('Token de persistencia eliminado.','var(--accent2)');
   renderAll();
+  reopenCurrentModalIfOpen();
 }
 function crmPersistenceApiBase(){return IMMERSPHERE_BACKEND_URL;}
 function renderCrmPersistenceStatus(leadId){
@@ -7105,8 +7118,10 @@ function exportarCSV(){
 }
 
 // ── Modal ─────────────────────────────────────────────────────────────────────
+let _currentModalLeadId=null;
 function openModal(id){
   const l=leads.find(x=>x.id===id);if(!l) return;
+  _currentModalLeadId=id;
   const temp=calcTemp(l);
   const tc=getTempCfg(temp);
   document.getElementById('m-empresa').textContent=l.empresa+(l._custom?' ★':'');
@@ -7480,83 +7495,115 @@ function openModal(id){
   // Fase 8A: best-effort background fetch. The modal above already rendered
   // synchronously from local data (zero behavior change) - this only kicks
   // in if a persistence token is present, and only overwrites local data if
-  // the backend's copy is strictly newer. Safe to call openModal(id) again
-  // from inside the resolved promise: on the second pass local data already
-  // matches remote, so the freshness check makes it a no-op (no loop risk).
+  // the backend's copy is strictly newer.
+  //
+  // Each of the 4 fetches below is also gated by its own "attempted this
+  // session" flag (mirroring the _syncCheck/_commercialActionsHistory
+  // pattern already used further down). Without this guard, found during
+  // manual QA: when several of these are stale at once (e.g. the very
+  // first recovery for a lead, right after connecting persistence), each
+  // resolved fetch's reopen re-fires all 4 fetches again, and as long as
+  // any of those still finds "remote newer than local" (a real race since
+  // the others haven't applied their own data yet) it reopens again -
+  // dozens of redundant requests before it converges. Gating each fetch to
+  // fire at most once per lead per page load removes the amplification
+  // while keeping the reopen-on-success behavior.
   if(l.id>0 && hasCrmPersistenceToken()){
-    fetchLatestAuditRunBestEffort(l.id).then(auditRun=>{
-      if(!auditRun) return;
-      const localAt=l.websiteAudit&&l.websiteAudit.auditedAt?new Date(l.websiteAudit.auditedAt).getTime():0;
-      const remoteAt=auditRun.createdAt?new Date(auditRun.createdAt).getTime():0;
-      if(!remoteAt||remoteAt<=localAt) return;
-      const rebuilt=websiteAuditFromResponse({ok:true,website:auditRun.website,finalUrl:auditRun.website,auditedAt:auditRun.createdAt,audit:(auditRun.rawAudit&&typeof auditRun.rawAudit==='object'?auditRun.rawAudit:{})},l);
-      applyWebsiteAuditToLead(l,rebuilt);
-      saveState();
-      const overlay=document.getElementById('modal-overlay');
-      if(overlay&&overlay.classList.contains('open')) openModal(id);
-    }).catch(()=>{});
+    if(l._auditRecoveryAttempted!==true){
+      l._auditRecoveryAttempted=true;
+      fetchLatestAuditRunBestEffort(l.id).then(auditRun=>{
+        if(!auditRun) return;
+        const localAt=l.websiteAudit&&l.websiteAudit.auditedAt?new Date(l.websiteAudit.auditedAt).getTime():0;
+        const remoteAt=auditRun.createdAt?new Date(auditRun.createdAt).getTime():0;
+        if(!remoteAt||remoteAt<=localAt) return;
+        const rebuilt=websiteAuditFromResponse({ok:true,website:auditRun.website,finalUrl:auditRun.website,auditedAt:auditRun.createdAt,audit:(auditRun.rawAudit&&typeof auditRun.rawAudit==='object'?auditRun.rawAudit:{})},l);
+        applyWebsiteAuditToLead(l,rebuilt);
+        saveState();
+        const overlay=document.getElementById('modal-overlay');
+        if(overlay&&overlay.classList.contains('open')) openModal(id);
+      }).catch(()=>{});
+    }
 
     // Fase 8B: same freshness-checked best-effort pattern, using the
     // original profile object verbatim (rawEnrichmentProfile) for fidelity.
-    fetchLatestEnrichmentProfileBestEffort(l.id).then(ep=>{
-      if(!ep||!ep.rawEnrichmentProfile) return;
-      const localAt=l.enrichmentProfile&&l.enrichmentProfile.updatedAt?new Date(l.enrichmentProfile.updatedAt).getTime():0;
-      const remoteAt=ep.createdAt?new Date(ep.createdAt).getTime():0;
-      if(!remoteAt||remoteAt<=localAt) return;
-      l.enrichmentProfile=ep.rawEnrichmentProfile;
-      saveState();
-      const overlay=document.getElementById('modal-overlay');
-      if(overlay&&overlay.classList.contains('open')) openModal(id);
-    }).catch(()=>{});
+    if(l._enrichmentRecoveryAttempted!==true){
+      l._enrichmentRecoveryAttempted=true;
+      fetchLatestEnrichmentProfileBestEffort(l.id).then(ep=>{
+        if(!ep||!ep.rawEnrichmentProfile) return;
+        const localAt=l.enrichmentProfile&&l.enrichmentProfile.updatedAt?new Date(l.enrichmentProfile.updatedAt).getTime():0;
+        const remoteAt=ep.createdAt?new Date(ep.createdAt).getTime():0;
+        if(!remoteAt||remoteAt<=localAt) return;
+        l.enrichmentProfile=ep.rawEnrichmentProfile;
+        saveState();
+        const overlay=document.getElementById('modal-overlay');
+        if(overlay&&overlay.classList.contains('open')) openModal(id);
+      }).catch(()=>{});
+    }
 
     // Fase 8C
-    fetchLatestApprovedMediaAssetsBestEffort(l.id).then(assets=>{
-      if(!assets) return;
-      const localAt=l.mediaAssetsManual&&l.mediaAssetsManual.updatedAt?new Date(l.mediaAssetsManual.updatedAt).getTime():0;
-      const remoteAt=(assets.approvedAt&&new Date(assets.approvedAt).getTime())||(assets.createdAt&&new Date(assets.createdAt).getTime())||0;
-      if(!remoteAt||remoteAt<=localAt) return;
-      const aa=assets.approvedAssets||{};
-      l.mediaAssetsManual={
-        logoUrl:assets.logoUrl||null,
-        heroImage:assets.heroUrl||null,
-        propertyImages:Array.isArray(assets.imageUrls)?assets.imageUrls:[],
-        videoUrl:(aa.video&&aa.video.url)||null,
-        brandColors:Array.isArray(aa.brandColors)?aa.brandColors:[],
-        assetNotes:aa.notes||'',
-        assetsApproved:assets.assetsApproved===true,
-        updatedAt:assets.approvedAt||assets.createdAt
-      };
-      markProductionPackageStale(l,'mediaAssetsManual recovered from backend');
-      saveState();
-      const overlay=document.getElementById('modal-overlay');
-      if(overlay&&overlay.classList.contains('open')) openModal(id);
-    }).catch(()=>{});
+    if(l._assetsRecoveryAttempted!==true){
+      l._assetsRecoveryAttempted=true;
+      fetchLatestApprovedMediaAssetsBestEffort(l.id).then(assets=>{
+        if(!assets) return;
+        const localAt=l.mediaAssetsManual&&l.mediaAssetsManual.updatedAt?new Date(l.mediaAssetsManual.updatedAt).getTime():0;
+        const remoteAt=(assets.approvedAt&&new Date(assets.approvedAt).getTime())||(assets.createdAt&&new Date(assets.createdAt).getTime())||0;
+        if(!remoteAt||remoteAt<=localAt) return;
+        const aa=assets.approvedAssets||{};
+        l.mediaAssetsManual={
+          logoUrl:assets.logoUrl||null,
+          heroImage:assets.heroUrl||null,
+          propertyImages:Array.isArray(assets.imageUrls)?assets.imageUrls:[],
+          videoUrl:(aa.video&&aa.video.url)||null,
+          brandColors:Array.isArray(aa.brandColors)?aa.brandColors:[],
+          assetNotes:aa.notes||'',
+          assetsApproved:assets.assetsApproved===true,
+          updatedAt:assets.approvedAt||assets.createdAt
+        };
+        markProductionPackageStale(l,'mediaAssetsManual recovered from backend');
+        saveState();
+        const overlay=document.getElementById('modal-overlay');
+        if(overlay&&overlay.classList.contains('open')) openModal(id);
+      }).catch(()=>{});
+    }
 
     // Fase 8D
-    fetchLatestProductionPackageBestEffort(l.id).then(pkg=>{
-      if(!pkg||!pkg.packagePayload) return;
-      const pe=l.previewEngine||{};
-      const localAt=pe.packageGeneratedAt?new Date(pe.packageGeneratedAt).getTime():0;
-      const remoteAt=pkg.createdAt?new Date(pkg.createdAt).getTime():0;
-      if(!remoteAt||remoteAt<=localAt) return;
-      saveFourHooksProposalToLead(l,pkg.packagePayload,{errors:pkg.validationErrors||[],warnings:[]});
-      saveState();
-      const overlay=document.getElementById('modal-overlay');
-      if(overlay&&overlay.classList.contains('open')) openModal(id);
-    }).catch(()=>{});
+    if(l._packageRecoveryAttempted!==true){
+      l._packageRecoveryAttempted=true;
+      fetchLatestProductionPackageBestEffort(l.id).then(pkg=>{
+        if(!pkg||!pkg.packagePayload) return;
+        const pe=l.previewEngine||{};
+        const localAt=pe.packageGeneratedAt?new Date(pe.packageGeneratedAt).getTime():0;
+        const remoteAt=pkg.createdAt?new Date(pkg.createdAt).getTime():0;
+        if(!remoteAt||remoteAt<=localAt) return;
+        saveFourHooksProposalToLead(l,pkg.packagePayload,{errors:pkg.validationErrors||[],warnings:[]});
+        saveState();
+        const overlay=document.getElementById('modal-overlay');
+        if(overlay&&overlay.classList.contains('open')) openModal(id);
+      }).catch(()=>{});
+    }
 
     // Fase 8E/8F: one aggregator call to compute sync status (read-only,
     // never auto-applies anything - the operator decides via the sync panel
     // buttons). Only re-renders once per open to avoid any reopen loop.
-    if(l._syncCheck===undefined){
+    //
+    // Guard flag is set synchronously, before the fetch starts - not inside
+    // the .then(), which was the original (pre-existing) version. Setting
+    // it only on resolution left a race window: if openModal() ran again
+    // before this fetch resolved (e.g. triggered by one of the other 4
+    // best-effort fetches above), l._syncCheck was still undefined, so a
+    // second/third/etc. redundant fetchPersistedStateBestEffort fired.
+    if(l._syncCheckRequested!==true){
+      l._syncCheckRequested=true;
       fetchPersistedStateBestEffort(l.id).then(fr=>{
         l._syncCheck=computeSyncStatusForLead(l,fr);
         const overlay=document.getElementById('modal-overlay');
         if(overlay&&overlay.classList.contains('open')) openModal(id);
       }).catch(()=>{ l._syncCheck={overall:'backend_down',resources:{}}; });
     }
-    // Fase 8E/8F/8G/8H: commercial actions history, same one-shot pattern.
-    if(l._commercialActionsHistory===undefined){
+    // Fase 8E/8F/8G/8H: commercial actions history, same one-shot pattern,
+    // same synchronous-guard fix.
+    if(l._commercialActionsRequested!==true){
+      l._commercialActionsRequested=true;
       fetchCommercialActionsHistoryBestEffort(l.id).then(history=>{
         l._commercialActionsHistory=history;
         const overlay=document.getElementById('modal-overlay');
@@ -7603,7 +7650,7 @@ function guardarNotas(id){
   if(btn){btn.textContent='✓ Guardado';btn.classList.add('saved');setTimeout(()=>{btn.textContent='Guardar notas y próxima acción';btn.classList.remove('saved');},2000);}
 }
 function closeModal(e){if(e.target===document.getElementById('modal-overlay'))closeModalBtn();}
-function closeModalBtn(){document.getElementById('modal-overlay').classList.remove('open');document.body.style.overflow='';}
+function closeModalBtn(){document.getElementById('modal-overlay').classList.remove('open');document.body.style.overflow='';_currentModalLeadId=null;}
 
 // ── Duplicar Lead ─────────────────────────────────────────────────────────────
 function duplicarLead(id){
