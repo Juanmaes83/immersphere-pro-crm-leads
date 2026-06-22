@@ -102,6 +102,30 @@ test("8A: configurado, GET latest sin header de token devuelve 401", async () =>
   });
 });
 
+// Regresion: en produccion INTERNAL_API_TOKEN SI esta configurado (a
+// diferencia de los tests de arriba, que no lo fijan). La puerta global de
+// auth POST (linea ~364 de server.ts) debe seguir exentando este endpoint
+// incluso con INTERNAL_API_TOKEN activo - este es el bug real encontrado en
+// el QA contra Railway: la puerta antigua interceptaba el POST antes de
+// llegar al endpoint 8A, devolviendo 401 aunque CRM_PERSISTENCE_TOKEN fuera
+// correcto.
+test("8A: con INTERNAL_API_TOKEN configurado (como en produccion), POST con CRM_PERSISTENCE_TOKEN correcto NO es bloqueado por la puerta global", async () => {
+  await withServer({ DATABASE_URL: FAKE_DB_URL, CRM_PERSISTENCE_TOKEN: "real-token", INTERNAL_API_TOKEN: "some-internal-token" }, async (baseUrl) => {
+    const res = await fetch(`${baseUrl}/api/crm/leads/30/audit-runs`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-CRM-Persistence-Token": "real-token" },
+      body: JSON.stringify(duly()),
+    });
+    const body = await res.json();
+    // Debe llegar hasta la logica 8A real (503 porque Postgres es
+    // inalcanzable en este test) - NUNCA 401 por la puerta de
+    // INTERNAL_API_TOKEN, que es exactamente el bug que se esta cubriendo.
+    assert.notEqual(res.status, 401);
+    assert.equal(res.status, 503);
+    assert.equal(body.error, "persistence_unavailable");
+  });
+});
+
 test("8A: configurado, token incorrecto devuelve 401", async () => {
   await withServer({ DATABASE_URL: FAKE_DB_URL, CRM_PERSISTENCE_TOKEN: "real-token" }, async (baseUrl) => {
     const res = await fetch(`${baseUrl}/api/crm/leads/30/audit-runs`, {

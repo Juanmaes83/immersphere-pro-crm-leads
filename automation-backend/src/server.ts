@@ -361,7 +361,12 @@ export function createRequestHandler() {
     // endpoints are protected by OPERATOR_ADMIN_TOKEN (login) and session+CSRF
     // (all other operator POSTs).
     const isOperatorEndpoint = url.pathname.startsWith("/api/operator/");
-    if (req.method === "POST" && !isOperatorEndpoint && !isAuthorized(req)) {
+    // Fase 8A fix: this endpoint has its own independent auth
+    // (isCrmPersistenceAuthorized / CRM_PERSISTENCE_TOKEN, checked inside
+    // handleCreateAuditRun) and must never require INTERNAL_API_TOKEN - same
+    // reasoning as the operator-endpoint exemption above.
+    const isCrmAuditRunPostEndpoint = req.method === "POST" && url.pathname.startsWith("/api/crm/leads/") && url.pathname.endsWith("/audit-runs");
+    if (req.method === "POST" && !isOperatorEndpoint && !isCrmAuditRunPostEndpoint && !isAuthorized(req)) {
       sendJson(res, 401, { ok: false, error: "unauthorized" }, headers);
       return;
     }
