@@ -4066,8 +4066,8 @@ function renderProductionPreflightBlock(l){
     +'<div class="modal-section-title" style="margin:0">🚦 Preflight de Producción</div>'
     +'<span class="tag '+preflightLevelClass(pf.level)+'">'+preflightLevelLabel(pf.level)+'</span>'
     +'</div>'
-    +'<div style="background:var(--bg2);border-radius:6px;padding:8px;font-size:10px;color:var(--text2);max-height:220px;overflow:auto">'
-    +pf.items.map(i=>'<div style="padding:2px 0;display:flex;gap:6px;align-items:flex-start"><span>'+(i.ok?'<span style="color:var(--green,#10b981)">✓</span>':(i.critical?'<span style="color:var(--red,#ef4444)">✕</span>':'<span style="color:var(--accent2)">⚠</span>'))+'</span><span>'+safeHtml(i.label)+'</span></div>').join('')
+    +'<div style="background:var(--bg2);border-radius:6px;padding:8px;font-size:10px;color:var(--text2);max-height:170px;overflow-y:auto;overflow-x:hidden">'
+    +pf.items.map(i=>'<div style="padding:2px 0;display:flex;gap:6px;align-items:flex-start;min-width:0"><span style="flex-shrink:0">'+(i.ok?'<span style="color:var(--green,#10b981)">✓</span>':(i.critical?'<span style="color:var(--red,#ef4444)">✕</span>':'<span style="color:var(--accent2)">⚠</span>'))+'</span><span style="min-width:0;word-break:break-word">'+safeHtml(i.label)+'</span></div>').join('')
     +'</div>'
     +(pf.level!=='green'?'<div style="margin-top:6px;font-size:9px;color:var(--text3)">No bloquea el trabajo manual, pero se pedirá confirmación antes de abrir Operator Console.</div>':'')
     +(stale?'<div style="margin-top:8px;background:rgba(239,68,68,0.06);border-radius:6px;padding:8px;font-size:10px;color:var(--text2)">'
@@ -10880,9 +10880,15 @@ function applyInternalFallback(leadId,kind){
 }
 function renderInternalFallbackBlock(l){
   const hasVideoFallbackApplied=getLeadManualAssets(l).videoUrl===INTERNAL_FALLBACK_LIBRARY.video.url;
+  // Bug PR #28 / hotfix: row() used to return an unclosed wrapper element,
+  // so it (called 3 times below) leaked open into every section rendered
+  // after "Fallback Visual Interno" in openModal — that's the actual cause
+  // of the modal layout regression (empty space, horizontal scroll,
+  // displaced sections, "missing" old modules). Fixed by closing it below.
   const row=(label,kind,available)=>'<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px solid rgba(255,255,255,0.04);font-size:11px">'
     +'<span style="color:var(--text2)">'+safeHtml(label)+'</span>'
-    +(available?'<button class="contact-btn btn-maps" style="font-size:9px;padding:4px 8px" onclick="applyInternalFallback('+l.id+',\''+kind+'\')">'+(kind==='video'&&hasVideoFallbackApplied?'✓ Aplicado':'Usar fallback')+'</button>':'<span style="font-size:9px;color:var(--text3)">No hay fallback interno configurado todavía.</span>');
+    +(available?'<button class="contact-btn btn-maps" style="font-size:9px;padding:4px 8px" onclick="applyInternalFallback('+l.id+',\''+kind+'\')">'+(kind==='video'&&hasVideoFallbackApplied?'✓ Aplicado':'Usar fallback')+'</button>':'<span style="font-size:9px;color:var(--text3)">No hay fallback interno configurado todavía.</span>')
+    +'</div>';
   return '<div class="modal-section" data-section="internal-fallback" style="border-top:2px solid rgba(196,169,106,0.3)">'
     +'<div class="modal-section-title" style="margin-bottom:6px">🗂 Fallback Visual Interno</div>'
     +'<div style="font-size:10px;color:var(--text3);background:rgba(196,169,106,0.06);border-radius:6px;padding:6px 10px;margin-bottom:8px">Solo para cuando no hay assets reales. Nunca se aplica automáticamente ni se presenta como asset real del cliente.</div>'
