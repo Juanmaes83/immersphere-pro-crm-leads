@@ -3025,6 +3025,7 @@ async function auditLeadWebsite(leadId){
     applyWebsiteAuditToLead(l,websiteAuditFromResponse(data,l));
     saveState();renderAll();setTimeout(()=>openModal(leadId),80);
     if(l.id>0) persistAuditRunBestEffort(l.id,l.websiteAudit);
+    if(l.id>0) persistEnrichmentProfileBestEffort(l);
   }catch(err){
     l.websiteAudit={...(l.websiteAudit||{}),status:'failed',auditedAt:new Date().toISOString(),website:web,error:String(err&&err.message||err),weaknesses:['No se pudo completar la auditoría local.'],opportunities:['Revisar web manualmente antes de contactar.'],websiteOpportunityScore:l.websiteAudit&&l.websiteAudit.websiteOpportunityScore||0,recommendedService:l.websiteAudit&&l.websiteAudit.recommendedService||'',recommendedNextAction:'Revisar disponibilidad de la web o arrancar el bridge local.',confidence:'baja'};
     saveState();renderAll();setTimeout(()=>openModal(leadId),80);
@@ -4303,6 +4304,165 @@ async function fetchLatestAuditRunBestEffort(leadId){
     if(!res.ok) return null;
     const data=await res.json();
     return (data&&data.ok&&data.auditRun)?data.auditRun:null;
+  }catch(e){ return null; }
+}
+
+// ── Fase 8B: EnrichmentProfile persistence ────────────────────────────────
+// Same best-effort pattern as 8A: only fires if a token is present, never
+// blocks the UI, never overwrites local data with older backend data.
+function buildEnrichmentProfilePayloadFromLead(lead){
+  const l=lead||{};
+  const ep=getLeadEnrichmentProfile(l);
+  if(!ep) return null;
+  const cc=ep.contactCandidates||{},ac=ep.assetCandidates||{};
+  const social=Array.isArray(cc.socialLinks)?cc.socialLinks:[];
+  const socialOnly=social.filter(c=>classifySocialLink(c&&c.value)==='social');
+  const videoLinks=social.filter(c=>classifySocialLink(c&&c.value)==='video');
+  const documentLinks=social.filter(c=>classifySocialLink(c&&c.value)==='document');
+  const urlsReviewed=(ep.pageDiscovery&&ep.pageDiscovery.urlsReviewed)||[];
+  const contactPages=urlsReviewed.filter(u=>u&&u.pageType==='contact');
+  const propertyPages=urlsReviewed.filter(u=>u&&u.pageType==='property');
+  return {
+    website:ep.finalUrl||ep.auditUrl||l.web||l.website||'',
+    webHasWhatsapp:getWebHasWhatsapp(l),
+    crmHasWhatsapp:getCrmHasWhatsapp(l),
+    whatsappLinks:cc.whatsappLinks||[],
+    emails:cc.emails||[],
+    phones:cc.phones||[],
+    socialLinks:socialOnly,
+    videoLinks,
+    documentLinks,
+    forms:cc.forms||[],
+    contactPages,
+    propertyPages,
+    pagesReviewed:(ep.pageDiscovery&&ep.pageDiscovery.pagesReviewed)||0,
+    pageDiscovery:ep.pageDiscovery||{},
+    logoCandidates:ac.logos||[],
+    imageCandidates:ac.allImages||[],
+    contactSignals:[],
+    warnings:ep.warnings||[],
+    confidence:'media',
+    rawEnrichmentProfile:ep
+  };
+}
+async function persistEnrichmentProfileBestEffort(lead){
+  if(!lead||lead.id<=0||!hasCrmPersistenceToken()) return;
+  const payload=buildEnrichmentProfilePayloadFromLead(lead);
+  if(!payload) return;
+  try{
+    const res=await fetch(crmPersistenceApiBase()+'/api/crm/leads/'+lead.id+'/enrichment-profiles',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','X-CRM-Persistence-Token':getCrmPersistenceToken()},
+      body:JSON.stringify(payload)
+    });
+    if(res.status===401) _showToast('Token de persistencia incorrecto — usa "Limpiar token" y vuelve a pegarlo.','var(--red)');
+  }catch(e){ /* backend down / network error: silent, localStorage already saved */ }
+}
+async function fetchLatestEnrichmentProfileBestEffort(leadId){
+  if(!leadId||leadId<=0||!hasCrmPersistenceToken()) return null;
+  try{
+    const res=await fetch(crmPersistenceApiBase()+'/api/crm/leads/'+leadId+'/enrichment-profiles/latest',{
+      headers:{'X-CRM-Persistence-Token':getCrmPersistenceToken()}
+    });
+    if(!res.ok) return null;
+    const data=await res.json();
+    return (data&&data.ok&&data.enrichmentProfile)?data.enrichmentProfile:null;
+  }catch(e){ return null; }
+}
+
+// ── Fase 8C: ApprovedMediaAssets persistence ──────────────────────────────
+function buildApprovedMediaAssetsPayloadFromLead(lead){
+  const l=lead||{};
+  const m=getLeadManualAssets(l);
+  return {
+    logoUrl:m.logoUrl||null,
+    heroUrl:m.heroImage||null,
+    imageUrls:m.propertyImages||[],
+    approvedAssets:{
+      logo:{url:m.logoUrl||null},
+      hero:{url:m.heroImage||null},
+      images:(m.propertyImages||[]).map(u=>({url:u})),
+      video:{url:m.videoUrl||null},
+      brandColors:m.brandColors||[],
+      notes:m.assetNotes||''
+    },
+    assetsApproved:m.assetsApproved===true,
+    approvedAt:m.updatedAt||new Date().toISOString(),
+    approvedBy:'operator',
+    source:'crm'
+  };
+}
+async function persistApprovedMediaAssetsBestEffort(lead){
+  if(!lead||lead.id<=0||!hasCrmPersistenceToken()) return;
+  const payload=buildApprovedMediaAssetsPayloadFromLead(lead);
+  try{
+    const res=await fetch(crmPersistenceApiBase()+'/api/crm/leads/'+lead.id+'/approved-media-assets',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','X-CRM-Persistence-Token':getCrmPersistenceToken()},
+      body:JSON.stringify(payload)
+    });
+    if(res.status===401) _showToast('Token de persistencia incorrecto — usa "Limpiar token" y vuelve a pegarlo.','var(--red)');
+  }catch(e){ /* backend down / network error: silent, localStorage already saved */ }
+}
+async function fetchLatestApprovedMediaAssetsBestEffort(leadId){
+  if(!leadId||leadId<=0||!hasCrmPersistenceToken()) return null;
+  try{
+    const res=await fetch(crmPersistenceApiBase()+'/api/crm/leads/'+leadId+'/approved-media-assets/latest',{
+      headers:{'X-CRM-Persistence-Token':getCrmPersistenceToken()}
+    });
+    if(!res.ok) return null;
+    const data=await res.json();
+    return (data&&data.ok&&data.approvedMediaAssets)?data.approvedMediaAssets:null;
+  }catch(e){ return null; }
+}
+
+// ── Fase 8D: ProductionPackage persistence ────────────────────────────────
+// Status is derived the same way the backend re-validates it server-side
+// (ready only when both stale=false AND validationErrors is empty) so the
+// CRM never sends a combination the backend would reject anyway.
+function buildProductionPackagePayloadFromLead(lead){
+  const l=lead||{};
+  const pe=l.previewEngine||{};
+  const payload=pe.productionPackagePayload;
+  if(!payload) return null;
+  const validation=pe.productionPackageValidation||{errors:[],warnings:[]};
+  const errors=validation.errors||[];
+  const stale=isProductionPackageStale(l);
+  const status=(errors.length===0&&!stale)?'ready':'draft';
+  const rules=payload.rules||{};
+  return {
+    packageVersion:payload.schemaVersion||payload.generatedAt||'v1',
+    status,
+    stale,
+    validationErrors:errors,
+    hooks:payload.hooks||{},
+    routes:payload.targetRoutes||{},
+    targetRepos:{rubik:rules.internalEngine||'',aurum:rules.clientFacingDomain||''},
+    packagePayload:payload
+  };
+}
+async function persistProductionPackageBestEffort(lead){
+  if(!lead||lead.id<=0||!hasCrmPersistenceToken()) return;
+  const payload=buildProductionPackagePayloadFromLead(lead);
+  if(!payload) return;
+  try{
+    const res=await fetch(crmPersistenceApiBase()+'/api/crm/leads/'+lead.id+'/production-packages',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','X-CRM-Persistence-Token':getCrmPersistenceToken()},
+      body:JSON.stringify(payload)
+    });
+    if(res.status===401) _showToast('Token de persistencia incorrecto — usa "Limpiar token" y vuelve a pegarlo.','var(--red)');
+  }catch(e){ /* backend down / network error: silent, localStorage already saved */ }
+}
+async function fetchLatestProductionPackageBestEffort(leadId){
+  if(!leadId||leadId<=0||!hasCrmPersistenceToken()) return null;
+  try{
+    const res=await fetch(crmPersistenceApiBase()+'/api/crm/leads/'+leadId+'/production-packages/latest',{
+      headers:{'X-CRM-Persistence-Token':getCrmPersistenceToken()}
+    });
+    if(!res.ok) return null;
+    const data=await res.json();
+    return (data&&data.ok&&data.productionPackage)?data.productionPackage:null;
   }catch(e){ return null; }
 }
 
@@ -7041,6 +7201,55 @@ function openModal(id){
       if(!remoteAt||remoteAt<=localAt) return;
       const rebuilt=websiteAuditFromResponse({ok:true,website:auditRun.website,finalUrl:auditRun.website,auditedAt:auditRun.createdAt,audit:(auditRun.rawAudit&&typeof auditRun.rawAudit==='object'?auditRun.rawAudit:{})},l);
       applyWebsiteAuditToLead(l,rebuilt);
+      saveState();
+      const overlay=document.getElementById('modal-overlay');
+      if(overlay&&overlay.classList.contains('open')) openModal(id);
+    }).catch(()=>{});
+
+    // Fase 8B: same freshness-checked best-effort pattern, using the
+    // original profile object verbatim (rawEnrichmentProfile) for fidelity.
+    fetchLatestEnrichmentProfileBestEffort(l.id).then(ep=>{
+      if(!ep||!ep.rawEnrichmentProfile) return;
+      const localAt=l.enrichmentProfile&&l.enrichmentProfile.updatedAt?new Date(l.enrichmentProfile.updatedAt).getTime():0;
+      const remoteAt=ep.createdAt?new Date(ep.createdAt).getTime():0;
+      if(!remoteAt||remoteAt<=localAt) return;
+      l.enrichmentProfile=ep.rawEnrichmentProfile;
+      saveState();
+      const overlay=document.getElementById('modal-overlay');
+      if(overlay&&overlay.classList.contains('open')) openModal(id);
+    }).catch(()=>{});
+
+    // Fase 8C
+    fetchLatestApprovedMediaAssetsBestEffort(l.id).then(assets=>{
+      if(!assets) return;
+      const localAt=l.mediaAssetsManual&&l.mediaAssetsManual.updatedAt?new Date(l.mediaAssetsManual.updatedAt).getTime():0;
+      const remoteAt=(assets.approvedAt&&new Date(assets.approvedAt).getTime())||(assets.createdAt&&new Date(assets.createdAt).getTime())||0;
+      if(!remoteAt||remoteAt<=localAt) return;
+      const aa=assets.approvedAssets||{};
+      l.mediaAssetsManual={
+        logoUrl:assets.logoUrl||null,
+        heroImage:assets.heroUrl||null,
+        propertyImages:Array.isArray(assets.imageUrls)?assets.imageUrls:[],
+        videoUrl:(aa.video&&aa.video.url)||null,
+        brandColors:Array.isArray(aa.brandColors)?aa.brandColors:[],
+        assetNotes:aa.notes||'',
+        assetsApproved:assets.assetsApproved===true,
+        updatedAt:assets.approvedAt||assets.createdAt
+      };
+      markProductionPackageStale(l,'mediaAssetsManual recovered from backend');
+      saveState();
+      const overlay=document.getElementById('modal-overlay');
+      if(overlay&&overlay.classList.contains('open')) openModal(id);
+    }).catch(()=>{});
+
+    // Fase 8D
+    fetchLatestProductionPackageBestEffort(l.id).then(pkg=>{
+      if(!pkg||!pkg.packagePayload) return;
+      const pe=l.previewEngine||{};
+      const localAt=pe.packageGeneratedAt?new Date(pe.packageGeneratedAt).getTime():0;
+      const remoteAt=pkg.createdAt?new Date(pkg.createdAt).getTime():0;
+      if(!remoteAt||remoteAt<=localAt) return;
+      saveFourHooksProposalToLead(l,pkg.packagePayload,{errors:pkg.validationErrors||[],warnings:[]});
       saveState();
       const overlay=document.getElementById('modal-overlay');
       if(overlay&&overlay.classList.contains('open')) openModal(id);
@@ -11015,6 +11224,7 @@ function saveLeadManualAssets(leadId,payload){
   l.mediaAssetsManual={logoUrl,heroImage,propertyImages:imgRes.urls,videoUrl,brandColors:colorRes.colors,assetNotes,assetsApproved,updatedAt:new Date().toISOString()};
   markProductionPackageStale(l,'mediaAssetsManual updated');
   saveState();
+  if(l.id>0) persistApprovedMediaAssetsBestEffort(l);
   return {
     logoInvalid:!!(p.logoUrl&&!logoUrl),
     heroInvalid:!!(p.heroImage&&!heroImage),
@@ -11558,6 +11768,7 @@ function regenerateProductionPackageForLead(leadId){
   saveFourHooksProposalToLead(l,payload,validation);
   saveState();renderAll();openModal(leadId);
   _showToast('Production Package regenerado.','var(--gold)');
+  if(l.id>0) persistProductionPackageBestEffort(l);
   return {payload,validation};
 }
 function saveFourHooksProposalToLead(lead,payload,validation){if(!lead)return;const pe=lead.previewEngine||emptyPreviewEngine();lead.previewEngine={...pe,productionPackagePayload:payload,productionPackageValidation:validation,commercialDiagnosis:payload.commercialDiagnosis,fourHooks:payload.fourHooks,outreachMessages:payload.outreachMessages,generatedAt:payload.generatedAt,fourHooksProposal:pe.fourHooksProposal||null,prPlan:pe.prPlan||null,githubPreflight:pe.githubPreflight||null};lead.updatedAt=new Date().toISOString();stampProductionPackageSignature(lead);if(!Array.isArray(lead._actividad))lead._actividad=[];lead._actividad.push({tipo:'sistema',texto:'Propuesta 4 ganchos generada y guardada en previewEngine.',fecha:new Date().toLocaleDateString('es-ES')});}
