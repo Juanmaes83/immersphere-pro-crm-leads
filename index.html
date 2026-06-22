@@ -3000,7 +3000,8 @@ function applyWebsiteAuditToLead(lead,audit){
   if(!nbeHas(lead.auditPain)&&audit.weaknesses&&audit.weaknesses.length) lead.auditPain=audit.weaknesses[0];
   if(!nbeHas(lead.auditNextBestAction)&&audit.recommendedNextAction) lead.auditNextBestAction=audit.recommendedNextAction;
   const enrichmentProfile=buildEnrichmentProfileFromAudit(audit,lead);
-  if(enrichmentProfile) lead.enrichmentProfile=enrichmentProfile;
+  if(enrichmentProfile){lead.enrichmentProfile=enrichmentProfile;markProductionPackageStale(lead,'enrichmentProfile updated from new audit');}
+  markProductionPackageStale(lead,'websiteAudit updated');
   lead._actividad=lead._actividad||[];
   lead._actividad.push({tipo:'audit',texto:'Auditoría web '+auditStatusLabel(audit)+' · oportunidad '+(audit.websiteOpportunityScore||0)+'/100',fecha:new Date().toLocaleString('es-ES')});
   lead.updatedAt=new Date().toISOString();
@@ -3399,6 +3400,7 @@ function copyRegistroURLs(id){const l=leads.find(x=>x.id===id);if(!l)return;navi
 function copyCierreSprint(id){const l=leads.find(x=>x.id===id);if(!l)return;navigator.clipboard.writeText(cierreSprintText(l)).then(()=>_showToast('Mensaje cierre sprint copiado','var(--accent2)')).catch(()=>_showToast('Error al copiar','var(--red)'));}
 function openProductionLauncher(id){
   const l=leads.find(x=>x.id===id);if(!l)return;
+  if(!confirmPreflightBeforeAction(id,'abrir el Centro de Producción')) return;
   document.getElementById('prod-launcher-title').textContent='🚀 Centro de Producción 4 Ganchos · '+l.empresa;
   document.getElementById('prod-launcher-body').innerHTML=safeRenderSection('Centro de Producción',()=>renderProductionLauncher(l));
   document.getElementById('prod-launcher-overlay').classList.add('open');
@@ -3575,6 +3577,7 @@ function prepareOperatorPackage(id){
 }
 function openOperatorConsole(id){
   const l=leads.find(x=>x.id===id);if(!l)return;
+  if(!confirmPreflightBeforeAction(id,'abrir Operator Console')) return;
   const slug=toLeadSlug(l.empresa||'');
   const rawPkg=getStoredFourHooksPayload(l)||buildProductionPackageFromLead(l);
   const pkg=sanitizeProductionPackageForRailway(rawPkg);
@@ -3803,10 +3806,284 @@ function clearLeadEnrichment(leadId){
   const l=leads.find(x=>x.id===leadId);if(!l) return;
   if(!confirm('¿Borrar el resumen de enriquecimiento guardado para este lead? (la auditoría web completa no se borra)')) return;
   l.enrichmentProfile=null;
+  markProductionPackageStale(l,'enrichmentProfile cleared');
   saveState();
   _showToast('Enriquecimiento limpiado','var(--accent2)');
   renderAll();
   openModal(leadId);
+}
+
+// ── Fase 7D/7E: Candidatos detectados + aplicar a Assets visuales ───────────
+// Read-only display of contact/asset candidates from lead.enrichmentProfile
+// (Fase 7C) or, non-destructively, lead.websiteAudit.enrichmentCandidates as
+// fallback. Every "Usar..." button requires an explicit human click and
+// always routes through saveLeadManualAssets (validated/deduped/capped at 8,
+// same as PR #25). assetsApproved is always forced back to false when a
+// candidate is applied — only the existing "Assets aprobados" checkbox in
+// the Assets visuales block can approve anything.
+let _candidatesCache={};
+function getLeadCandidatesSource(lead){
+  const l=lead||{};
+  const p=getLeadEnrichmentProfile(l);
+  if(p) return {contactCandidates:p.contactCandidates||{},assetCandidates:p.assetCandidates||{},brandSignals:p.brandSignals||{},warnings:Array.isArray(p.warnings)?p.warnings:[],status:p.status||'unknown',fallbackSource:false};
+  const ec=l.websiteAudit&&l.websiteAudit.enrichmentCandidates;
+  if(ec&&typeof ec==='object') return {contactCandidates:ec.contactCandidates||{},assetCandidates:ec.assetCandidates||{},brandSignals:ec.brandSignals||{},warnings:Array.isArray(ec.warnings)?ec.warnings:[],status:ec.status||'unknown',fallbackSource:true};
+  return null;
+}
+function safeOpenableUrl(url){
+  const s=String(url||'').trim();
+  return /^https?:\/\//i.test(s)?s:'';
+}
+function looksLikeVideoUrl(url){
+  return /\.(mp4|webm|mov|m4v)(\?|#|$)/i.test(String(url||''));
+}
+function candConfidenceBadge(c){
+  const map={high:{c:'#10b981',l:'alta'},medium:{c:'#d4af37',l:'media'},low:{c:'#94a3b8',l:'baja'}};
+  const m=map[c]||{c:'#94a3b8',l:c||'—'};
+  return '<span style="font-size:9px;padding:1px 5px;border-radius:3px;background:'+m.c+'22;color:'+m.c+'">conf. '+m.l+'</span>';
+}
+function copyPlainText(text,okMsg){
+  const t=String(text||'');
+  navigator.clipboard.writeText(t).then(()=>_showToast(okMsg||'Copiado.','var(--green)')).catch(()=>{
+    const ta=document.createElement('textarea');ta.value=t;document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta);_showToast(okMsg||'Copiado.','var(--green)');
+  });
+}
+function getCachedCandidate(leadId,group,index){
+  return (_candidatesCache[leadId]&&_candidatesCache[leadId][group]&&_candidatesCache[leadId][group][index])||null;
+}
+function copyCachedCandidate(leadId,group,index){
+  const c=getCachedCandidate(leadId,group,index);if(!c) return;
+  copyPlainText(c.value||c.url||'','Copiado.');
+}
+function contactCandidateRow(leadId,group,index,c){
+  const value=safeHtml(c.value||'');
+  const fieldMap={phones:'telefono',emails:'email'};
+  const field=fieldMap[group];
+  return '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:4px 0;border-bottom:1px solid rgba(255,255,255,0.04);font-size:11px">'
+    +'<div style="min-width:0;flex:1"><div style="color:var(--text2);word-break:break-all">'+value+'</div>'
+    +'<div style="margin-top:2px;display:flex;gap:5px;flex-wrap:wrap;align-items:center">'+candConfidenceBadge(c.confidence)+'<span style="font-size:9px;color:var(--text3)">'+safeHtml(c.source||'')+'</span></div></div>'
+    +'<div style="display:flex;gap:4px;flex-shrink:0">'
+    +'<button class="contact-btn btn-maps" style="font-size:9px;padding:4px 7px" onclick="copyCachedCandidate('+leadId+',\''+group+'\','+index+')">📋</button>'
+    +(field?'<button class="contact-btn btn-email" style="font-size:9px;padding:4px 7px" onclick="applyCandidateContact('+leadId+',\''+group+'\','+index+',\''+field+'\')">Usar</button>':'')
+    +'</div></div>';
+}
+function imageCandidateRow(leadId,group,index,c){
+  const url=safeOpenableUrl(c.url);
+  const thumb=url?'<img src="'+safeHtml(url)+'" loading="lazy" referrerpolicy="no-referrer" onerror="this.style.display=\'none\'" style="width:40px;height:40px;object-fit:cover;border-radius:4px;background:var(--bg3);flex-shrink:0">':'<div style="width:40px;height:40px;border-radius:4px;background:var(--bg3);flex-shrink:0"></div>';
+  const openLink=url?'<a href="'+safeHtml(url)+'" target="_blank" rel="noopener noreferrer" class="contact-btn btn-maps" style="font-size:9px;padding:4px 7px">↗</a>':'';
+  return '<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid rgba(255,255,255,0.04);font-size:10px">'
+    +thumb
+    +'<div style="min-width:0;flex:1">'
+    +'<div style="color:var(--text2);word-break:break-all;font-size:9px">'+safeHtml((c.url||'').slice(0,70))+(c.url&&c.url.length>70?'…':'')+'</div>'
+    +'<div style="margin-top:2px;display:flex;gap:5px;flex-wrap:wrap;align-items:center">'+candConfidenceBadge(c.confidence)+'<span style="font-size:9px;color:var(--text3)">'+safeHtml(c.source||'')+(c.recommendedUse?' · '+safeHtml(c.recommendedUse):'')+'</span></div>'
+    +(c.reason?'<div style="font-size:9px;color:var(--text3);margin-top:1px">'+safeHtml(c.reason)+'</div>':'')
+    +'</div>'
+    +'<div style="display:flex;gap:4px;flex-shrink:0;flex-wrap:wrap;max-width:130px">'
+    +'<button class="contact-btn btn-maps" style="font-size:9px;padding:4px 6px" onclick="copyCachedCandidate('+leadId+',\''+group+'\','+index+')">📋</button>'
+    +openLink
+    +(group==='logos'?'<button class="contact-btn btn-email" style="font-size:9px;padding:4px 6px" onclick="applyCandidateAsset('+leadId+',\''+group+'\','+index+',\'logo\')">Usar logo</button>':'')
+    +(['heroImages','openGraphImages','twitterImages','allImages'].includes(group)?'<button class="contact-btn btn-email" style="font-size:9px;padding:4px 6px" onclick="applyCandidateAsset('+leadId+',\''+group+'\','+index+',\'hero\')">Usar hero</button>':'')
+    +(['propertyImages','allImages'].includes(group)?'<button class="contact-btn btn-web" style="font-size:9px;padding:4px 6px" onclick="applyCandidateAsset('+leadId+',\''+group+'\','+index+',\'image\')">+ imagen</button>':'')
+    +(group==='allImages'&&looksLikeVideoUrl(c.url)?'<button class="contact-btn btn-tel" style="font-size:9px;padding:4px 6px" onclick="applyCandidateAsset('+leadId+',\''+group+'\','+index+',\'video\')">Usar vídeo</button>':'')
+    +'</div></div>';
+}
+function candidatesGroupBlock(title,leadId,group,items,rowFn,maxShow){
+  if(!Array.isArray(items)||!items.length) return '';
+  const cap=maxShow||4;
+  const shown=items.slice(0,cap);
+  const rest=items.length-shown.length;
+  return '<div style="margin-bottom:8px"><div style="font-size:9px;color:var(--text3);text-transform:uppercase;font-weight:700;margin-bottom:3px">'+safeHtml(title)+' ('+items.length+')</div>'
+    +shown.map((c,i)=>rowFn(leadId,group,i,c)).join('')
+    +(rest>0?'<div style="font-size:9px;color:var(--text3);padding:3px 0">+'+rest+' más (ver resumen completo en Enriquecimiento Detectado)</div>':'')
+    +'</div>';
+}
+function renderLeadCandidatesPanel(l){
+  const src=getLeadCandidatesSource(l);
+  if(!src){
+    return '<div class="modal-section" data-section="lead-candidates" style="border-top:2px solid rgba(196,169,106,0.3)">'
+      +'<div class="modal-section-title" style="margin-bottom:6px">🧩 Candidatos Detectados</div>'
+      +'<div style="font-size:10px;color:var(--text3);background:rgba(196,169,106,0.06);border-radius:6px;padding:6px 10px">Sin candidatos detectados todavía. Lanza "Reauditar web" primero.</div>'
+      +'</div>';
+  }
+  _candidatesCache[l.id]={
+    phones:(src.contactCandidates.phones||[]),emails:(src.contactCandidates.emails||[]),whatsappLinks:(src.contactCandidates.whatsappLinks||[]),addresses:(src.contactCandidates.addresses||[]),socialLinks:(src.contactCandidates.socialLinks||[]),
+    favicons:(src.assetCandidates.favicons||[]),logos:(src.assetCandidates.logos||[]),openGraphImages:(src.assetCandidates.openGraphImages||[]),twitterImages:(src.assetCandidates.twitterImages||[]),heroImages:(src.assetCandidates.heroImages||[]),propertyImages:(src.assetCandidates.propertyImages||[]),allImages:(src.assetCandidates.allImages||[])
+  };
+  const cache=_candidatesCache[l.id];
+  const bs=src.brandSignals||{};
+  const lowConfCount=['phones','emails','whatsappLinks','addresses','socialLinks','favicons','logos','openGraphImages','twitterImages','heroImages','propertyImages','allImages']
+    .reduce((sum,g)=>sum+(cache[g]||[]).filter(c=>c.confidence==='low').length,0);
+  const logoProviderWarning=(cache.logos||[]).some(c=>/ego.?real.?estate|wordpress|wix|squarespace|webflow|shopify|template|plantilla/i.test((c.alt||'')+' '+(c.url||'')));
+  return '<div class="modal-section" data-section="lead-candidates" style="border-top:2px solid rgba(196,169,106,0.3)">'
+    +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;flex-wrap:wrap;gap:6px">'
+    +'<div class="modal-section-title" style="margin:0">🧩 Candidatos Detectados</div>'
+    +'<span class="tag '+enrichmentStateClass(src.status)+'">'+enrichmentStateLabel(src.status)+(src.fallbackSource?' (desde auditoría)':'')+'</span>'
+    +'</div>'
+    +'<div style="font-size:10px;color:var(--text3);background:rgba(196,169,106,0.06);border-radius:6px;padding:6px 10px;margin-bottom:10px">'
+    +'⚠ Candidato detectado automáticamente. <strong>Requiere revisión humana. No aprobado todavía.</strong>'
+    +'</div>'
+    +(lowConfCount?'<div style="font-size:10px;color:var(--accent2);background:rgba(239,68,68,0.06);border-radius:6px;padding:6px 10px;margin-bottom:8px">⚠ '+lowConfCount+' candidato(s) de baja confianza — revisar con especial cuidado.</div>':'')
+    +(logoProviderWarning?'<div style="font-size:10px;color:var(--accent2);background:rgba(239,68,68,0.06);border-radius:6px;padding:6px 10px;margin-bottom:8px">⚠ Posible logo del proveedor de la plantilla web, no del cliente. Revisar antes de usar.</div>':'')
+    +'<div style="font-size:10px;color:var(--accent2);font-weight:700;text-transform:uppercase;margin:8px 0 4px">Contacto detectado</div>'
+    +(candidatesGroupBlock('Teléfonos',l.id,'phones',cache.phones,contactCandidateRow,3)
+      +candidatesGroupBlock('Emails',l.id,'emails',cache.emails,contactCandidateRow,3)
+      +candidatesGroupBlock('WhatsApp',l.id,'whatsappLinks',cache.whatsappLinks,contactCandidateRow,2)
+      +candidatesGroupBlock('Direcciones',l.id,'addresses',cache.addresses,contactCandidateRow,2)
+      +candidatesGroupBlock('Redes sociales',l.id,'socialLinks',cache.socialLinks,contactCandidateRow,4)
+      ||'<div style="font-size:10px;color:var(--text3)">Sin contacto candidato detectado.</div>')
+    +'<div style="font-size:10px;color:var(--accent2);font-weight:700;text-transform:uppercase;margin:10px 0 4px">Assets detectados</div>'
+    +(candidatesGroupBlock('Favicons',l.id,'favicons',cache.favicons,imageCandidateRow,2)
+      +candidatesGroupBlock('Logos candidatos',l.id,'logos',cache.logos,imageCandidateRow,3)
+      +candidatesGroupBlock('Imágenes Open Graph',l.id,'openGraphImages',cache.openGraphImages,imageCandidateRow,2)
+      +candidatesGroupBlock('Imágenes Twitter',l.id,'twitterImages',cache.twitterImages,imageCandidateRow,2)
+      +candidatesGroupBlock('Hero candidatas',l.id,'heroImages',cache.heroImages,imageCandidateRow,3)
+      +candidatesGroupBlock('Imágenes de propiedad',l.id,'propertyImages',cache.propertyImages,imageCandidateRow,4)
+      +candidatesGroupBlock('Todas las imágenes',l.id,'allImages',cache.allImages,imageCandidateRow,4)
+      ||'<div style="font-size:10px;color:var(--text3)">Sin assets candidatos detectados.</div>')
+    +(bs.title||bs.description||(bs.headings||[]).length||(bs.colors||[]).length?(
+      '<div style="font-size:10px;color:var(--accent2);font-weight:700;text-transform:uppercase;margin:10px 0 4px">Señales de marca</div>'
+      +'<div style="background:var(--bg2);border-radius:6px;padding:8px;font-size:10px;color:var(--text2)">'
+      +(bs.title?'<div><strong>Title:</strong> '+safeHtml(bs.title)+'</div>':'')
+      +(bs.description?'<div style="margin-top:3px"><strong>Description:</strong> '+safeHtml(bs.description)+'</div>':'')
+      +((bs.headings||[]).length?'<div style="margin-top:3px"><strong>Headings:</strong> '+safeHtml((bs.headings||[]).slice(0,3).join(' · '))+'</div>':'')
+      +((bs.claims||[]).length?'<div style="margin-top:3px"><strong>Claims:</strong> '+safeHtml((bs.claims||[]).slice(0,3).join(' · '))+'</div>':'')
+      +((bs.internalLinks||[]).length?'<div style="margin-top:3px"><strong>Enlaces internos:</strong> '+(bs.internalLinks||[]).length+' detectados</div>':'')
+      +((bs.colors||[]).length?'<div style="margin-top:5px;display:flex;gap:4px;align-items:center;flex-wrap:wrap"><strong style="font-size:10px">Colores:</strong>'+(bs.colors||[]).map(c=>'<span title="'+safeHtml(c)+'" style="display:inline-block;width:16px;height:16px;border-radius:3px;background:'+safeHtml(c)+';border:1px solid rgba(255,255,255,0.2)"></span>').join('')+'<button class="contact-btn btn-maps" style="font-size:9px;padding:3px 7px" onclick="applyCandidateColors('+l.id+')">Usar colores de marca</button></div>':'')
+      +'</div>'
+    ):'')
+    +((src.warnings||[]).length?'<div style="margin-top:8px;font-size:10px;color:var(--text3)">⚠ Warnings: '+src.warnings.map(safeHtml).join(' · ')+'</div>':'')
+    +'</div>';
+}
+function applyEnrichmentCandidateToManualAssets(leadId,patch,originLabel){
+  const l=leads.find(x=>x.id===leadId);if(!l) return null;
+  const current=getLeadManualAssets(l);
+  const willOverwrite=[];
+  if(patch.logoUrl!==undefined&&current.logoUrl&&current.logoUrl!==patch.logoUrl) willOverwrite.push('logo');
+  if(patch.heroImage!==undefined&&current.heroImage&&current.heroImage!==patch.heroImage) willOverwrite.push('hero image');
+  if(patch.videoUrl!==undefined&&current.videoUrl&&current.videoUrl!==patch.videoUrl) willOverwrite.push('vídeo');
+  if(willOverwrite.length&&!confirm('Ya existe '+willOverwrite.join(', ')+' guardado manualmente. ¿Sobrescribir con el candidato detectado de enriquecimiento?')) return null;
+  const payload={
+    logoUrl:patch.logoUrl!==undefined?patch.logoUrl:current.logoUrl,
+    heroImage:patch.heroImage!==undefined?patch.heroImage:current.heroImage,
+    propertyImages:(patch.propertyImages!==undefined?current.propertyImages.concat(patch.propertyImages):current.propertyImages).join('\n'),
+    videoUrl:patch.videoUrl!==undefined?patch.videoUrl:current.videoUrl,
+    brandColors:(patch.brandColors!==undefined?current.brandColors.concat(patch.brandColors):current.brandColors).join(', '),
+    assetNotes:(current.assetNotes?current.assetNotes+'\n':'')+'Assets applied from enrichment candidates ('+originLabel+'); pending human approval.',
+    assetsApproved:false
+  };
+  return saveLeadManualAssets(leadId,payload);
+}
+function applyCandidateAsset(leadId,group,index,kind){
+  const c=getCachedCandidate(leadId,group,index);if(!c){_showToast('Candidato no disponible.','var(--red)');return;}
+  const url=validateAssetUrl(c.url);
+  if(!url){_showToast('URL de candidato inválida o insegura.','var(--red)');return;}
+  let patch=null,label='';
+  if(kind==='logo'){patch={logoUrl:url};label='logo · '+(c.source||'');}
+  else if(kind==='hero'){patch={heroImage:url};label='hero · '+(c.source||'');}
+  else if(kind==='image'){patch={propertyImages:[url]};label='imagen · '+(c.source||'');}
+  else if(kind==='video'){
+    if(!looksLikeVideoUrl(url)){_showToast('Ese candidato no parece un vídeo real.','var(--red)');return;}
+    patch={videoUrl:url};label='vídeo · '+(c.source||'');
+  }
+  if(!patch) return;
+  const report=applyEnrichmentCandidateToManualAssets(leadId,patch,label);
+  if(report){_showToast('Candidato aplicado a Assets visuales. Pendiente de aprobación humana.','var(--accent2)');renderAll();openModal(leadId);}
+}
+function applyCandidateColors(leadId){
+  const src=getLeadCandidatesSource(leads.find(x=>x.id===leadId));
+  const colors=(src&&src.brandSignals&&src.brandSignals.colors)||[];
+  if(!colors.length){_showToast('No hay colores detectados.','var(--text3)');return;}
+  const report=applyEnrichmentCandidateToManualAssets(leadId,{brandColors:colors},'colores de marca');
+  if(report){_showToast('Colores de marca aplicados. Pendiente de aprobación humana.','var(--accent2)');renderAll();openModal(leadId);}
+}
+function applyCandidateContact(leadId,group,index,field){
+  const c=getCachedCandidate(leadId,group,index);if(!c) return;
+  const l=leads.find(x=>x.id===leadId);if(!l) return;
+  if(!confirm('¿Usar este valor candidato como '+field+' del lead? Sobrescribirá el valor actual ("'+(l[field]||'vacío')+'").')) return;
+  l[field]=c.value||'';
+  l.updatedAt=new Date().toISOString();
+  markProductionPackageStale(l,'contact field applied from enrichment candidate ('+field+')');
+  saveState();
+  _showToast(field+' actualizado desde candidato.','var(--accent2)');
+  renderAll();openModal(leadId);
+}
+
+// ── Fase 7F: Preflight de Producción ─────────────────────────────────────────
+// Read-only readiness traffic light. Never blocks manual work; only asks for
+// an explicit confirm() before opening Operator Console when not green.
+function computeProductionPreflight(lead){
+  const l=lead||{};
+  const items=[];
+  const a=l.websiteAudit?normalizeWebsiteAudit(l.websiteAudit,l):null;
+  const assetsSummary=summarizeLeadAssets(l);
+  const enrichment=summarizeLeadEnrichment(l);
+  const stale=isProductionPackageStale(l);
+  const cachedPkg=getStoredFourHooksPayload(l);
+  const validation=cachedPkg?validateProductionPackageLocal(cachedPkg):null;
+
+  items.push({label:'Teléfono presente',ok:!!l.telefono,critical:false});
+  items.push({label:'Email presente',ok:!!l.email,critical:false});
+  items.push({label:'WhatsApp presente',ok:!!l.whatsapp,critical:false});
+  items.push({label:'Web presente',ok:!!(l.web||l.website),critical:true});
+  items.push({label:'Dirección presente',ok:!!l.direccion,critical:false});
+
+  items.push({label:assetsSummary.hasLogo?('Logo: '+(assetsSummary.manual.assetsApproved?'aprobado':'pendiente de aprobación')):'Falta logo aprobado',ok:assetsSummary.hasLogo,critical:false});
+  items.push({label:assetsSummary.hasHero?('Hero: '+(assetsSummary.manual.assetsApproved?'aprobado':'pendiente de aprobación')):'Hero pendiente de aprobación',ok:assetsSummary.hasHero,critical:false});
+  items.push({label:'Imágenes: '+assetsSummary.imageCount+(assetsSummary.imageCount?(assetsSummary.manual.assetsApproved?' aprobadas':' pendientes'):' — faltan'),ok:assetsSummary.imageCount>0,critical:false});
+  items.push({label:assetsSummary.hasVideo?('Vídeo propio: '+(assetsSummary.manual.assetsApproved?'aprobado':'pendiente')):'Vídeo: usando fallback AURUM por defecto',ok:true,critical:false});
+  items.push({label:assetsSummary.hasColors?('Colores de marca: '+assetsSummary.colorCount+' definidos'):'Colores de marca sin definir',ok:assetsSummary.hasColors,critical:false});
+
+  items.push({label:'Auditoría web: '+(a?auditStatusLabel(a):'no ejecutada'),ok:!!(a&&a.status==='success'),critical:false});
+  items.push({label:'HTTP 200 en home',ok:!!(a&&a.httpStatus===200),critical:false});
+  if(a&&a.weaknesses&&a.weaknesses.length) items.push({label:'Hay warnings de auditoría ('+a.weaknesses.length+')',ok:false,critical:false});
+
+  items.push({label:'Enriquecimiento: '+(enrichment?enrichmentStateLabel(enrichment.status):'sin datos'),ok:!!enrichment,critical:false});
+  if(enrichment&&enrichment.profile&&(enrichment.profile.warnings||[]).length) items.push({label:'Hay candidatos detectados sin revisar',ok:false,critical:false});
+
+  if(cachedPkg){
+    items.push({label:'Production Package: schemaVersion '+(cachedPkg.schemaVersion||'—'),ok:cachedPkg.schemaVersion===FOUR_HOOKS_PACKAGE_SCHEMA_VERSION,critical:false});
+    items.push({label:'mediaAssets presentes',ok:!!cachedPkg.mediaAssets,critical:false});
+    items.push({label:'commercialHooks presentes',ok:!!cachedPkg.fourHooks,critical:false});
+    items.push({label:'targetRoutes presentes',ok:!!(cachedPkg.targetRoutes&&Object.keys(cachedPkg.targetRoutes).length),critical:false});
+    items.push({label:stale?'Production Package puede estar desactualizado porque han cambiado assets/enrichment/auditoría':'Production Package actualizado',ok:!stale,critical:false});
+    if(validation&&validation.errors.length) items.push({label:'Production Package con errores: '+validation.errors.slice(0,3).join(' | '),ok:false,critical:true});
+  }else{
+    items.push({label:'Production Package aún no generado',ok:false,critical:false});
+  }
+
+  const critical=items.filter(i=>i.critical&&!i.ok);
+  const warn=items.filter(i=>!i.critical&&!i.ok);
+  const level=critical.length?'red':(warn.length?'yellow':'green');
+  return {level,items,criticalCount:critical.length,warningsCount:warn.length};
+}
+function preflightLevelLabel(level){return {green:'✓ Listo',yellow:'⚠ Con advertencias',red:'✕ No recomendado'}[level]||'—';}
+function preflightLevelClass(level){return {green:'est-cerrado',yellow:'est-visual',red:'est-pendiente'}[level]||'est-pendiente';}
+function renderProductionPreflightBlock(l){
+  const pf=computeProductionPreflight(l);
+  const stale=isProductionPackageStale(l);
+  return '<div class="modal-section" data-section="production-preflight" style="border-top:2px solid rgba(196,169,106,0.3)">'
+    +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;flex-wrap:wrap;gap:6px">'
+    +'<div class="modal-section-title" style="margin:0">🚦 Preflight de Producción</div>'
+    +'<span class="tag '+preflightLevelClass(pf.level)+'">'+preflightLevelLabel(pf.level)+'</span>'
+    +'</div>'
+    +'<div style="background:var(--bg2);border-radius:6px;padding:8px;font-size:10px;color:var(--text2);max-height:220px;overflow:auto">'
+    +pf.items.map(i=>'<div style="padding:2px 0;display:flex;gap:6px;align-items:flex-start"><span>'+(i.ok?'<span style="color:var(--green,#10b981)">✓</span>':(i.critical?'<span style="color:var(--red,#ef4444)">✕</span>':'<span style="color:var(--accent2)">⚠</span>'))+'</span><span>'+safeHtml(i.label)+'</span></div>').join('')
+    +'</div>'
+    +(pf.level!=='green'?'<div style="margin-top:6px;font-size:9px;color:var(--text3)">No bloquea el trabajo manual, pero se pedirá confirmación antes de abrir Operator Console.</div>':'')
+    +(stale?'<div style="margin-top:8px;background:rgba(239,68,68,0.06);border-radius:6px;padding:8px;font-size:10px;color:var(--text2)">'
+      +'⚠ El paquete de producción está desactualizado porque han cambiado assets/enrichment/auditoría.'
+      +'<div style="margin-top:6px;display:grid;grid-template-columns:1fr 1fr;gap:6px">'
+      +'<button class="contact-btn btn-email" style="font-size:10px;padding:5px 8px" onclick="regenerateProductionPackageForLead('+l.id+')">🔄 Regenerar paquete</button>'
+      +'<button class="contact-btn btn-maps" style="font-size:10px;padding:5px 8px" onclick="_showToast(\'Continuando con el paquete existente (posiblemente desactualizado).\',\'var(--accent2)\')">Continuar de todos modos</button>'
+      +'</div></div>':'')
+    +'</div>';
+}
+function confirmPreflightBeforeAction(leadId,actionLabel){
+  const l=leads.find(x=>x.id===leadId);if(!l) return true;
+  const pf=computeProductionPreflight(l);
+  if(pf.level==='green') return true;
+  const levelTxt=pf.level==='red'?'ROJO (no recomendado)':'AMARILLO (con advertencias)';
+  return confirm('Preflight de producción en '+levelTxt+' para '+actionLabel+'.\n'+pf.criticalCount+' problema(s) crítico(s), '+pf.warningsCount+' advertencia(s).\n\n¿Continuar de todos modos?');
 }
 
 function renderWebsiteAudit(l){
@@ -6294,9 +6571,12 @@ function openModal(id){
     </div>
 
     ${safeRenderSection('Auditoría Web',()=>renderWebsiteAudit(l))}
+    ${safeRenderSection('Preflight de Producción',()=>renderProductionPreflightBlock(l))}
     ${safeRenderSection('Base de Producción IA',()=>renderProductionBase(l))}
     ${safeRenderSection('Assets Visuales',()=>renderLeadAssetIntakeBlock(l))}
+    ${safeRenderSection('Fallback Visual Interno',()=>renderInternalFallbackBlock(l))}
     ${safeRenderSection('Enriquecimiento Detectado',()=>renderLeadEnrichmentBlock(l))}
+    ${safeRenderSection('Candidatos Detectados',()=>renderLeadCandidatesPanel(l))}
 
     <!-- INTELIGENCIA -->
     <div class="modal-section">
@@ -10536,6 +10816,7 @@ function saveLeadManualAssets(leadId,payload){
   const assetNotes=String(p.assetNotes||'').trim().slice(0,1000);
   const assetsApproved=p.assetsApproved===true;
   l.mediaAssetsManual={logoUrl,heroImage,propertyImages:imgRes.urls,videoUrl,brandColors:colorRes.colors,assetNotes,assetsApproved,updatedAt:new Date().toISOString()};
+  markProductionPackageStale(l,'mediaAssetsManual updated');
   saveState();
   return {
     logoInvalid:!!(p.logoUrl&&!logoUrl),
@@ -10549,6 +10830,7 @@ function saveLeadManualAssets(leadId,payload){
 function clearLeadManualAssets(leadId){
   const l=leads.find(x=>x.id===leadId);if(!l) return;
   l.mediaAssetsManual=emptyLeadManualAssets();
+  markProductionPackageStale(l,'mediaAssetsManual cleared');
   saveState();
 }
 function summarizeLeadAssets(lead){
@@ -10563,6 +10845,51 @@ function summarizeLeadAssets(lead){
   if(!hasVideo) warnings.push('Falta vídeo.');
   if(hasAny&&!m.assetsApproved) warnings.push('Sin assets aprobados todavía.');
   return {manual:m,hasLogo,hasHero,imageCount:m.propertyImages.length,hasVideo,colorCount:m.brandColors.length,hasColors,state,warnings};
+}
+
+// ── Fase 7G: Fallback Visual Interno ─────────────────────────────────────────
+// No internal fallback IMAGE library exists in this repo yet — we do not
+// invent third-party placeholder URLs. The only real, traceable internal
+// fallback is the AURUM hero video default already used elsewhere in this
+// file (source:'aurum_default'). Hero/property image fallback stays
+// declared-but-blocked until a real internal library exists.
+const INTERNAL_FALLBACK_LIBRARY={
+  // Absolute URL required: validateAssetUrl (PR #25) only accepts http(s)://.
+  // Confirmed real path in AURUM_PROPERTIES_BOUTIQUE/public/VIDEO_AURUM_HEROWEB.mp4,
+  // served at the AURUM production origin already used elsewhere in this file.
+  video:{url:'https://aurum-properties-boutique.vercel.app/VIDEO_AURUM_HEROWEB.mp4',recommendedUse:'hero'},
+  hero:null,
+  propertyImages:null
+};
+function applyInternalFallback(leadId,kind){
+  const entry=INTERNAL_FALLBACK_LIBRARY[kind];
+  if(!entry){_showToast('No hay fallback interno configurado todavía.','var(--text3)');return;}
+  const l=leads.find(x=>x.id===leadId);if(!l) return;
+  if(!confirm('¿Aplicar fallback visual interno para '+kind+'? Quedará etiquetado como fallback, nunca como asset real del cliente, y pendiente de validación.')) return;
+  const current=getLeadManualAssets(l);
+  const payload={
+    logoUrl:current.logoUrl,heroImage:current.heroImage,
+    propertyImages:current.propertyImages.join('\n'),
+    videoUrl:kind==='video'?entry.url:current.videoUrl,
+    brandColors:current.brandColors.join(', '),
+    assetNotes:(current.assetNotes?current.assetNotes+'\n':'')+'Fallback interno aplicado por falta de assets reales. Requiere validación antes de enviar a cliente. (source: fallback_internal_library)',
+    assetsApproved:false
+  };
+  const report=saveLeadManualAssets(leadId,payload);
+  if(report){_showToast('Fallback interno aplicado. Pendiente de validación.','var(--accent2)');renderAll();openModal(leadId);}
+}
+function renderInternalFallbackBlock(l){
+  const hasVideoFallbackApplied=getLeadManualAssets(l).videoUrl===INTERNAL_FALLBACK_LIBRARY.video.url;
+  const row=(label,kind,available)=>'<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px solid rgba(255,255,255,0.04);font-size:11px">'
+    +'<span style="color:var(--text2)">'+safeHtml(label)+'</span>'
+    +(available?'<button class="contact-btn btn-maps" style="font-size:9px;padding:4px 8px" onclick="applyInternalFallback('+l.id+',\''+kind+'\')">'+(kind==='video'&&hasVideoFallbackApplied?'✓ Aplicado':'Usar fallback')+'</button>':'<span style="font-size:9px;color:var(--text3)">No hay fallback interno configurado todavía.</span>');
+  return '<div class="modal-section" data-section="internal-fallback" style="border-top:2px solid rgba(196,169,106,0.3)">'
+    +'<div class="modal-section-title" style="margin-bottom:6px">🗂 Fallback Visual Interno</div>'
+    +'<div style="font-size:10px;color:var(--text3);background:rgba(196,169,106,0.06);border-radius:6px;padding:6px 10px;margin-bottom:8px">Solo para cuando no hay assets reales. Nunca se aplica automáticamente ni se presenta como asset real del cliente.</div>'
+    +row('Hero','hero',!!INTERNAL_FALLBACK_LIBRARY.hero)
+    +row('Imágenes de propiedad','propertyImages',!!INTERNAL_FALLBACK_LIBRARY.propertyImages)
+    +row('Vídeo (AURUM default)','video',!!INTERNAL_FALLBACK_LIBRARY.video)
+    +'</div>';
 }
 
 function buildMediaAssetsFromLead(lead){
@@ -10588,8 +10915,13 @@ function buildMediaAssetsFromLead(lead){
   const propertyImages=detectedImages.filter(u=>u!==logo&&u!==heroUrl).slice(0,8).map((url,i)=>({url,source:imagesSource,status:imagesStatus,recommendedUse:(i===0&&!heroUrl)?'hero':'gallery'}));
 
   const video=fourHooksText(manual.videoUrl||l.videoUrl||l.video||(l.assets&&l.assets.video),'');
-  const videoSource=manual.videoUrl?'crm_manual_url':(video?'manual':'aurum_default');
-  const videoStatus=manual.videoUrl?manualStatus:(video?'candidate':'pending_validation');
+  // Fase 7G: a manually-applied fallback (INTERNAL_FALLBACK_LIBRARY.video) is
+  // a real internal asset but must never be tagged crm_manual_url/approved
+  // like a genuine client asset — it stays fallback_internal_library until
+  // explicitly marked approved_fallback via assetsApproved.
+  const isInternalFallbackVideo=!!(manual.videoUrl&&typeof INTERNAL_FALLBACK_LIBRARY!=='undefined'&&INTERNAL_FALLBACK_LIBRARY.video&&manual.videoUrl===INTERNAL_FALLBACK_LIBRARY.video.url);
+  const videoSource=isInternalFallbackVideo?'fallback_internal_library':(manual.videoUrl?'crm_manual_url':(video?'manual':'aurum_default'));
+  const videoStatus=isInternalFallbackVideo?(manual.assetsApproved?'approved_fallback':'pending_validation'):(manual.videoUrl?manualStatus:(video?'candidate':'pending_validation'));
   const videos=video?[{url:video,source:videoSource,status:videoStatus,recommendedUse:'hero'}]:[{url:'/VIDEO_AURUM_HEROWEB.mp4',source:'aurum_default',status:'pending_validation',recommendedUse:'hero'}];
 
   const brandColors=manual.brandColors.length?manual.brandColors:(Array.isArray(l.brandColors)?l.brandColors:[]);
@@ -10970,7 +11302,62 @@ if(payload&&payload.reviewableFourHooks!==undefined){if(!Array.isArray(payload.r
 if(payload&&typeof payload.generatedReviewCount==='number'&&payload.generatedReviewCount<4)warnings.push('generatedReviewCount: below_4 ('+payload.generatedReviewCount+')');
 if(payload&&typeof payload.publishedOutputCount==='number'&&payload.publishedOutputCount===0)warnings.push('publishedOutputCount: zero_public_outputs — hooks generated but none published yet');
 return{passed:errors.length===0,errors,warnings};}
-function saveFourHooksProposalToLead(lead,payload,validation){if(!lead)return;const pe=lead.previewEngine||emptyPreviewEngine();lead.previewEngine={...pe,productionPackagePayload:payload,productionPackageValidation:validation,commercialDiagnosis:payload.commercialDiagnosis,fourHooks:payload.fourHooks,outreachMessages:payload.outreachMessages,generatedAt:payload.generatedAt,fourHooksProposal:pe.fourHooksProposal||null,prPlan:pe.prPlan||null,githubPreflight:pe.githubPreflight||null};lead.updatedAt=new Date().toISOString();if(!Array.isArray(lead._actividad))lead._actividad=[];lead._actividad.push({tipo:'sistema',texto:'Propuesta 4 ganchos generada y guardada en previewEngine.',fecha:new Date().toLocaleDateString('es-ES')});}
+
+// ── Fase 7H: detección de Production Package stale ──────────────────────────
+// Lightweight non-cryptographic signature over the lead fields that feed
+// buildProductionPackageFromLead. No external hashing dependency: a simple
+// deterministic string hash is enough to detect "something relevant
+// changed", which is all this needs to do.
+function _simpleHash(str){
+  let h=0;const s=String(str||'');
+  for(let i=0;i<s.length;i++){h=(h<<5)-h+s.charCodeAt(i);h|=0;}
+  return 'h'+(h>>>0).toString(36)+'_'+s.length;
+}
+function buildProductionPackageSignature(lead){
+  const l=lead||{};
+  const parts=[
+    l.id,l.empresa||l.name||'',l.web||l.website||'',l.telefono||'',l.email||'',
+    (l.websiteAudit&&l.websiteAudit.auditedAt)||'',
+    (l.enrichmentProfile&&l.enrichmentProfile.updatedAt)||'',
+    JSON.stringify(l.mediaAssetsManual||null),
+    JSON.stringify(l.commercialHooks||null)
+  ];
+  return _simpleHash(parts.join('|'));
+}
+// Returns false when no package has ever been generated (nothing to be
+// stale about) — only true once a real signature mismatch is detected.
+function isProductionPackageStale(lead){
+  const l=lead||{};
+  const pe=l.previewEngine;
+  if(!pe||!pe.productionPackagePayload) return false;
+  if(!pe.packageSourceSignature) return true;
+  return buildProductionPackageSignature(l)!==pe.packageSourceSignature;
+}
+// Never deletes the cached payload (the operator may still want to inspect
+// it) and never auto-regenerates — only clears the saved signature so the
+// next isProductionPackageStale() check reports true.
+function markProductionPackageStale(lead,reason){
+  const l=lead;if(!l||!l.previewEngine) return;
+  l.previewEngine.packageSourceSignature='';
+  l.previewEngine.staleReason=reason||'lead data changed';
+}
+function stampProductionPackageSignature(lead){
+  const l=lead;if(!l) return;
+  const pe=l.previewEngine||emptyPreviewEngine();
+  pe.packageSourceSignature=buildProductionPackageSignature(l);
+  pe.packageGeneratedAt=new Date().toISOString();
+  pe.staleReason='';
+  l.previewEngine=pe;
+}
+function regenerateProductionPackageForLead(leadId){
+  const l=leads.find(x=>x.id===leadId);if(!l) return null;
+  const payload=buildProductionPackageFromLead(l),validation=validateProductionPackageLocal(payload);
+  saveFourHooksProposalToLead(l,payload,validation);
+  saveState();renderAll();openModal(leadId);
+  _showToast('Production Package regenerado.','var(--gold)');
+  return {payload,validation};
+}
+function saveFourHooksProposalToLead(lead,payload,validation){if(!lead)return;const pe=lead.previewEngine||emptyPreviewEngine();lead.previewEngine={...pe,productionPackagePayload:payload,productionPackageValidation:validation,commercialDiagnosis:payload.commercialDiagnosis,fourHooks:payload.fourHooks,outreachMessages:payload.outreachMessages,generatedAt:payload.generatedAt,fourHooksProposal:pe.fourHooksProposal||null,prPlan:pe.prPlan||null,githubPreflight:pe.githubPreflight||null};lead.updatedAt=new Date().toISOString();stampProductionPackageSignature(lead);if(!Array.isArray(lead._actividad))lead._actividad=[];lead._actividad.push({tipo:'sistema',texto:'Propuesta 4 ganchos generada y guardada en previewEngine.',fecha:new Date().toLocaleDateString('es-ES')});}
 function generateFourHooksProposalForLead(id){const l=leads.find(x=>x.id===id);if(!l)return;const payload=buildProductionPackageFromLead(l),validation=validateProductionPackageLocal(payload);saveFourHooksProposalToLead(l,payload,validation);saveState();renderAll();openModal(id);_showToast(validation.errors.length?'Paquete generado con errores de datos a revisar.':'Propuesta 4 ganchos generada.','var(--gold)');}
 function connectExistingFourHooksEngines(id){
   const l=leads.find(x=>x.id===id);if(!l)return;
