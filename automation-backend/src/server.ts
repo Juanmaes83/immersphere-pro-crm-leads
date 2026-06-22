@@ -53,6 +53,21 @@ import {
   validateAuditRunPayload,
   validateLeadIdParam,
 } from "./crmPersistence.ts";
+import {
+  getLatestEnrichmentProfile,
+  insertEnrichmentProfile,
+  validateEnrichmentProfilePayload,
+} from "./crmEnrichmentPersistence.ts";
+import {
+  getLatestApprovedMediaAssets,
+  insertApprovedMediaAssets,
+  validateApprovedMediaAssetsPayload,
+} from "./crmAssetsPersistence.ts";
+import {
+  getLatestProductionPackage,
+  insertProductionPackage,
+  validateProductionPackagePayload,
+} from "./crmProductionPackagePersistence.ts";
 
 const DEFAULT_ALLOWED_ORIGINS = [
   "http://localhost:5500",
@@ -268,6 +283,132 @@ async function handleLatestAuditRun(req, res, headers, leadIdRaw) {
   }
 }
 
+// Generic create/latest handler pair shared by Fase 8B/8C/8D - all three
+// follow the exact same auth -> leadId -> body -> validate -> persist shape
+// already established by handleCreateAuditRun/handleLatestAuditRun above.
+async function handleCreatePersistedResource(req, res, headers, leadIdRaw, { validate, insert, logLabel }) {
+  if (!isCrmPersistenceConfigured()) {
+    sendJson(res, 503, { ok: false, error: "persistence_not_configured" }, headers);
+    return;
+  }
+  if (!isCrmPersistenceAuthorized(req)) {
+    sendJson(res, 401, { ok: false, error: "unauthorized" }, headers);
+    return;
+  }
+  const leadId = validateLeadIdParam(leadIdRaw);
+  if (leadId === null) {
+    sendJson(res, 400, { ok: false, error: "lead_id_must_be_positive_integer" }, headers);
+    return;
+  }
+  let payload;
+  try {
+    payload = await readJsonBody(req);
+  } catch (err) {
+    const tooLarge = err && err.message === "payload_too_large";
+    sendJson(res, tooLarge ? 413 : 400, { ok: false, error: tooLarge ? "payload_too_large" : "invalid_json" }, headers);
+    return;
+  }
+  const validation = validate(payload);
+  if (!validation.valid) {
+    sendJson(res, 400, { ok: false, error: "invalid_payload", details: validation.errors }, headers);
+    return;
+  }
+  try {
+    const record = await insert(leadId, payload);
+    sendJson(res, 201, { ok: true, record }, headers);
+  } catch (err) {
+    if (err && err.code === "PERSISTENCE_NOT_CONFIGURED") {
+      sendJson(res, 503, { ok: false, error: "persistence_not_configured" }, headers);
+      return;
+    }
+    if (err && err.code === "PERSISTENCE_UNAVAILABLE") {
+      sendJson(res, 503, { ok: false, error: "persistence_unavailable" }, headers);
+      return;
+    }
+    logWarn(`${logLabel}_insert_failed`, { message: sanitizeLog(err && err.message) });
+    sendJson(res, 500, { ok: false, error: "internal_error" }, headers);
+  }
+}
+
+async function handleLatestPersistedResource(req, res, headers, leadIdRaw, { fetchLatest, recordKey, logLabel }) {
+  if (!isCrmPersistenceConfigured()) {
+    sendJson(res, 503, { ok: false, error: "persistence_not_configured" }, headers);
+    return;
+  }
+  if (!isCrmPersistenceAuthorized(req)) {
+    sendJson(res, 401, { ok: false, error: "unauthorized" }, headers);
+    return;
+  }
+  const leadId = validateLeadIdParam(leadIdRaw);
+  if (leadId === null) {
+    sendJson(res, 400, { ok: false, error: "lead_id_must_be_positive_integer" }, headers);
+    return;
+  }
+  try {
+    const record = await fetchLatest(leadId);
+    sendJson(res, 200, { ok: true, [recordKey]: record }, headers);
+  } catch (err) {
+    if (err && err.code === "PERSISTENCE_NOT_CONFIGURED") {
+      sendJson(res, 503, { ok: false, error: "persistence_not_configured" }, headers);
+      return;
+    }
+    if (err && err.code === "PERSISTENCE_UNAVAILABLE") {
+      sendJson(res, 503, { ok: false, error: "persistence_unavailable" }, headers);
+      return;
+    }
+    logWarn(`${logLabel}_fetch_failed`, { message: sanitizeLog(err && err.message) });
+    sendJson(res, 500, { ok: false, error: "internal_error" }, headers);
+  }
+}
+
+async function handleCreateEnrichmentProfile(req, res, headers, leadIdRaw) {
+  await handleCreatePersistedResource(req, res, headers, leadIdRaw, {
+    validate: validateEnrichmentProfilePayload,
+    insert: insertEnrichmentProfile,
+    logLabel: "crm_enrichment_profile",
+  });
+}
+
+async function handleLatestEnrichmentProfile(req, res, headers, leadIdRaw) {
+  await handleLatestPersistedResource(req, res, headers, leadIdRaw, {
+    fetchLatest: getLatestEnrichmentProfile,
+    recordKey: "enrichmentProfile",
+    logLabel: "crm_enrichment_profile",
+  });
+}
+
+async function handleCreateApprovedMediaAssets(req, res, headers, leadIdRaw) {
+  await handleCreatePersistedResource(req, res, headers, leadIdRaw, {
+    validate: validateApprovedMediaAssetsPayload,
+    insert: insertApprovedMediaAssets,
+    logLabel: "crm_approved_media_assets",
+  });
+}
+
+async function handleLatestApprovedMediaAssets(req, res, headers, leadIdRaw) {
+  await handleLatestPersistedResource(req, res, headers, leadIdRaw, {
+    fetchLatest: getLatestApprovedMediaAssets,
+    recordKey: "approvedMediaAssets",
+    logLabel: "crm_approved_media_assets",
+  });
+}
+
+async function handleCreateProductionPackage(req, res, headers, leadIdRaw) {
+  await handleCreatePersistedResource(req, res, headers, leadIdRaw, {
+    validate: validateProductionPackagePayload,
+    insert: insertProductionPackage,
+    logLabel: "crm_production_package",
+  });
+}
+
+async function handleLatestProductionPackage(req, res, headers, leadIdRaw) {
+  await handleLatestPersistedResource(req, res, headers, leadIdRaw, {
+    fetchLatest: getLatestProductionPackage,
+    recordKey: "productionPackage",
+    logLabel: "crm_production_package",
+  });
+}
+
 function getOperatorSession(req) {
   const sessionId = parseSessionCookie(req.headers.cookie);
   return { sessionId, session: getSession(sessionId) };
@@ -361,12 +502,17 @@ export function createRequestHandler() {
     // endpoints are protected by OPERATOR_ADMIN_TOKEN (login) and session+CSRF
     // (all other operator POSTs).
     const isOperatorEndpoint = url.pathname.startsWith("/api/operator/");
-    // Fase 8A fix: this endpoint has its own independent auth
-    // (isCrmPersistenceAuthorized / CRM_PERSISTENCE_TOKEN, checked inside
-    // handleCreateAuditRun) and must never require INTERNAL_API_TOKEN - same
-    // reasoning as the operator-endpoint exemption above.
-    const isCrmAuditRunPostEndpoint = req.method === "POST" && url.pathname.startsWith("/api/crm/leads/") && url.pathname.endsWith("/audit-runs");
-    if (req.method === "POST" && !isOperatorEndpoint && !isCrmAuditRunPostEndpoint && !isAuthorized(req)) {
+    // Fase 8A/8B/8C/8D: all crm-persistence POST endpoints have their own
+    // independent auth (isCrmPersistenceAuthorized / CRM_PERSISTENCE_TOKEN,
+    // checked inside each handler) and must never require
+    // INTERNAL_API_TOKEN - same reasoning as the operator-endpoint
+    // exemption above. Listed explicitly (not a generic /api/crm/ prefix
+    // match) so a future unrelated /api/crm/* POST doesn't get silently
+    // exempted too.
+    const CRM_PERSISTENCE_POST_SUFFIXES = ["/audit-runs", "/enrichment-profiles", "/approved-media-assets", "/production-packages"];
+    const isCrmPersistencePostEndpoint = req.method === "POST" && url.pathname.startsWith("/api/crm/leads/")
+      && CRM_PERSISTENCE_POST_SUFFIXES.some((suffix) => url.pathname.endsWith(suffix));
+    if (req.method === "POST" && !isOperatorEndpoint && !isCrmPersistencePostEndpoint && !isAuthorized(req)) {
       sendJson(res, 401, { ok: false, error: "unauthorized" }, headers);
       return;
     }
@@ -415,6 +561,46 @@ export function createRequestHandler() {
     if (req.method === "GET" && url.pathname.startsWith("/api/crm/leads/") && url.pathname.endsWith("/audit-runs/latest")) {
       const leadIdRaw = url.pathname.slice("/api/crm/leads/".length, -"/audit-runs/latest".length);
       await handleLatestAuditRun(req, res, headers, leadIdRaw);
+      return;
+    }
+
+    // Fase 8B: EnrichmentProfile persistence only.
+    if (req.method === "POST" && url.pathname.startsWith("/api/crm/leads/") && url.pathname.endsWith("/enrichment-profiles")) {
+      const leadIdRaw = url.pathname.slice("/api/crm/leads/".length, -"/enrichment-profiles".length);
+      await handleCreateEnrichmentProfile(req, res, headers, leadIdRaw);
+      return;
+    }
+
+    if (req.method === "GET" && url.pathname.startsWith("/api/crm/leads/") && url.pathname.endsWith("/enrichment-profiles/latest")) {
+      const leadIdRaw = url.pathname.slice("/api/crm/leads/".length, -"/enrichment-profiles/latest".length);
+      await handleLatestEnrichmentProfile(req, res, headers, leadIdRaw);
+      return;
+    }
+
+    // Fase 8C: ApprovedMediaAssets persistence only.
+    if (req.method === "POST" && url.pathname.startsWith("/api/crm/leads/") && url.pathname.endsWith("/approved-media-assets")) {
+      const leadIdRaw = url.pathname.slice("/api/crm/leads/".length, -"/approved-media-assets".length);
+      await handleCreateApprovedMediaAssets(req, res, headers, leadIdRaw);
+      return;
+    }
+
+    if (req.method === "GET" && url.pathname.startsWith("/api/crm/leads/") && url.pathname.endsWith("/approved-media-assets/latest")) {
+      const leadIdRaw = url.pathname.slice("/api/crm/leads/".length, -"/approved-media-assets/latest".length);
+      await handleLatestApprovedMediaAssets(req, res, headers, leadIdRaw);
+      return;
+    }
+
+    // Fase 8D: ProductionPackage persistence only. Never executes AURUM/Rubik
+    // PRs - only stores the payload the CRM already built locally.
+    if (req.method === "POST" && url.pathname.startsWith("/api/crm/leads/") && url.pathname.endsWith("/production-packages")) {
+      const leadIdRaw = url.pathname.slice("/api/crm/leads/".length, -"/production-packages".length);
+      await handleCreateProductionPackage(req, res, headers, leadIdRaw);
+      return;
+    }
+
+    if (req.method === "GET" && url.pathname.startsWith("/api/crm/leads/") && url.pathname.endsWith("/production-packages/latest")) {
+      const leadIdRaw = url.pathname.slice("/api/crm/leads/".length, -"/production-packages/latest".length);
+      await handleLatestProductionPackage(req, res, headers, leadIdRaw);
       return;
     }
 

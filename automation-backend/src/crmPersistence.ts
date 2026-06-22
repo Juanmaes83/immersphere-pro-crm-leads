@@ -24,6 +24,16 @@ export function isCrmPersistenceAuthorized(req) {
   return typeof provided === "string" && provided === expected;
 }
 
+// Fase 8B/8C/8D adds 3 more migration files to this same list. Each is its
+// own CREATE TABLE/INDEX IF NOT EXISTS file, run in order - idempotent, so
+// re-running already-applied ones on every cold start is harmless.
+const MIGRATION_FILES = [
+  "001_create_crm_audit_runs.sql",
+  "002_create_crm_enrichment_profiles.sql",
+  "003_create_crm_approved_media_assets.sql",
+  "004_create_crm_production_packages.sql",
+];
+
 // Lazy, idempotent (CREATE TABLE/INDEX IF NOT EXISTS). Never runs at server
 // boot - only on the first real request to a /api/crm/* endpoint, so a
 // missing/unreachable DB can never affect /health or any other route.
@@ -34,9 +44,11 @@ export async function ensureCrmPersistenceSchema() {
     err.code = "PERSISTENCE_NOT_CONFIGURED";
     throw err;
   }
-  const sql = readFileSync(join(MIGRATIONS_DIR, "001_create_crm_audit_runs.sql"), "utf8");
   try {
-    await query(sql);
+    for (const file of MIGRATION_FILES) {
+      const sql = readFileSync(join(MIGRATIONS_DIR, file), "utf8");
+      await query(sql);
+    }
   } catch (cause) {
     const err = new Error("persistence_unavailable");
     err.code = "PERSISTENCE_UNAVAILABLE";
