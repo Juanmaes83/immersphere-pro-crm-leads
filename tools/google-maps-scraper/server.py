@@ -49,12 +49,19 @@ def json_response(handler: BaseHTTPRequestHandler, status: int, payload: dict[st
 
 def set_cors_headers(handler: BaseHTTPRequestHandler) -> None:
     origin = handler.headers.get("Origin", "")
-    if not origin or any(origin.startswith(prefix) for prefix in ALLOWED_ORIGIN_PREFIXES):
+    is_allowed = not origin or any(origin.startswith(prefix) for prefix in ALLOWED_ORIGIN_PREFIXES)
+    handler.send_header("Vary", "Origin")
+    if is_allowed:
         handler.send_header("Access-Control-Allow-Origin", origin or "*")
+        # Chrome's Private Network Access policy blocks any request from a
+        # public HTTPS origin to a loopback address (127.0.0.1) unless the
+        # preflight response carries this header. Only sent for origins we
+        # already allow above - never granted to a rejected origin.
+        handler.send_header("Access-Control-Allow-Private-Network", "true")
     else:
         handler.send_header("Access-Control-Allow-Origin", "null")
     handler.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-    handler.send_header("Access-Control-Allow-Headers", "Content-Type")
+    handler.send_header("Access-Control-Allow-Headers", "Content-Type, X-Requested-With")
 
 
 def plan_from_payload(payload: dict[str, Any]) -> SearchPlan:
