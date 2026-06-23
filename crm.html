@@ -11891,31 +11891,41 @@ function buildMediaAssetsFromLead(lead){
   const manual=getLeadManualAssets(l);
   const manualStatus=manual.assetsApproved?'approved':'pending_validation';
 
+  // Bug real encontrado en uso real (no en pruebas previas, que nunca
+  // habian llegado hasta esta validacion con datos de assets manuales):
+  // estos 4 campos "source" usaban 'crm_manual_url'/'fallback_internal_library'/
+  // 'approved_fallback', ninguno de los cuales esta en los sets que el
+  // backend realmente acepta (LOGO_SOURCES/PROPERTY_IMAGE_SOURCES/
+  // VIDEO_SOURCES/ASSET_STATUSES en validateProductionPackage.ts - 'manual'
+  // y 'approved' SI lo estan). El backend rechazaba el paquete con
+  // "invalid_source" en cuanto un lead tenia un asset manual real
+  // aprobado - justo el caso de United Real Estate.
   const logo=fourHooksText(manual.logoUrl||l.logoUrl||l.logo||(l.assets&&l.assets.logo),'');
-  const logoSource=manual.logoUrl?'crm_manual_url':(logo?'manual':'placeholder');
+  const logoSource=manual.logoUrl?'manual':(logo?'manual':'placeholder');
   const logoStatus=manual.logoUrl?manualStatus:(logo?'candidate':'missing');
 
   const favicon=fourHooksText(l.favicon||(l.assets&&l.assets.favicon),'');
 
   const heroUrl=fourHooksText(manual.heroImage||l.heroImage||l.image,'');
-  const heroSource=manual.heroImage?'crm_manual_url':(heroUrl?'manual':'placeholder');
+  const heroSource=manual.heroImage?'manual':(heroUrl?'manual':'placeholder');
   const heroStatus=manual.heroImage?manualStatus:(heroUrl?'candidate':'missing');
 
   const detectedImages=manual.propertyImages.length
     ?manual.propertyImages
     :fourHooksList([l.propertyImages,l.assets&&l.assets.images,l.foto,l.fotos]);
-  const imagesSource=manual.propertyImages.length?'crm_manual_url':'manual';
+  const imagesSource='manual';
   const imagesStatus=manual.propertyImages.length?manualStatus:'candidate';
   const propertyImages=detectedImages.filter(u=>u!==logo&&u!==heroUrl).slice(0,8).map((url,i)=>({url,source:imagesSource,status:imagesStatus,recommendedUse:(i===0&&!heroUrl)?'hero':'gallery'}));
 
   const video=fourHooksText(manual.videoUrl||l.videoUrl||l.video||(l.assets&&l.assets.video),'');
   // Fase 7G: a manually-applied fallback (INTERNAL_FALLBACK_LIBRARY.video) is
-  // a real internal asset but must never be tagged crm_manual_url/approved
-  // like a genuine client asset — it stays fallback_internal_library until
-  // explicitly marked approved_fallback via assetsApproved.
+  // a real internal asset, not the client's own - tagged as 'placeholder'
+  // (a real, backend-accepted source) so it's never mistaken for a
+  // genuine client asset, same intent as before just with a value the
+  // validator actually accepts.
   const isInternalFallbackVideo=!!(manual.videoUrl&&typeof INTERNAL_FALLBACK_LIBRARY!=='undefined'&&INTERNAL_FALLBACK_LIBRARY.video&&manual.videoUrl===INTERNAL_FALLBACK_LIBRARY.video.url);
-  const videoSource=isInternalFallbackVideo?'fallback_internal_library':(manual.videoUrl?'crm_manual_url':(video?'manual':'aurum_default'));
-  const videoStatus=isInternalFallbackVideo?(manual.assetsApproved?'approved_fallback':'pending_validation'):(manual.videoUrl?manualStatus:(video?'candidate':'pending_validation'));
+  const videoSource=isInternalFallbackVideo?'placeholder':(manual.videoUrl?'manual':(video?'manual':'aurum_default'));
+  const videoStatus=isInternalFallbackVideo?(manual.assetsApproved?'approved':'pending_validation'):(manual.videoUrl?manualStatus:(video?'candidate':'pending_validation'));
   const videos=video?[{url:video,source:videoSource,status:videoStatus,recommendedUse:'hero'}]:[{url:'/VIDEO_AURUM_HEROWEB.mp4',source:'aurum_default',status:'pending_validation',recommendedUse:'hero'}];
 
   const brandColors=manual.brandColors.length?manual.brandColors:(Array.isArray(l.brandColors)?l.brandColors:[]);
