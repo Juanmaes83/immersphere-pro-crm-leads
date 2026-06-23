@@ -3590,6 +3590,84 @@ function openOperatorConsole(id){
   navigator.clipboard.writeText(pkgJson).then(()=>{_showToast('Paquete copiado — pégalo en Operator Console al abrirse.','var(--accent2)');}).catch(()=>{});
   window.open(IMMERSPHERE_BACKEND_URL+'/operator','_blank','noopener,noreferrer');
 }
+// Camino automatico de un clic, alternativo al de arriba (que sigue intacto
+// como respaldo manual). Reutiliza /api/production/* - los mismos 4 pasos
+// que el Operator Console ya ejecuta a mano (proposal-package -> pr-plan ->
+// github-preflight -> create-prs), pero llamados directamente desde el CRM
+// con fetch(), sin pestaña aparte ni copiar/pegar JSON. Usa
+// X-Internal-Api-Token (no la sesion/cookie del Operator Console) para no
+// tocar su modelo de seguridad: header cross-origin normal, mismo patron ya
+// probado con CRM_PERSISTENCE_TOKEN en el resto del CRM. El merge de cada PR
+// sigue siendo 100% manual en GitHub - esto solo automatiza la creacion del
+// PR y el guardado del resultado en la ficha.
+const INTERNAL_API_TOKEN_KEY='crm_internal_api_token';
+function getInternalApiToken(){
+  try{return sessionStorage.getItem(INTERNAL_API_TOKEN_KEY)||'';}catch(e){return '';}
+}
+function hasInternalApiToken(){return !!getInternalApiToken();}
+function connectInternalApiToken(){
+  const current=getInternalApiToken();
+  const value=prompt(current?'Token interno de publicación (ya hay uno guardado en esta pestaña; pega uno nuevo para sustituirlo, o cancela para mantenerlo):':'Pega el token interno de publicación (INTERNAL_API_TOKEN). Permite crear PRs reales en AURUM/Rubik. Se guarda solo en esta pestaña (sessionStorage) y se borra al cerrarla.');
+  if(value===null) return false;
+  const trimmed=value.trim();
+  if(!trimmed){_showToast('Token vacío — no se ha guardado.','var(--text3)');return false;}
+  try{sessionStorage.setItem(INTERNAL_API_TOKEN_KEY,trimmed);}catch(e){}
+  _showToast('Token interno guardado para esta pestaña.','var(--green)');
+  return true;
+}
+function clearInternalApiToken(){
+  try{sessionStorage.removeItem(INTERNAL_API_TOKEN_KEY);}catch(e){}
+  _showToast('Token interno eliminado.','var(--accent2)');
+}
+async function generateAndPublishFourHooks(id){
+  const l=leads.find(x=>x.id===id);if(!l)return;
+  if(!hasInternalApiToken()){
+    if(!connectInternalApiToken()||!hasInternalApiToken()) return;
+  }
+  if(!confirmPreflightBeforeAction(id,'generar y publicar los 4 ganchos reales')) return;
+  const headers={'Content-Type':'application/json','X-Internal-Api-Token':getInternalApiToken()};
+  const rawPkg=getStoredFourHooksPayload(l)||buildProductionPackageFromLead(l);
+  const pkg=sanitizeProductionPackageForRailway(rawPkg);
+  const base=crmPersistenceApiBase();
+  try{
+    _showToast('1/4 Generando propuesta...','var(--accent2)');
+    const ppRes=await fetch(base+'/api/production/proposal-package',{method:'POST',headers,body:JSON.stringify(pkg)});
+    if(ppRes.status===401){_showToast('Token interno incorrecto — usa "Limpiar token interno" y vuelve a pegarlo.','var(--red)');return;}
+    const ppData=await ppRes.json();
+    if(!ppData.ok){_showToast('Paquete con errores: '+((ppData.errors||ppData.validation&&ppData.validation.errors||[]).join(', ')||'desconocido'),'var(--red)');return;}
+
+    _showToast('2/4 Calculando plan de PRs...','var(--accent2)');
+    const planRes=await fetch(base+'/api/production/pr-plan',{method:'POST',headers,body:JSON.stringify(pkg)});
+    const planData=await planRes.json();
+    if(!planData.ok){_showToast('Plan bloqueado: '+((planData.validation&&planData.validation.errors||[]).join(', ')||'error'),'var(--red)');return;}
+
+    _showToast('3/4 Comprobando GitHub (preflight)...','var(--accent2)');
+    const pfRes=await fetch(base+'/api/production/github-preflight',{method:'POST',headers,body:JSON.stringify(pkg)});
+    const pfData=await pfRes.json();
+    if(!pfData.canCreatePRs){
+      _showToast('Bloqueado antes de crear PRs: '+((pfData.blockers||[]).join(', ')||'desconocido'),'var(--red)');
+      return;
+    }
+    const warnTxt=(pfData.warnings||[]).length?('\n\nAvisos:\n- '+pfData.warnings.join('\n- ')):'';
+    const confirmMsg='Esto va a crear PRs REALES en AURUM y Rubik para '+(l.empresa||'')+'.'+warnTxt+'\n\nNo se mergean automáticamente — tendrás que revisarlos y mergearlos tú mismo en GitHub.\n\n¿Confirmas crear los PRs ahora?';
+    if(!confirm(confirmMsg)){_showToast('Cancelado — no se ha creado ningún PR.','var(--text3)');return;}
+
+    _showToast('4/4 Creando PRs reales...','var(--accent2)');
+    const crRes=await fetch(base+'/api/production/create-prs',{method:'POST',headers,body:JSON.stringify(pkg)});
+    if(crRes.status===401){_showToast('Token interno incorrecto — usa "Limpiar token interno" y vuelve a pegarlo.','var(--red)');return;}
+    const crData=await crRes.json();
+    if(!crData.ok||!crData.responseBundle){
+      _showToast('No se pudieron crear los PRs: '+(crData.reason||(crData.blockers||[]).join(', ')||'error desconocido'),'var(--red)');
+      return;
+    }
+    const result=importResponseBundle(id,crData.responseBundle);
+    if(!result.ok){_showToast('PRs creados pero no se pudo guardar en la ficha: '+result.error,'var(--red)');return;}
+    saveState();renderAll();openModal(id);
+    _showToast('PRs reales creados y guardados en la ficha — revisa y mergea en GitHub.','var(--green)');
+  }catch(e){
+    _showToast('Error de red hablando con el backend: '+String(e&&e.message||e),'var(--red)');
+  }
+}
 function renderProductionBase(l){
   try{
     const b=buildProductionBrief(l);
@@ -12210,7 +12288,7 @@ function renderFourHooksProposalPanel(l){
   const routeRow=(label,key)=>{const pub=pr[key]||'',cand=cr[key]||'';if(pub&&fourHooksUrlIsValid(pub))return '<div style="font-size:11px;color:var(--text3);word-break:break-all;margin:2px 0"><strong style="color:var(--text2)">'+safeHtml(label)+':</strong> <a href="'+safeHtml(pub)+'" target="_blank" rel="noopener noreferrer" style="color:var(--accent2)">'+safeHtml(pub)+'</a></div>';if(cand&&fourHooksUrlIsValid(cand))return '<div style="font-size:11px;color:var(--text3);word-break:break-all;margin:2px 0"><strong style="color:var(--text2)">'+safeHtml(label)+':</strong> <span style="font-size:10px;color:var(--text3)">[candidata]</span> '+safeHtml(cand)+'</div>';return '<div style="font-size:11px;color:var(--text3);margin:2px 0"><strong style="color:var(--text2)">'+safeHtml(label)+':</strong> <em>Pendiente de publicación</em></div>';};
   // Hook card: uses reviewableFourHooks — never renders candidateUrl as a live link
   const hookCard=(rh,num)=>{const pubBadge=rh.published?'<span class="tag est-cerrado">Publicado</span>':'<span class="tag est-pendiente">Pendiente publicación</span>';let urlHtml='';if(rh.published&&rh.publicUrl){urlHtml='<div class="hook-card-url"><a href="'+safeHtml(rh.publicUrl)+'" target="_blank" rel="noopener noreferrer" style="color:var(--accent2);word-break:break-all">'+safeHtml(rh.publicUrl)+'</a></div>';}else if(rh.candidateUrl){urlHtml='<div class="hook-card-url" style="word-break:break-all"><span style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;display:block;margin-bottom:2px">Ruta candidata — pendiente de publicación</span>'+safeHtml(rh.candidateUrl)+'</div>';}else{urlHtml='<div class="hook-card-url" style="color:var(--text3);font-style:italic">Sin ruta pública — pendiente de publicación</div>';}return '<div class="hook-card"><div class="hook-card-head"><span class="hook-badge">G'+num+'</span><span class="tag est-visual">Generado</span>'+pubBadge+'</div><div class="hook-card-title">'+safeHtml(rh.title||'')+'</div><div class="hook-card-desc">'+safeHtml(rh.description||'')+'</div>'+urlHtml+'</div>';};
-  return`<div class="modal-section" data-section="four-hooks-proposal"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px"><div class="modal-section-title" style="margin:0">Propuesta 4 ganchos</div><div style="display:flex;gap:6px;flex-wrap:wrap">${chip}${readyChip}</div></div>${counterHtml}<div class="hook-explain">Genera un paquete operativo personalizado desde la ficha, auditoria y datos disponibles. No expone tokens y no ejecuta create-prs.</div><div class="contact-actions" style="margin:10px 0"><button class="contact-btn btn-web" onclick="connectExistingFourHooksEngines(${l.id})">${has?'Regenerar 4 ganchos personalizados':'Generar 4 ganchos personalizados'}</button><button class="contact-btn btn-wa" onclick="copyFourHooksField(${l.id},'whatsapp')">Copiar WhatsApp</button><button class="contact-btn btn-email" onclick="copyFourHooksField(${l.id},'email')">Copiar email</button><button class="contact-btn btn-maps" onclick="copyFourHooksField(${l.id},'summary')">Copiar resumen</button><button class="contact-btn btn-email" onclick="copyFourHooksField(${l.id},'json')">Copiar JSON</button><button class="contact-btn btn-tel" onclick="downloadFourHooksPackage(${l.id})">Descargar JSON</button><button class="contact-btn btn-web" onclick="openOperatorConsole(${l.id})">Abrir Operator Console</button><button class="contact-btn btn-maps" onclick="copyOperatorInstructions(${l.id})">Instrucciones operador</button><button class="contact-btn btn-tel" onclick="openImportResponseBundlePanel(${l.id})">Importar Response Bundle</button></div>${has?`<div class="hook-strategy">${safeHtml(d.opportunityDetected||'Propuesta personalizada generada.')}</div><div class="info-grid"><div class="info-item"><label>Lead</label><span>${safeHtml(p.lead.name)}</span></div><div class="info-item"><label>Slug</label><span>${safeHtml(p.lead.slug)}</span></div><div class="info-item"><label>Auditoria</label><span>${safeHtml(p.audit.status)}</span></div><div class="info-item"><label>Score</label><span>${safeHtml(String(p.audit.signals.score||0))}</span></div></div><div style="margin:10px 0">${routeRow('EV','visualExperience')}${routeRow('Landing','landing')}${routeRow('Web completa','webCompleta')}${routeRow('Banner pack','bannerPack')}${routeRow('Vertical','bannerVertical')}${routeRow('Horizontal','bannerHorizontal')}</div><div class="hook-grid">${reviewable.map((rh,i)=>hookCard(rh,i+1)).join('')}</div>${(errList||warnList)?'<div style="margin-top:10px;display:grid;gap:8px">'+(errList?'<div class="pl-warning"><strong>Errores:</strong><ul>'+errList+'</ul></div>':'')+(warnList?'<div class="hook-form-hint"><strong>Warnings:</strong><ul>'+warnList+'</ul></div>':'')+'</div>':''}<div class="contact-actions" style="margin-top:10px"><button class="contact-btn btn-email" onclick="saveRailwayResponseForLead(${l.id},'proposal-package')">Pegar proposal-package</button><button class="contact-btn btn-email" onclick="saveRailwayResponseForLead(${l.id},'pr-plan')">Pegar pr-plan</button><button class="contact-btn btn-email" onclick="saveRailwayResponseForLead(${l.id},'github-preflight')">Pegar github-preflight</button><button class="contact-btn btn-web" onclick="openImportResponseBundlePanel(${l.id})" style="font-weight:700">Importar Response Bundle</button></div>`:'<div style="font-size:12px;color:var(--text3);line-height:1.6">Pulsa generar para crear diagnostico, 4 ganchos, rutas, mensajes y Production Package JSON compatible con backend.</div>'}</div>`;
+  return`<div class="modal-section" data-section="four-hooks-proposal"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px"><div class="modal-section-title" style="margin:0">Propuesta 4 ganchos</div><div style="display:flex;gap:6px;flex-wrap:wrap">${chip}${readyChip}</div></div>${counterHtml}<div class="hook-explain">Genera un paquete operativo personalizado desde la ficha, auditoria y datos disponibles. No expone tokens y no ejecuta create-prs.</div><div class="contact-actions" style="margin:10px 0"><button class="contact-btn btn-web" onclick="connectExistingFourHooksEngines(${l.id})">${has?'Regenerar 4 ganchos personalizados':'Generar 4 ganchos personalizados'}</button><button class="contact-btn btn-wa" onclick="copyFourHooksField(${l.id},'whatsapp')">Copiar WhatsApp</button><button class="contact-btn btn-email" onclick="copyFourHooksField(${l.id},'email')">Copiar email</button><button class="contact-btn btn-maps" onclick="copyFourHooksField(${l.id},'summary')">Copiar resumen</button><button class="contact-btn btn-email" onclick="copyFourHooksField(${l.id},'json')">Copiar JSON</button><button class="contact-btn btn-tel" onclick="downloadFourHooksPackage(${l.id})">Descargar JSON</button></div>${has?`<div style="margin:10px 0;padding:10px;border:1px solid rgba(196,169,106,0.35);border-radius:8px;background:rgba(196,169,106,0.05)"><div style="font-weight:700;margin-bottom:4px">🚀 Generar y publicar de verdad (un clic)</div><div class="hook-explain" style="margin-bottom:8px">Ejecuta de un tirón proposal-package → pr-plan → github-preflight → create-prs. Crea PRs REALES en AURUM/Rubik (igual que Costa Invest/Casas y Mar) — pide confirmación explícita antes de crear nada, y nunca mergea automáticamente.</div><div class="contact-actions"><button class="contact-btn btn-web" style="font-weight:700" onclick="generateAndPublishFourHooks(${l.id})">🚀 Generar y publicar 4 ganchos (real)</button><span style="font-size:10px;color:var(--text3);align-self:center">${hasInternalApiToken()?'☁ Token interno conectado':'☁ Sin token interno'}</span><button class="contact-btn btn-maps" style="font-size:10px;padding:4px 8px" onclick="connectInternalApiToken()">🔌 Conectar token interno</button><button class="contact-btn btn-maps" style="font-size:10px;padding:4px 8px" onclick="clearInternalApiToken()">Limpiar token interno</button></div></div>`:''}<div class="contact-actions" style="margin:6px 0"><button class="contact-btn btn-web" onclick="openOperatorConsole(${l.id})">Abrir Operator Console (manual)</button><button class="contact-btn btn-maps" onclick="copyOperatorInstructions(${l.id})">Instrucciones operador</button><button class="contact-btn btn-tel" onclick="openImportResponseBundlePanel(${l.id})">Importar Response Bundle</button></div>${has?`<div class="hook-strategy">${safeHtml(d.opportunityDetected||'Propuesta personalizada generada.')}</div><div class="info-grid"><div class="info-item"><label>Lead</label><span>${safeHtml(p.lead.name)}</span></div><div class="info-item"><label>Slug</label><span>${safeHtml(p.lead.slug)}</span></div><div class="info-item"><label>Auditoria</label><span>${safeHtml(p.audit.status)}</span></div><div class="info-item"><label>Score</label><span>${safeHtml(String(p.audit.signals.score||0))}</span></div></div><div style="margin:10px 0">${routeRow('EV','visualExperience')}${routeRow('Landing','landing')}${routeRow('Web completa','webCompleta')}${routeRow('Banner pack','bannerPack')}${routeRow('Vertical','bannerVertical')}${routeRow('Horizontal','bannerHorizontal')}</div><div class="hook-grid">${reviewable.map((rh,i)=>hookCard(rh,i+1)).join('')}</div>${(errList||warnList)?'<div style="margin-top:10px;display:grid;gap:8px">'+(errList?'<div class="pl-warning"><strong>Errores:</strong><ul>'+errList+'</ul></div>':'')+(warnList?'<div class="hook-form-hint"><strong>Warnings:</strong><ul>'+warnList+'</ul></div>':'')+'</div>':''}<div class="contact-actions" style="margin-top:10px"><button class="contact-btn btn-email" onclick="saveRailwayResponseForLead(${l.id},'proposal-package')">Pegar proposal-package</button><button class="contact-btn btn-email" onclick="saveRailwayResponseForLead(${l.id},'pr-plan')">Pegar pr-plan</button><button class="contact-btn btn-email" onclick="saveRailwayResponseForLead(${l.id},'github-preflight')">Pegar github-preflight</button><button class="contact-btn btn-web" onclick="openImportResponseBundlePanel(${l.id})" style="font-weight:700">Importar Response Bundle</button></div>`:'<div style="font-size:12px;color:var(--text3);line-height:1.6">Pulsa generar para crear diagnostico, 4 ganchos, rutas, mensajes y Production Package JSON compatible con backend.</div>'}</div>`;
 }
 
 // ── Response Bundle import — Platform B ──────────────────────────────────────
