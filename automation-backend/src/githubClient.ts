@@ -15,7 +15,7 @@ function token() {
   return String(process.env.GITHUB_SERVER_TOKEN || "").trim();
 }
 
-async function githubFetch(path, options = {}) {
+export async function githubFetch(path, options = {}) {
   const githubToken = token();
   if (!githubToken) throw new Error("missing_server_side_github_token");
   const res = await fetch(`${GITHUB_API}${path}`, {
