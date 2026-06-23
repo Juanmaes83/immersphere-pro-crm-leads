@@ -21,6 +21,7 @@ import {
   getBranchHeadSha,
   getFileContent,
   getFileInfo,
+  githubFetch,
   putFile,
   sanitizeGithubError,
 } from "./githubClient.ts";
@@ -74,6 +75,14 @@ import {
   validateCommercialActionPayload,
 } from "./crmCommercialActionsPersistence.ts";
 import { getPersistedStateForLead } from "./crmPersistedState.ts";
+import {
+  ensureProductionJobsSchema,
+  createJob,
+  getJob,
+  updateJobStatus,
+  findJobByIdempotencyKey,
+  listJobs,
+} from "./productionJobsPersistence.ts";
 
 const DEFAULT_ALLOWED_ORIGINS = [
   "http://localhost:5500",
@@ -709,13 +718,81 @@ export function createRequestHandler() {
     }
 
     if (req.method === "GET" && (url.pathname === "/api/production/jobs" || url.pathname === "/api/production/jobs/")) {
-      sendJson(res, 200, { ok: true, jobs: [...jobs.values()] }, headers);
+      try {
+        const jobsList = await listJobs(50);
+        sendJson(res, 200, { ok: true, jobs: jobsList }, headers);
+      } catch (error) {
+        logWarn("production_jobs_list_error", { error: String(error) });
+        sendJson(res, 500, { ok: false, error: "database_error" }, headers);
+      }
       return;
     }
 
     if (req.method === "GET" && url.pathname.startsWith("/api/production/jobs/")) {
       const jobId = decodeURIComponent(url.pathname.replace("/api/production/jobs/", ""));
-      sendJson(res, jobs.has(jobId) ? 200 : 404, jobs.get(jobId) || { ok: false, error: "job_not_found" }, headers);
+      try {
+        const job = await getJob(jobId);
+        if (job) {
+          sendJson(res, 200, job, headers);
+        } else {
+          sendJson(res, 404, { ok: false, error: "job_not_found" }, headers);
+        }
+      } catch (error) {
+        logWarn("production_jobs_get_error", { jobId, error: String(error) });
+        sendJson(res, 500, { ok: false, error: "database_error" }, headers);
+      }
+      return;
+    }
+
+    // Endpoint temporal para obtener estructura de repos (DEBUG)
+    if (req.method === "GET" && url.pathname.startsWith("/debug/repo-tree/")) {
+      // Autenticación: requiere INTERNAL_API_TOKEN o OPERATOR_ADMIN_TOKEN
+      const internalToken = req.headers["x-internal-api-token"];
+      const operatorToken = req.headers["x-operator-token"];
+      const expectedInternal = process.env.INTERNAL_API_TOKEN;
+      const expectedOperator = process.env.OPERATOR_ADMIN_TOKEN;
+
+      const isAuthorized =
+        (expectedInternal && internalToken === expectedInternal) ||
+        (expectedOperator && operatorToken === expectedOperator);
+
+      if (!isAuthorized) {
+        sendJson(res, 401, { ok: false, error: "unauthorized" }, headers);
+        return;
+      }
+
+      const repoName = url.pathname.replace("/debug/repo-tree/", "");
+      const repoMap: Record<string, string> = {
+        "aurum": "Juanmaes83/AURUM_PROPERTIES_BOUTIQUE",
+        "rubik": "Juanmaes83/Rubik-Sota-Director-de-Orquesta",
+      };
+
+      const fullRepoName = repoMap[repoName];
+      if (!fullRepoName) {
+        sendJson(res, 404, { ok: false, error: "repo_not_found" }, headers);
+        return;
+      }
+
+      try {
+        const response = await githubFetch(`/repos/${fullRepoName}/git/trees/main?recursive=1`);
+        const casasFiles = (response.tree || [])
+          .filter((item: any) => item.type === "blob" && item.path.includes("casas"))
+          .map((item: any) => item.path)
+          .sort();
+
+        sendJson(res, 200, {
+          ok: true,
+          repo: fullRepoName,
+          casasFiles: casasFiles,
+          totalFiles: (response.tree || []).length,
+        }, headers);
+      } catch (error) {
+        logWarn("debug_repo_tree_error", { repo: fullRepoName, error: String(error) });
+        sendJson(res, 500, {
+          ok: false,
+          error: error instanceof Error ? error.message : "github_api_error",
+        }, headers);
+      }
       return;
     }
 
@@ -1614,9 +1691,15 @@ async function createProductionPullRequests(payload, plan, preflight = {}) {
   };
 }
 
-export function startServer(options = {}) {
+export async function startServer(options = {}) {
   const port = Number(options.port ?? process.env.PORT ?? 8787);
   const host = options.host ?? process.env.HOST ?? "0.0.0.0";
+  try {
+    await ensureProductionJobsSchema();
+    logInfo("production_jobs_schema_ready");
+  } catch (error) {
+    logWarn("production_jobs_schema_init_failed", { error: String(error) });
+  }
   const server = http.createServer(createRequestHandler());
   return new Promise((resolve) => {
     server.listen(port, host, () => {
