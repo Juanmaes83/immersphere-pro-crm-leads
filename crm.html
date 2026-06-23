@@ -3674,7 +3674,15 @@ async function generateAndPublishFourHooks(id){
   }
   if(!confirmPreflightBeforeAction(id,'generar y publicar los 4 ganchos reales')) return;
   const headers={'Content-Type':'application/json','X-Internal-Api-Token':getInternalApiToken()};
-  const rawPkg=getStoredFourHooksPayload(l)||buildProductionPackageFromLead(l);
+  // Siempre reconstruye fresco, nunca reutiliza un paquete ya guardado de
+  // un intento anterior (getStoredFourHooksPayload) - bug real encontrado
+  // en uso real: un paquete generado ANTES de un fix de datos (p.ej. el de
+  // mediaAssets.source) se quedaba persistido en previewEngine con los
+  // datos viejos, y este boton seguia mandandolo tal cual aunque el codigo
+  // que lo construye ya estuviera corregido. Publicar de verdad debe
+  // reflejar siempre el estado actual del lead, nunca un borrador
+  // potencialmente desactualizado.
+  const rawPkg=buildProductionPackageFromLead(l);
   const pkg=sanitizeProductionPackageForRailway(rawPkg);
   const base=crmPersistenceApiBase();
   try{
