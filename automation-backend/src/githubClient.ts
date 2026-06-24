@@ -129,6 +129,10 @@ export async function createPullRequest(repo, headBranch, baseBranch, title, bod
   });
 }
 
+export async function getRepoTree(repo: string, branch: string) {
+  return githubFetch(`${repoPath(repo)}/git/trees/${encodeURIComponent(branch)}?recursive=1`);
+}
+
 export function sanitizeGithubError(error) {
   return {
     message: String(error?.message || "github_error").replace(/ghp_[A-Za-z0-9_]+|github_pat_[A-Za-z0-9_]+/g, "[redacted]"),
