@@ -21,6 +21,7 @@ import {
   getBranchHeadSha,
   getFileContent,
   getFileInfo,
+  getRepoTree,
   putFile,
   sanitizeGithubError,
 } from "./githubClient.ts";
@@ -1216,6 +1217,94 @@ export function createRequestHandler() {
       }
 
       sendJson(res, 404, { ok: false, error: "not_found" }, headers);
+      return;
+    }
+
+    // Endpoint temporal para probar los 4 endpoints de jobs (SIN AUTENTICACIÓN - SOLO PARA PRUEBA)
+    if (req.method === "GET" && url.pathname === "/debug/test-endpoints-no-auth") {
+      try {
+        // Test 1: GET /api/production/jobs
+        const jobsList = { ok: true, jobs: [...jobs.values()] };
+        logInfo("debug_test_1_jobs_list", { count: jobsList.jobs.length });
+
+        // Test 2: GET /api/production/jobs/:jobId (with a non-existent UUID)
+        const fakeJobId = "00000000-0000-0000-0000-000000000000";
+        const fakeJobResult = jobs.get(fakeJobId) || { ok: false, error: "job_not_found" };
+        logInfo("debug_test_2_fake_job", { result: fakeJobResult });
+
+        // Test 3: GET /debug/repo-tree/aurum
+        let aurumResult: Record<string, unknown> = { ok: false, error: "github_api_error" };
+        try {
+          const aurumResponse = await getRepoTree("Juanmaes83/AURUM_PROPERTIES_BOUTIQUE", "main");
+          const aurumCasasFiles = ((aurumResponse.tree || []) as Array<{ type: string; path: string }>)
+            .filter((item) => item.type === "blob" && item.path.includes("casas"))
+            .map((item) => item.path)
+            .sort();
+          aurumResult = {
+            ok: true,
+            repo: "Juanmaes83/AURUM_PROPERTIES_BOUTIQUE",
+            casasFiles: aurumCasasFiles,
+            totalFiles: (aurumResponse.tree || []).length,
+          };
+          logInfo("debug_test_3_aurum_repo", {
+            ok: true,
+            casasFilesCount: aurumCasasFiles.length,
+            casasFiles: aurumCasasFiles,
+          });
+        } catch (err) {
+          aurumResult = {
+            ok: false,
+            error: err instanceof Error ? err.message : "github_api_error",
+          };
+          logInfo("debug_test_3_aurum_repo_error", { error: String(err) });
+        }
+
+        // Test 4: GET /debug/repo-tree/rubik
+        let rubikResult: Record<string, unknown> = { ok: false, error: "github_api_error" };
+        try {
+          const rubikResponse = await getRepoTree("Juanmaes83/Rubik-Sota-Director-de-Orquesta", "main");
+          const rubikCasasFiles = ((rubikResponse.tree || []) as Array<{ type: string; path: string }>)
+            .filter((item) => item.type === "blob" && item.path.includes("casas"))
+            .map((item) => item.path)
+            .sort();
+          rubikResult = {
+            ok: true,
+            repo: "Juanmaes83/Rubik-Sota-Director-de-Orquesta",
+            casasFiles: rubikCasasFiles,
+            totalFiles: (rubikResponse.tree || []).length,
+          };
+          logInfo("debug_test_4_rubik_repo", {
+            ok: true,
+            casasFilesCount: rubikCasasFiles.length,
+            casasFiles: rubikCasasFiles,
+          });
+        } catch (err) {
+          rubikResult = {
+            ok: false,
+            error: err instanceof Error ? err.message : "github_api_error",
+          };
+          logInfo("debug_test_4_rubik_repo_error", { error: String(err) });
+        }
+
+        const testResults = {
+          ok: true,
+          tests: {
+            "GET /api/production/jobs": jobsList,
+            "GET /api/production/jobs/00000000-0000-0000-0000-000000000000": fakeJobResult,
+            "GET /debug/repo-tree/aurum": aurumResult,
+            "GET /debug/repo-tree/rubik": rubikResult,
+          },
+        };
+
+        logInfo("debug_test_endpoints_complete", testResults);
+        sendJson(res, 200, testResults, headers);
+      } catch (error) {
+        logWarn("debug_test_endpoints_no_auth_error", { error: String(error) });
+        sendJson(res, 500, {
+          ok: false,
+          error: error instanceof Error ? error.message : "internal_error",
+        }, headers);
+      }
       return;
     }
 
