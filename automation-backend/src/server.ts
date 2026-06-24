@@ -21,6 +21,7 @@ import {
   getBranchHeadSha,
   getFileContent,
   getFileInfo,
+  getRepoTree,
   putFile,
   sanitizeGithubError,
 } from "./githubClient.ts";
@@ -1216,6 +1217,93 @@ export function createRequestHandler() {
       }
 
       sendJson(res, 404, { ok: false, error: "not_found" }, headers);
+      return;
+    }
+
+    // ── GET /debug/test-endpoints (TEMPORARY) ────────────────────────────────
+    // Runs the 4 job-migration verification calls internally and returns all
+    // results in a single JSON response. Remove once verification is complete.
+    if (req.method === "GET" && url.pathname === "/debug/test-endpoints") {
+      const internalToken = req.headers["x-internal-api-token"];
+      const operatorToken = req.headers["x-operator-token"];
+      const expectedInternal = process.env.INTERNAL_API_TOKEN;
+      const expectedOperator = process.env.OPERATOR_ADMIN_TOKEN;
+
+      const isDebugAuthorized =
+        (expectedInternal && internalToken === expectedInternal) ||
+        (expectedOperator && operatorToken === expectedOperator);
+
+      if (!isDebugAuthorized) {
+        sendJson(res, 401, { ok: false, error: "unauthorized" }, headers);
+        return;
+      }
+
+      try {
+        // Test 1: GET /api/production/jobs
+        const jobsList = { ok: true, jobs: [...jobs.values()] };
+
+        // Test 2: GET /api/production/jobs/:jobId (with a non-existent UUID)
+        const fakeJobId = "00000000-0000-0000-0000-000000000000";
+        const fakeJobResult = jobs.get(fakeJobId) || { ok: false, error: "job_not_found" };
+
+        // Test 3: GET /debug/repo-tree/aurum
+        let aurumResult: Record<string, unknown> = { ok: false, error: "github_api_error" };
+        try {
+          const aurumResponse = await getRepoTree("Juanmaes83/AURUM_PROPERTIES_BOUTIQUE", "main");
+          const aurumCasasFiles = ((aurumResponse.tree || []) as Array<{ type: string; path: string }>)
+            .filter((item) => item.type === "blob" && item.path.includes("casas"))
+            .map((item) => item.path)
+            .sort();
+          aurumResult = {
+            ok: true,
+            repo: "Juanmaes83/AURUM_PROPERTIES_BOUTIQUE",
+            casasFiles: aurumCasasFiles,
+            totalFiles: (aurumResponse.tree || []).length,
+          };
+        } catch (err) {
+          aurumResult = {
+            ok: false,
+            error: err instanceof Error ? err.message : "github_api_error",
+          };
+        }
+
+        // Test 4: GET /debug/repo-tree/rubik
+        let rubikResult: Record<string, unknown> = { ok: false, error: "github_api_error" };
+        try {
+          const rubikResponse = await getRepoTree("Juanmaes83/Rubik-Sota-Director-de-Orquesta", "main");
+          const rubikCasasFiles = ((rubikResponse.tree || []) as Array<{ type: string; path: string }>)
+            .filter((item) => item.type === "blob" && item.path.includes("casas"))
+            .map((item) => item.path)
+            .sort();
+          rubikResult = {
+            ok: true,
+            repo: "Juanmaes83/Rubik-Sota-Director-de-Orquesta",
+            casasFiles: rubikCasasFiles,
+            totalFiles: (rubikResponse.tree || []).length,
+          };
+        } catch (err) {
+          rubikResult = {
+            ok: false,
+            error: err instanceof Error ? err.message : "github_api_error",
+          };
+        }
+
+        sendJson(res, 200, {
+          ok: true,
+          tests: {
+            "GET /api/production/jobs": jobsList,
+            "GET /api/production/jobs/00000000-0000-0000-0000-000000000000": fakeJobResult,
+            "GET /debug/repo-tree/aurum": aurumResult,
+            "GET /debug/repo-tree/rubik": rubikResult,
+          },
+        }, headers);
+      } catch (error) {
+        logWarn("debug_test_endpoints_error", { error: String(error) });
+        sendJson(res, 500, {
+          ok: false,
+          error: error instanceof Error ? error.message : "internal_error",
+        }, headers);
+      }
       return;
     }
 
