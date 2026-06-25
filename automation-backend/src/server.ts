@@ -74,13 +74,10 @@ import {
   validateCommercialActionPayload,
 } from "./crmCommercialActionsPersistence.ts";
 import { getPersistedStateForLead } from "./crmPersistedState.ts";
+import { handleAutoGenerateHook } from "./autoGenerateHook.ts"; // ← CAMBIO 1: import del endpoint orquestador G1-G4
  
 // ──────────────────────────────────────────────────────────────────────────
 // NUEVO: persistencia PostgreSQL para los jobs del pipeline G1-G4
-// (auto-generación de ganchos vía IA). Esto es DELIBERADAMENTE un sistema
-// separado del `jobs` Map de abajo, que pertenece a pr-plan/create-prs/
-// crm-intake/operator-create-prs y NO debe tocarse ni reemplazarse: romperlo
-// rompería el tracking de jobs que ya usa el flujo de Casas y Mar.
 // ──────────────────────────────────────────────────────────────────────────
 import {
   ensureProductionJobsSchema,
@@ -98,10 +95,7 @@ const DEFAULT_ALLOWED_ORIGINS = [
 ];
  
 const rateLimitBuckets = new Map();
-// Sistema de jobs EXISTENTE — usado por pr-plan/create-prs/crm-intake/
-// operator-create-prs. NO renombrar, NO migrar, NO tocar. Vive en memoria
-// a propósito desde el diseño original de estas rutas; cambiarlo es un
-// proyecto aparte que no corresponde a la migración de jobs de G1-G4.
+// Sistema de jobs EXISTENTE — NO TOCAR.
 const jobs = new Map();
  
 export function getAllowedOrigins() {
@@ -195,9 +189,6 @@ function crmIntakeEnabled() {
   return String(process.env.CRM_INTAKE_ENABLED || "false").toLowerCase() === "true";
 }
  
-// NUEVO: kill switch maestro para el pipeline de auto-generación de ganchos
-// (G1-G4 vía IA). Por defecto false. No confundir con prAutomationEnabled(),
-// que gobierna el create-prs ya existente y manual.
 function autoGenerateEnabled() {
   return String(process.env.AUTO_GENERATE_ENABLED || "false").toLowerCase() === "true";
 }
@@ -236,11 +227,6 @@ async function readAndSanitizeProductionPackage(req) {
   return sanitizeProductionPackageForPrAutomation(rawPayload);
 }
  
-// Fase 8A handlers. Kept in server.ts (not crmPersistence.ts) since they
-// deal with HTTP request/response plumbing (auth, body parsing, status
-// codes) - crmPersistence.ts stays pure data/validation, same separation
-// already used elsewhere in this file (e.g. buildPrAutomationPlan.ts vs the
-// route handler that calls it).
 async function handleCreateAuditRun(req, res, headers, leadIdRaw) {
   if (!isCrmPersistenceConfigured()) {
     sendJson(res, 503, { ok: false, error: "persistence_not_configured" }, headers);
@@ -316,9 +302,6 @@ async function handleLatestAuditRun(req, res, headers, leadIdRaw) {
   }
 }
  
-// Generic create/latest handler pair shared by Fase 8B/8C/8D - all three
-// follow the exact same auth -> leadId -> body -> validate -> persist shape
-// already established by handleCreateAuditRun/handleLatestAuditRun above.
 async function handleCreatePersistedResource(req, res, headers, leadIdRaw, { validate, insert, logLabel }) {
   if (!isCrmPersistenceConfigured()) {
     sendJson(res, 503, { ok: false, error: "persistence_not_configured" }, headers);
@@ -450,10 +433,6 @@ async function handleCreateCommercialAction(req, res, headers, leadIdRaw) {
   });
 }
  
-// Fase 8E. Auth/leadId checks mirror handleLatestPersistedResource, but the
-// response shape (full history list, not a single "latest" record) and
-// the aggregation logic (Promise.all across 4 tables) don't fit that
-// helper, so this stays its own function.
 async function handlePersistedState(req, res, headers, leadIdRaw) {
   if (!isCrmPersistenceConfigured()) {
     sendJson(res, 503, { ok: false, error: "persistence_not_configured" }, headers);
@@ -516,11 +495,6 @@ async function handleCommercialActionsHistory(req, res, headers, leadIdRaw) {
   }
 }
  
-// ──────────────────────────────────────────────────────────────────────────
-// NUEVO: handlers para el pipeline G1-G4 (jobs en PostgreSQL). Rutas bajo
-// /api/production/hook-jobs/* — deliberadamente DISTINTAS de
-// /api/production/jobs/* (que pertenece al Map existente, ver nota arriba).
-// ──────────────────────────────────────────────────────────────────────────
 async function handleListHookJobs(req, res, headers) {
   try {
     const jobsList = await listHookJobs(50);
@@ -633,22 +607,12 @@ export function createRequestHandler() {
  
     const url = new URL(req.url || "/", "http://127.0.0.1");
  
-    // All /api/operator/* endpoints are exempt from the internal-token gate.
-    // The browser console has no way to supply INTERNAL_API_TOKEN; operator
-    // endpoints are protected by OPERATOR_ADMIN_TOKEN (login) and session+CSRF
-    // (all other operator POSTs).
     const isOperatorEndpoint = url.pathname.startsWith("/api/operator/");
-    // Fase 8A/8B/8C/8D: all crm-persistence POST endpoints have their own
-    // independent auth (isCrmPersistenceAuthorized / CRM_PERSISTENCE_TOKEN,
-    // checked inside each handler) and must never require
-    // INTERNAL_API_TOKEN - same reasoning as the operator-endpoint
-    // exemption above. Listed explicitly (not a generic /api/crm/ prefix
-    // match) so a future unrelated /api/crm/* POST doesn't get silently
-    // exempted too.
     const CRM_PERSISTENCE_POST_SUFFIXES = ["/audit-runs", "/enrichment-profiles", "/approved-media-assets", "/production-packages", "/commercial-actions"];
     const isCrmPersistencePostEndpoint = req.method === "POST" && url.pathname.startsWith("/api/crm/leads/")
       && CRM_PERSISTENCE_POST_SUFFIXES.some((suffix) => url.pathname.endsWith(suffix));
-    if (req.method === "POST" && !isOperatorEndpoint && !isCrmPersistencePostEndpoint && !isAuthorized(req)) {
+    const isAutoGenerateEndpoint = req.method === "POST" && url.pathname === "/api/production/auto-generate-hook"; // ← CAMBIO 2a: nueva variable de exemption
+    if (req.method === "POST" && !isOperatorEndpoint && !isCrmPersistencePostEndpoint && !isAutoGenerateEndpoint && !isAuthorized(req)) { // ← CAMBIO 2b: añadido !isAutoGenerateEndpoint
       sendJson(res, 401, { ok: false, error: "unauthorized" }, headers);
       return;
     }
@@ -683,12 +647,6 @@ export function createRequestHandler() {
       return;
     }
  
-    // Fase 8A: AuditRun persistence only (EnrichmentProfile/ApprovedMediaAssets/
-    // ProductionPackage are explicitly out of scope here). Both routes require
-    // CRM_PERSISTENCE_TOKEN via X-CRM-Persistence-Token - never
-    // INTERNAL_API_TOKEN or OPERATOR_ADMIN_TOKEN, kept deliberately separate
-    // (Fase 6B). If DATABASE_URL/CRM_PERSISTENCE_TOKEN aren't configured, both
-    // return a controlled 503 - /health and every other route are unaffected.
     if (req.method === "POST" && url.pathname.startsWith("/api/crm/leads/") && url.pathname.endsWith("/audit-runs")) {
       const leadIdRaw = url.pathname.slice("/api/crm/leads/".length, -"/audit-runs".length);
       await handleCreateAuditRun(req, res, headers, leadIdRaw);
@@ -701,7 +659,6 @@ export function createRequestHandler() {
       return;
     }
  
-    // Fase 8B: EnrichmentProfile persistence only.
     if (req.method === "POST" && url.pathname.startsWith("/api/crm/leads/") && url.pathname.endsWith("/enrichment-profiles")) {
       const leadIdRaw = url.pathname.slice("/api/crm/leads/".length, -"/enrichment-profiles".length);
       await handleCreateEnrichmentProfile(req, res, headers, leadIdRaw);
@@ -714,7 +671,6 @@ export function createRequestHandler() {
       return;
     }
  
-    // Fase 8C: ApprovedMediaAssets persistence only.
     if (req.method === "POST" && url.pathname.startsWith("/api/crm/leads/") && url.pathname.endsWith("/approved-media-assets")) {
       const leadIdRaw = url.pathname.slice("/api/crm/leads/".length, -"/approved-media-assets".length);
       await handleCreateApprovedMediaAssets(req, res, headers, leadIdRaw);
@@ -727,8 +683,6 @@ export function createRequestHandler() {
       return;
     }
  
-    // Fase 8D: ProductionPackage persistence only. Never executes AURUM/Rubik
-    // PRs - only stores the payload the CRM already built locally.
     if (req.method === "POST" && url.pathname.startsWith("/api/crm/leads/") && url.pathname.endsWith("/production-packages")) {
       const leadIdRaw = url.pathname.slice("/api/crm/leads/".length, -"/production-packages".length);
       await handleCreateProductionPackage(req, res, headers, leadIdRaw);
@@ -741,18 +695,12 @@ export function createRequestHandler() {
       return;
     }
  
-    // Fase 8E: Persisted State Aggregator. Read-only - combines the latest
-    // record from each Fase 8A-8D table plus commercial-actions history.
-    // fourHooks/outreachMessages are read verbatim from the latest
-    // ProductionPackage, never regenerated here.
     if (req.method === "GET" && url.pathname.startsWith("/api/crm/leads/") && url.pathname.endsWith("/persisted-state")) {
       const leadIdRaw = url.pathname.slice("/api/crm/leads/".length, -"/persisted-state".length);
       await handlePersistedState(req, res, headers, leadIdRaw);
       return;
     }
  
-    // Fase 8E/8F/8G/8H: commercial action log. Never sends anything itself -
-    // only records that copy/open/mark-as-sent happened in the CRM.
     if (req.method === "POST" && url.pathname.startsWith("/api/crm/leads/") && url.pathname.endsWith("/commercial-actions")) {
       const leadIdRaw = url.pathname.slice("/api/crm/leads/".length, -"/commercial-actions".length);
       await handleCreateCommercialAction(req, res, headers, leadIdRaw);
@@ -765,9 +713,6 @@ export function createRequestHandler() {
       return;
     }
  
-    // ── Sistema de jobs EXISTENTE (Map en memoria) ───────────────────────
-    // Pertenece a pr-plan/create-prs/crm-intake/operator-create-prs.
-    // NO TOCAR. Ver nota junto a la declaración de `jobs` arriba.
     if (req.method === "GET" && (url.pathname === "/api/production/jobs" || url.pathname === "/api/production/jobs/")) {
       sendJson(res, 200, { ok: true, jobs: [...jobs.values()] }, headers);
       return;
@@ -779,9 +724,6 @@ export function createRequestHandler() {
       return;
     }
  
-    // ── Sistema de jobs NUEVO (PostgreSQL) — pipeline G1-G4 ──────────────
-    // Rutas deliberadamente distintas (/hook-jobs, no /jobs) para no
-    // colisionar nunca con el sistema de arriba.
     if (req.method === "GET" && (url.pathname === "/api/production/hook-jobs" || url.pathname === "/api/production/hook-jobs/")) {
       await handleListHookJobs(req, res, headers);
       return;
@@ -790,6 +732,26 @@ export function createRequestHandler() {
     if (req.method === "GET" && url.pathname.startsWith("/api/production/hook-jobs/")) {
       const jobId = decodeURIComponent(url.pathname.replace("/api/production/hook-jobs/", ""));
       await handleGetHookJob(req, res, headers, jobId);
+      return;
+    }
+ 
+    // ── POST /api/production/auto-generate-hook ─────────────────────────  // ← CAMBIO 3: endpoint orquestador G1-G4
+    // Pieza A.4: triggers async hook generation via Claude API.
+    // Auth handled inside handleAutoGenerateHook (accepts CRM persistence
+    // token OR internal API token). Exempted from the general POST auth
+    // gate above via isAutoGenerateEndpoint.
+    if (req.method === "POST" && url.pathname === "/api/production/auto-generate-hook") {
+      try {
+        const body = await readJsonBody(req);
+        const result = await handleAutoGenerateHook(req, body);
+        sendJson(res, result.statusCode, result.body, headers);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "request_failed";
+        sendJson(res, message === "payload_too_large" ? 413 : 400, {
+          ok: false,
+          error: message,
+        }, headers);
+      }
       return;
     }
  
@@ -979,7 +941,6 @@ export function createRequestHandler() {
       return;
     }
  
-    // ── GET /api/production/response-bundle/:jobId ───────────────────────────
     const prodBundleMatch = url.pathname.match(/^\/api\/production\/response-bundle\/([a-z0-9_-]+)$/i);
     if (req.method === "GET" && prodBundleMatch) {
       const jobId = prodBundleMatch[1];
@@ -993,7 +954,6 @@ export function createRequestHandler() {
       return;
     }
  
-    // ── POST /api/crm/import-response-bundle ─────────────────────────────────
     if (req.method === "POST" && url.pathname === "/api/crm/import-response-bundle") {
       try {
         const body = await readJsonBody(req);
@@ -1068,8 +1028,6 @@ export function createRequestHandler() {
       return;
     }
  
-    // ── Operator Console ──
- 
     if (req.method === "GET" && url.pathname === "/operator") {
       if (!isOperatorConsoleEnabled()) {
         sendJson(res, 404, { ok: false, error: "operator_console_disabled" });
@@ -1126,7 +1084,6 @@ export function createRequestHandler() {
       return;
     }
  
-    // ── GET /api/operator/response-bundle/:jobId (no session required for GET) ─
     const operatorBundleMatch = url.pathname.match(/^\/api\/operator\/response-bundle\/([a-z0-9_-]+)$/i);
     if (req.method === "GET" && operatorBundleMatch) {
       const jobId = operatorBundleMatch[1];
@@ -1380,10 +1337,6 @@ function buildResponseBundle(plan, pullRequestsByRepo: Record<string, { url: str
   };
 }
  
-// Branches are always cut from the *current* main SHA, fetched fresh from
-// GitHub on every call — never from a cached/previous branch's tip. If the
-// SHA can't be confirmed we refuse to create a branch at all rather than
-// silently falling back to some other ref.
 async function ensureUpdateBranch(repo: string, desiredBranch: string, baseBranch = "main") {
   const fromSha = await getBranchHeadSha(repo, baseBranch);
   if (!fromSha) {
@@ -1438,12 +1391,6 @@ async function createProductionPullRequests(payload, plan, preflight = {}) {
       );
     }
  
-    // If the reused components already point at a data file (e.g. sandhouse.ts),
-    // reuse that same file/export instead of creating a parallel one keyed off
-    // the incoming slug. Two reused components disagreeing on their data file
-    // is treated as unsafe to auto-resolve. The same fetched content is also
-    // used below to classify each component as premium/manual vs. something
-    // we can safely regenerate — one round-trip per component, not two.
     const reusedComponentNames = [...new Set(Object.values(routeResolution.componentByCanonicalRoute))];
     const componentContentByName = new Map<string, string>();
     for (const componentName of reusedComponentNames) {
@@ -1461,20 +1408,12 @@ async function createProductionPullRequests(payload, plan, preflight = {}) {
     }
     const existingDataFile = dataFileRefs.size === 1 ? [...dataFileRefs.values()][0] : undefined;
  
-    // "Reusing a component's name does not mean overwriting its content."
-    // Anything we cannot positively identify as our own previous
-    // auto-generated output (premium/manual hand-built, or simply unknown)
-    // is preserved untouched rather than regenerated from a basic template.
     const preserveComponentTypes = routeResolution.reusedTypes.filter((type) => {
       const componentName = routeResolution.componentByType[type];
       const classification = classifyExistingAurumComponent(componentContentByName.get(componentName) || "");
       return classification !== "autogenerated_safe_to_replace";
     });
  
-    // Existing data files are never fully overwritten — only a surgical,
-    // non-destructive patch of the score field, preserving everything else
-    // byte-for-byte. If that field can't be located safely, block instead of
-    // guessing at the file's structure and risking destroying it.
     let dataFileOverrideContent: string | undefined;
     let dataFilePatched = false;
     if (existingDataFile) {
@@ -1503,8 +1442,6 @@ async function createProductionPullRequests(payload, plan, preflight = {}) {
     });
     const reconciledAurumPaths = new Set(reconciledAurum.files.map((f) => f.path));
  
-    // Hard gate: a preserved (premium/unknown) component must never end up
-    // in the write set, regardless of how it got there.
     const overwrittenPremiumPaths = preserveComponentTypes
       .map((type) => `src/${routeResolution.componentByType[type]}.tsx`)
       .filter((p) => reconciledAurumPaths.has(p));
@@ -1516,12 +1453,6 @@ async function createProductionPullRequests(payload, plan, preflight = {}) {
       );
     }
  
-    // Critical existing outputs that DO need refreshing must actually be
-    // part of the write set: the manifest (always), the data file whenever
-    // one was detected (full regen or surgical patch), and any reused
-    // component that wasn't intentionally preserved as premium/unknown.
-    // App.tsx and preserved components are excluded here on purpose — their
-    // absence from the write set is the correct, intended outcome.
     const criticalAurumPaths = [
       `production-manifests/${plan.leadSlug}.json`,
       ...(existingDataFile ? [existingDataFile.path] : []),
@@ -1574,11 +1505,6 @@ async function createProductionPullRequests(payload, plan, preflight = {}) {
   if (existingOutputs.overall === "all_exist" && existingOutputReview.overall.passed) {
     const responseBundle = buildResponseBundle(plan, {}, createdAt);
     responseBundle.status = "existing_outputs_current";
-    // Client-facing publicRoutes must always be AURUM URLs — Rubik is the
-    // internal rendering engine, never a public link. AURUM's route set is
-    // already a superset of Rubik's (landing/webCompleta have no Rubik
-    // equivalent at all), so there is nothing legitimate to merge in from
-    // existingOutputs.rubik.publicRoutes here.
     responseBundle.publicRoutes = { ...existingOutputs.aurum.publicRoutes };
     responseBundle.warnings = existingOutputReview.overall.safeWarnings;
     return {
@@ -1618,12 +1544,6 @@ async function createProductionPullRequests(payload, plan, preflight = {}) {
     }
  
     if (hasExistingOutputs) {
-      // In stale/update mode `files` is the full unfiltered set (nothing is
-      // dropped — see the ternary above), so every file GitHub already has
-      // is about to be overwritten with fresh content. Labeling that
-      // "skipped" is actively misleading. Instead, verify it really is in
-      // the write set and block if a critical file would otherwise be left
-      // stale.
       const writePaths = new Set(files.map((f) => String(f.path)));
       const unupdatedCriticalFiles = existing.skippedFiles.filter((p) => !writePaths.has(p));
       if (unupdatedCriticalFiles.length > 0) {
@@ -1692,11 +1612,6 @@ export async function startServer(options = {}) {
   const port = Number(options.port ?? process.env.PORT ?? 8787);
   const host = options.host ?? process.env.HOST ?? "0.0.0.0";
  
-  // NUEVO: inicializa la tabla production_jobs (pipeline G1-G4) una sola
-  // vez al arrancar. Si falla, el servidor sigue arrancando igual — el
-  // resto de endpoints (incluido todo lo de Casas y Mar) no depende de
-  // esto. Solo /api/production/hook-jobs/* y el futuro
-  // auto-generate-hook se verían afectados.
   try {
     await ensureProductionJobsSchema();
     logInfo("production_jobs_schema_ready");
@@ -1718,3 +1633,4 @@ export async function startServer(options = {}) {
 if (import.meta.url === `file://${process.argv[1]?.replace(/\\/g, "/")}`) {
   startServer();
 }
+ 
