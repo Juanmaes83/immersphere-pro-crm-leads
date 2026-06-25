@@ -237,8 +237,12 @@ function buildDeterministicDataFile(
   if (hookType !== "G2" && hookType !== "G3") return null;
 
   const lead = pkg?.lead || pkg?.packagePayload?.lead || {};
+  const intelligenceContact =
+    pkg?.leadIntelligenceProfile?.contact ||
+    pkg?.packagePayload?.leadIntelligenceProfile?.contact ||
+    {};
   const media = pkg?.mediaAssets || pkg?.packagePayload?.mediaAssets || {};
-  const contact = pkg?.contact || pkg?.packagePayload?.contact || lead?.contact || {};
+  const contact = pkg?.contact || pkg?.packagePayload?.contact || lead?.contact || intelligenceContact || {};
   const audit = pkg?.auditRun || pkg?.packagePayload?.auditRun || pkg?.audit || {};
   const slug = extractSlugFromPayload(pkg);
   const [path] = getExpectedFilePathsForStep(hookType, slug, 1);
@@ -249,17 +253,17 @@ function buildDeterministicDataFile(
     slug,
     sector: pickString(lead.sector, lead.vertical, pkg.vertical),
     zone: pickString(lead.zone, lead.city, pkg.city),
-    website: pickString(lead.website, lead.web, pkg.website),
+    website: pickString(lead.website, lead.web, intelligenceContact.website, pkg.website),
     colors: {
       primary: pickString(lead.primaryColor, lead.brandColors?.primary) || "#1a1a2e",
       accent: pickString(lead.accentColor, lead.brandColors?.accent) || "#d4af37",
     },
     claim: pickString(lead.claim, lead.tagline),
     contact: {
-      phone: pickString(contact.phone, contact.tel, lead.phone, lead.telefono),
-      whatsapp: pickString(contact.whatsapp, lead.whatsapp),
-      email: pickString(contact.email, lead.email),
-      address: pickString(contact.address, contact.direction, lead.address, lead.direccion),
+      phone: pickString(contact.phone, contact.tel, intelligenceContact.phone, lead.phone, lead.telefono),
+      whatsapp: pickString(contact.whatsapp, intelligenceContact.whatsapp, lead.whatsapp),
+      email: pickString(contact.email, intelligenceContact.email, lead.email),
+      address: pickString(contact.address, contact.direction, intelligenceContact.address, lead.address, lead.direccion),
     },
     assets: {
       logo: pickString(media.logo?.url, media.logoUrl),

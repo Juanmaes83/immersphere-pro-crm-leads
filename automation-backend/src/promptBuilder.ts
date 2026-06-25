@@ -51,13 +51,17 @@ interface AuditData {
 
 function extractLeadData(pkg: Record<string, any>): LeadData {
   const lead = pkg?.lead || pkg?.packagePayload?.lead || {};
+  const intelligenceContact =
+    pkg?.leadIntelligenceProfile?.contact ||
+    pkg?.packagePayload?.leadIntelligenceProfile?.contact ||
+    {};
   const slug = sanitizeSlug(lead.slug || pkg?.slug || "unknown-lead");
   return {
     name: String(lead.name || lead.businessName || pkg?.businessName || "Empresa"),
     slug,
     sector: String(lead.sector || lead.vertical || pkg?.vertical || "Inmobiliario"),
     zone: String(lead.zone || lead.city || pkg?.city || ""),
-    website: String(lead.website || lead.web || pkg?.website || ""),
+    website: String(lead.website || lead.web || intelligenceContact.website || pkg?.website || ""),
     primaryColor: String(lead.primaryColor || lead.brandColors?.primary || "#1a1a2e"),
     accentColor: String(lead.accentColor || lead.brandColors?.accent || "#d4af37"),
     claim: String(lead.claim || lead.tagline || ""),
@@ -77,12 +81,17 @@ function extractMediaAssets(pkg: Record<string, any>): MediaAssets {
 }
 
 function extractContactData(pkg: Record<string, any>): ContactData {
-  const contact = pkg?.contact || pkg?.packagePayload?.contact || {};
+  const lead = pkg?.lead || pkg?.packagePayload?.lead || {};
+  const intelligenceContact =
+    pkg?.leadIntelligenceProfile?.contact ||
+    pkg?.packagePayload?.leadIntelligenceProfile?.contact ||
+    {};
+  const contact = pkg?.contact || pkg?.packagePayload?.contact || lead?.contact || intelligenceContact || {};
   return {
-    phone: String(contact.phone || contact.tel || ""),
-    whatsapp: String(contact.whatsapp || contact.phone || ""),
-    email: String(contact.email || ""),
-    address: String(contact.address || contact.direction || ""),
+    phone: String(contact.phone || contact.tel || intelligenceContact.phone || lead.phone || lead.telefono || ""),
+    whatsapp: String(contact.whatsapp || intelligenceContact.whatsapp || lead.whatsapp || contact.phone || ""),
+    email: String(contact.email || intelligenceContact.email || lead.email || ""),
+    address: String(contact.address || contact.direction || intelligenceContact.address || lead.address || lead.direccion || ""),
   };
 }
 

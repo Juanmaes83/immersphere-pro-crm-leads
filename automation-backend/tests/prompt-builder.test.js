@@ -41,3 +41,31 @@ test("G3 step 2 imports step 1 data without embedding the full generated file", 
   assert.doesNotMatch(prompt, /DO_NOT_EMBED_FULL_STEP_1_CONTENT/);
   assert.ok(prompt.length < step1Content.length);
 });
+
+test("G3 prompt reads contact data from leadIntelligenceProfile", () => {
+  const payload = {
+    lead: {
+      name: "Torrevieja Sur",
+      slug: "torrevieja-sur",
+      sector: "Inmobiliaria",
+      zone: "Torrevieja",
+    },
+    leadIntelligenceProfile: {
+      contact: {
+        phone: "+34 679 48 16 79",
+        whatsapp: "+34 679 48 16 79",
+        email: "info@torreviejasur.com",
+        website: "https://torreviejasur.com/",
+        address: "Torrevieja, Alicante",
+      },
+    },
+  };
+
+  const prompt = buildPromptForHookStep("G3", 2, payload, [
+    { path: "src/data/clientDemos/torreviejaSur.ts", content: "export const torreviejaSur = {} as const;" },
+  ]);
+
+  assert.match(prompt, /torreviejasur\.com/);
+  assert.match(prompt, /\+34 679 48 16 79/);
+  assert.match(prompt, /info@torreviejasur\.com/);
+});
