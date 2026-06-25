@@ -119,7 +119,7 @@ export async function updateJobStatus(
   }
   if (updates.generatedFiles !== undefined) {
     fields.push(`generated_files = $${paramIndex++}`);
-    values.push(updates.generatedFiles ?? null);
+    values.push(updates.generatedFiles != null ? JSON.stringify(updates.generatedFiles) : null);
   }
 
   fields.push(`updated_at = now()`);
