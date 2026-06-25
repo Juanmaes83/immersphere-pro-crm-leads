@@ -96,6 +96,9 @@ function getTemperature(): number {
  
 const START_MARKER = "===IMMERSPHERE_FILES_START===";
 const END_MARKER = "===IMMERSPHERE_FILES_END===";
+const FILE_MARKER_PREFIX = "---FILE:";
+const FILE_MARKER_SUFFIX = "---";
+const END_FILE_MARKER = "---END_FILE---";
  
 // ── System prompt ───────────────────────────────────────────────────────
  
@@ -108,19 +111,16 @@ REGLAS ABSOLUTAS — violarlas invalida toda tu respuesta:
 1. Tu respuesta COMPLETA debe tener esta estructura exacta, sin NADA antes ni después:
  
 ${START_MARKER}
-{
-  "files": [
-    {
-      "path": "ruta/relativa/del/archivo.ext",
-      "content": "contenido completo del archivo"
-    }
-  ]
-}
+---FILE:ruta/relativa/del/archivo.ext---
+contenido completo del archivo
+---END_FILE---
 ${END_MARKER}
+
+Si generas varios archivos, repite el bloque FILE/END_FILE una vez por archivo.
  
 2. NO escribas texto explicativo, comentarios, saludos ni markdown antes de
    ${START_MARKER} ni después de ${END_MARKER}. NADA. Solo los marcadores y
-   el JSON entre ellos.
+   los bloques FILE/END_FILE entre ellos.
  
 3. El campo "path" de cada archivo debe ser SIEMPRE relativo (nunca empieza
    por "/" ni contiene "../"). Debe empezar por el prefijo de ruta permitido
@@ -142,7 +142,7 @@ ${END_MARKER}
 7. Si no puedes cumplir alguna instrucción de forma segura, responde así
    (siempre dentro de los marcadores):
 ${START_MARKER}
-{ "files": [], "error": "descripción clara del problema" }
+ERROR: descripcion clara del problema
 ${END_MARKER}
  
 8. El contenido de cada archivo debe ser COMPLETO y funcional — nunca uses
@@ -307,6 +307,25 @@ async function callAnthropicRaw(
  
 const MAX_FILE_SIZE_BYTES = 204_800; // 200KB
 const MAX_FILE_COUNT = 15;
+
+function parseFileBlockPayload(payload: string): { files?: GeneratedFile[]; error?: string } | null {
+  const trimmed = payload.trim();
+  if (trimmed.toUpperCase().startsWith("ERROR:")) {
+    return { files: [], error: trimmed.slice("ERROR:".length).trim() || "generation_failed" };
+  }
+
+  const files: GeneratedFile[] = [];
+  const blockPattern = /---FILE:([^\r\n]+?)---\r?\n([\s\S]*?)\r?\n---END_FILE---/g;
+  let match: RegExpExecArray | null;
+
+  while ((match = blockPattern.exec(payload)) !== null) {
+    const path = match[1].trim();
+    const content = match[2].replace(/^\r?\n/, "").replace(/\r?\n$/, "");
+    files.push({ path, content });
+  }
+
+  return files.length > 0 ? { files } : null;
+}
  
 function extractFilesFromResponse(
   rawText: string,
@@ -345,15 +364,20 @@ function extractFilesFromResponse(
   const jsonSlice = rawText.slice(startIdx + START_MARKER.length, endIdx).trim();
  
   let parsed: { files?: GeneratedFile[]; error?: string };
-  try {
-    parsed = JSON.parse(jsonSlice);
-  } catch (parseError) {
-    const preview = jsonSlice.slice(0, 300) + (jsonSlice.length > 300 ? "..." : "");
-    throw createCodedError(
-      `JSON inválido entre marcadores: ${(parseError as Error).message}. ` +
-      `Preview: ${preview}`,
-      ERROR_CODES.RESPONSE_INVALID_JSON
-    );
+  const blockPayload = parseFileBlockPayload(jsonSlice);
+  if (blockPayload) {
+    parsed = blockPayload;
+  } else {
+    try {
+      parsed = JSON.parse(jsonSlice);
+    } catch (parseError) {
+      const preview = jsonSlice.slice(0, 300) + (jsonSlice.length > 300 ? "..." : "");
+      throw createCodedError(
+        `JSON invalido entre marcadores: ${(parseError as Error).message}. ` +
+        `Preview: ${preview}`,
+        ERROR_CODES.RESPONSE_INVALID_JSON
+      );
+    }
   }
  
   // ── Claude reported a controlled error ──
