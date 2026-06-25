@@ -737,14 +737,13 @@ export function createRequestHandler() {
  
     // ── POST /api/production/auto-generate-hook ─────────────────────────  // ← CAMBIO 3: endpoint orquestador G1-G4
     // Pieza A.4: triggers async hook generation via Claude API.
-    // Auth handled inside handleAutoGenerateHook (accepts CRM persistence
-    // token OR internal API token). Exempted from the general POST auth
-    // gate above via isAutoGenerateEndpoint.
+    // Exempted from the general POST auth gate above via isAutoGenerateEndpoint.
+    // The endpoint handler expects a parsed body wrapper and the process env.
     if (req.method === "POST" && url.pathname === "/api/production/auto-generate-hook") {
       try {
         const body = await readJsonBody(req);
-        const result = await handleAutoGenerateHook(req, body);
-        sendJson(res, result.statusCode, result.body, headers);
+        const result = await handleAutoGenerateHook({ body }, process.env);
+        sendJson(res, result.status, result.body, headers);
       } catch (error) {
         const message = error instanceof Error ? error.message : "request_failed";
         sendJson(res, message === "payload_too_large" ? 413 : 400, {
