@@ -267,27 +267,26 @@ function buildG3Step1Prompt(
 function buildG3Step2Prompt(
   lead: LeadData, media: MediaAssets, contact: ContactData,
   audit: AuditData, stepPaths: string[], componentBase: string,
-  camelBase: string, step1Content: string
+  camelBase: string, _step1Content: string
 ): string {
   const ctaBlock = buildContactCTABlock(contact);
 
   return `Genera el componente Web Completa premium (G3) para ${lead.name}.
 
-=== ARCHIVO YA GENERADO (contexto, NO lo regeneres) ===
-\`\`\`
-${step1Content}
-\`\`\`
+=== ARCHIVO YA GENERADO (NO lo regeneres) ===
+Ya existe src/data/clientDemos/${camelBase}.ts y exporta ${camelBase}.
+Usa solo este import:
+import { ${camelBase} } from "./data/clientDemos/${camelBase}";
 
 === ARCHIVO A GENERAR ===
 Genera EXACTAMENTE: ${stepPaths[0]}
 
 === INSTRUCCIONES ===
-Componente React funcional con export default. Web profesional completa.
-Import: import { ${camelBase} } from "./data/clientDemos/${camelBase}";
+Componente React funcional con export default. Web profesional completa, compacta y robusta.
+No pegues datos del lead en bruto: lee desde ${camelBase} con optional chaining y fallbacks.
 
 MINIMO 8 SECCIONES:
-1. HERO: fondo ${lead.primaryColor}, titulo grande animado letra por letra
-   (useEffect + setTimeout por caracter, opacity 0->1). Claim + CTA.
+1. HERO: fondo ${lead.primaryColor}, titulo grande con animacion CSS ligera. Claim + CTA.
 2. SOBRE NOSOTROS: texto descriptivo sector ${lead.sector}, zona ${lead.zone}
 3. SERVICIOS: grid 3-4 servicios con iconos SVG inline
 4. PROPIEDADES: galeria con imagenes o tarjetas placeholder
@@ -299,10 +298,13 @@ ${ctaBlock}
 
 Tecnico:
 - Estilos INLINE JS — NO CSS modules, NO Tailwind
-- Animaciones: IntersectionObserver + CSS transitions (NO importar GSAP)
+- Animaciones: CSS transitions/keyframes simples (NO importar GSAP)
 - Responsive con flexbox/grid
 - Sin imports externos mas alla de React
-- Paleta premium: oscuro/claro alterno, acentos ${lead.accentColor}`.trim();
+- Paleta premium: oscuro/claro alterno, acentos ${lead.accentColor}
+- Objetivo de tamaño: 450-750 lineas como maximo.
+- Puedes definir arrays locales compactos para secciones, servicios y testimonios.
+- Evita codigo repetitivo; usa .map() para cards, secciones y galerias.`.trim();
 }
 
 // ══════════════════════════════════════════════════════════════════════
