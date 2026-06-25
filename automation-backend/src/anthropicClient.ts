@@ -57,7 +57,10 @@ const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
 // Default timeout: 120s. Deliberately NOT added as a Railway env var
 // (we already configured 6 in step #4, and 120s is a safe universal
 // default). Only override this if you hit consistent timeouts on G3.
-const DEFAULT_TIMEOUT_MS = 120_000;
+function getTimeoutMs(): number {
+ const raw = parseInt(process.env.CLAUDE_TIMEOUT_MS || "180000", 10);
+ return Math.min(Math.max(raw, 30_000), 300_000);
+}
  
 function getApiKey(): string {
   const key = String(process.env.CLAUDE_API_KEY_IMMERSPHERE_PRO_CRM_LEADS || "").trim();
@@ -195,7 +198,7 @@ async function callAnthropicRaw(
   const temperature = getTemperature();
  
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT_MS);
+  const timeout = setTimeout(() => controller.abort(), getTimeoutMs());
  
   try {
     const response = await fetch(ANTHROPIC_API_URL, {
@@ -289,7 +292,7 @@ async function callAnthropicRaw(
     // AbortController fires this specific error type on timeout
     if (err instanceof Error && err.name === "AbortError") {
       throw createCodedError(
-        `Anthropic API timeout after ${DEFAULT_TIMEOUT_MS}ms. ` +
+        `Anthropic API timeout after ${getTimeoutMs()}ms. ` +
         `The model may be overloaded. Try again in a few minutes.`,
         ERROR_CODES.API_TIMEOUT
       );
