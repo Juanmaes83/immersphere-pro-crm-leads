@@ -285,6 +285,33 @@ Genera EXACTAMENTE: ${stepPaths[0]}
 Componente React funcional con export default. Web profesional completa, compacta y robusta.
 No pegues datos del lead en bruto: lee desde ${camelBase} con optional chaining y fallbacks.
 
+=== ESQUEMA EXACTO DEL DATA FILE ===
+${camelBase} tiene esta forma. Usa estos campos, no inventes otros:
+- ${camelBase}.name
+- ${camelBase}.slug
+- ${camelBase}.sector
+- ${camelBase}.zone
+- ${camelBase}.website
+- ${camelBase}.colors.primary
+- ${camelBase}.colors.accent
+- ${camelBase}.claim
+- ${camelBase}.contact.phone
+- ${camelBase}.contact.whatsapp
+- ${camelBase}.contact.email
+- ${camelBase}.contact.address
+- ${camelBase}.assets.logo
+- ${camelBase}.assets.heroImage
+- ${camelBase}.assets.video
+- ${camelBase}.assets.propertyImages
+- ${camelBase}.score
+
+REGLAS DE DATOS:
+- NO uses campos que no existen como companyName, tagline, phone, email o whatsapp en raiz.
+- NO inventes telefonos, emails, webs, direcciones, precios ni propiedades reales.
+- Si un dato viene vacio, muestra un fallback generico tipo "Contacto pendiente" o "Imagen pendiente".
+- Para WhatsApp, si ${camelBase}.contact.whatsapp no existe, no crees un enlace wa.me falso.
+- Evita emojis y caracteres raros; usa texto o SVG inline simple para iconos.
+
 MINIMO 8 SECCIONES:
 1. HERO: fondo ${lead.primaryColor}, titulo grande con animacion CSS ligera. Claim + CTA.
 2. SOBRE NOSOTROS: texto descriptivo sector ${lead.sector}, zona ${lead.zone}
