@@ -1,8 +1,11 @@
 // Fase 9 — Pieza A.4: Auto-generate hook endpoint.
+// v4 — FIX: createJob() llamada con 4 argumentos posicionales (no objeto).
+//      FIX: eliminado import muerto findLatestJobForLeadHook (no existe en
+//      productionJobsPersistence.ts y nunca se usaba en este archivo).
 // v3 — 2-step generation: splits large hooks into 2 smaller Claude calls.
  
 import { logInfo, logWarn } from "./logger.ts";
-import { generateHookCode, ERROR_CODES } from "./anthropicClient.ts";
+import { generateHookCode } from "./anthropicClient.ts";
 import { buildPromptForHookStep } from "./promptBuilder.ts";
 import {
   getStepCount,
@@ -14,7 +17,6 @@ import {
   createJob,
   updateJobStatus,
   findJobByIdempotencyKey,
-  findLatestJobForLeadHook,
 } from "./productionJobsPersistence.ts";
 import { sanitizeSlug } from "./security.ts";
  
@@ -31,7 +33,6 @@ interface AutoGenerateRequest {
 async function fetchProductionPackage(
   leadId: number
 ): Promise<Record<string, any> | null> {
-  // Import dynamically to avoid circular deps
   const { getLatestProductionPackage } = await import(
     "./crmProductionPackagePersistence.ts"
   );
@@ -84,9 +85,7 @@ async function processHookGenerationAsync(
       return;
     }
  
-    // Validate step 1 files
     const slug = extractSlugFromPayload(packagePayload);
-    const step1ExpectedPaths = getExpectedFilePathsForStep(hookType, slug, 1);
     const step1Errors = validateHookFiles(hookType, slug, result1.files);
  
     if (step1Errors.length > 0) {
@@ -125,7 +124,7 @@ async function processHookGenerationAsync(
         await updateJobStatus(jobId, {
           status: "failed",
           error: `Step 2: Claude API error [${result2.errorCode || "CONTROLLED"}]: ${result2.error}`,
-          generatedFiles: allFiles, // preserve step 1 files for inspection
+          generatedFiles: allFiles,
         });
         return;
       }
@@ -139,7 +138,6 @@ async function processHookGenerationAsync(
         return;
       }
  
-      // Validate step 2 files
       const step2Errors = validateHookFiles(hookType, slug, result2.files);
       if (step2Errors.length > 0) {
         await updateJobStatus(jobId, {
@@ -237,7 +235,6 @@ export async function handleAutoGenerateHook(
  
   const { leadId, hookType, idempotencyKey } = req.body;
  
-  // Validate inputs
   if (!leadId || typeof leadId !== "number") {
     return { status: 400, body: { ok: false, error: "invalid_lead_id" } };
   }
@@ -275,13 +272,12 @@ export async function handleAutoGenerateHook(
   const payload = pkg.packagePayload || pkg;
   const slug = extractSlugFromPayload(payload);
  
-  // Create job record
-  const jobId = await createJob({
-    leadId,
-    leadSlug: slug,
-    hookType,
-    idempotencyKey: idempotencyKey || `${leadId}-${hookType}-${Date.now()}`,
-  });
+  // FIX (v4): createJob espera 4 argumentos POSICIONALES, no un objeto.
+  // Firma real en productionJobsPersistence.ts:
+  //   createJob(leadId: number, leadSlug: string, hookType: "G1"|"G2"|"G3"|"G4", idempotencyKey?: string)
+  const finalIdempotencyKey = idempotencyKey || `${leadId}-${hookType}-${Date.now()}`;
+  const job = await createJob(leadId, slug, hookType, finalIdempotencyKey);
+  const jobId = job.id;
  
   // Fire and forget — respond immediately with 202
   processHookGenerationAsync(jobId, hookType as any, payload).catch((err) => {
