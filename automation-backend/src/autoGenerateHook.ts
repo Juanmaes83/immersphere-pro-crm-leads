@@ -58,16 +58,27 @@ async function processHookGenerationAsync(
     // ── Step 1 (always runs) ──
     await updateJobStatus(jobId, { status: "building_prompt" });
  
-    const prompt1 = buildPromptForHookStep(hookType, 1, packagePayload);
+    const deterministicStep1Files = buildDeterministicDataFile(hookType, packagePayload);
+    const prompt1 = deterministicStep1Files
+      ? ""
+      : buildPromptForHookStep(hookType, 1, packagePayload);
  
     await updateJobStatus(jobId, { status: "generating" });
  
     logInfo("auto_generate_step", {
       jobId, hookType, step: 1, totalSteps: stepCount,
       promptLength: prompt1.length,
+      deterministic: Boolean(deterministicStep1Files),
     });
  
-    const result1 = await generateHookCode(prompt1);
+    const result1 = deterministicStep1Files
+      ? {
+          files: deterministicStep1Files,
+          inputTokens: 0,
+          outputTokens: 0,
+          durationMs: 0,
+        }
+      : await generateHookCode(prompt1);
  
     if (result1.error) {
       await updateJobStatus(jobId, {
@@ -210,6 +221,61 @@ async function processHookGenerationAsync(
 function extractSlugFromPayload(pkg: Record<string, any>): string {
   const lead = pkg?.lead || pkg?.packagePayload?.lead || {};
   return sanitizeSlug(lead.slug || pkg?.slug || "unknown");
+}
+
+function pickString(...values: any[]): string {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return "";
+}
+
+function buildDeterministicDataFile(
+  hookType: "G1" | "G2" | "G3" | "G4",
+  pkg: Record<string, any>
+): Array<{ path: string; content: string }> | null {
+  if (hookType !== "G2" && hookType !== "G3") return null;
+
+  const lead = pkg?.lead || pkg?.packagePayload?.lead || {};
+  const media = pkg?.mediaAssets || pkg?.packagePayload?.mediaAssets || {};
+  const contact = pkg?.contact || pkg?.packagePayload?.contact || lead?.contact || {};
+  const audit = pkg?.auditRun || pkg?.packagePayload?.auditRun || pkg?.audit || {};
+  const slug = extractSlugFromPayload(pkg);
+  const [path] = getExpectedFilePathsForStep(hookType, slug, 1);
+  const exportName = path.split("/").pop()?.replace(/\.ts$/, "") || "clientDemo";
+
+  const data = {
+    name: pickString(lead.name, lead.businessName, pkg.businessName),
+    slug,
+    sector: pickString(lead.sector, lead.vertical, pkg.vertical),
+    zone: pickString(lead.zone, lead.city, pkg.city),
+    website: pickString(lead.website, lead.web, pkg.website),
+    colors: {
+      primary: pickString(lead.primaryColor, lead.brandColors?.primary) || "#1a1a2e",
+      accent: pickString(lead.accentColor, lead.brandColors?.accent) || "#d4af37",
+    },
+    claim: pickString(lead.claim, lead.tagline),
+    contact: {
+      phone: pickString(contact.phone, contact.tel, lead.phone, lead.telefono),
+      whatsapp: pickString(contact.whatsapp, lead.whatsapp),
+      email: pickString(contact.email, lead.email),
+      address: pickString(contact.address, contact.direction, lead.address, lead.direccion),
+    },
+    assets: {
+      logo: pickString(media.logo?.url, media.logoUrl),
+      heroImage: pickString(media.heroImage?.url, media.heroImageUrl),
+      video: pickString(media.videos?.[0]?.url, media.video?.url, media.videoUrl),
+      propertyImages: Array.isArray(media.propertyImages)
+        ? media.propertyImages.map((img: any) => pickString(img?.url, img)).filter(Boolean).slice(0, 6)
+        : [],
+    },
+    score: Number(audit.score || pkg.score || 0),
+  };
+
+  return [{
+    path,
+    content: `export const ${exportName} = ${JSON.stringify(data, null, 2)} as const;\n`,
+  }];
 }
  
 // ── Endpoint handler ──
