@@ -106,7 +106,31 @@ var _leadSlug = "";
 
 function show(id,msg,type){var el=document.getElementById(id);el.textContent=msg;el.className='status '+type;}
 function writeJson(id,data){document.getElementById(id).textContent=JSON.stringify(data,null,2);}
-function buildResponseBundle(){return{source:"operator-console",generatedAt:new Date().toISOString(),leadSlug:_leadSlug,proposalPackage:_proposalPackage,prPlan:_prPlan,githubPreflight:_githubPreflight};}
+function buildResponseBundle(){
+  var prPlan=_prPlan||{};
+  var preflight=_githubPreflight||{};
+  var pullRequests=null;
+  var status="dry_run_ok";
+  var plannedPublicRoutes=prPlan.plannedPublicRoutes||{};
+  if(preflight.pullRequests){pullRequests=preflight.pullRequests;}
+  return{
+    schemaVersion:"operator-response-bundle/1.0",
+    source:"operator-console",
+    generatedAt:new Date().toISOString(),
+    slug:_leadSlug||prPlan.leadSlug||(_proposalPackage&&_proposalPackage.leadSlug)||"",
+    leadSlug:_leadSlug||prPlan.leadSlug||(_proposalPackage&&_proposalPackage.leadSlug)||"",
+    status:status,
+    jobId:prPlan.jobId||null,
+    plannedPublicRoutes:plannedPublicRoutes,
+    pullRequests:pullRequests,
+    proposalPackage:_proposalPackage,
+    prPlan:_prPlan,
+    githubPreflight:_githubPreflight,
+    warnings:[
+      "dry_run_ok: PRs not created from this console; publication remains pending until create-prs/merge."
+    ]
+  };
+}
 function refreshBundle(){writeJson('bundle-output',buildResponseBundle());}
 function parsePackage(){
   var raw=document.getElementById('pkg-input').value.trim();
