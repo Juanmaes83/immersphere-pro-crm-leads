@@ -631,7 +631,33 @@ test("buildAurumFiles reutiliza el data file existente en vez de crear uno nuevo
   assert.ok(!paths.includes("src/data/clientDemos/sandhouseInmobiliaria.ts"), "no crea un data file paralelo");
 
   const landing = aurumFiles.files.find((f) => f.path.endsWith("Landing.tsx"));
-  assert.match(landing.content, /import \{ sandhouse \} from "@\/data\/clientDemos\/sandhouse"/);
+  assert.match(landing.content, /import \{ sandhouse \} from "\.\/data\/clientDemos\/sandhouse"/);
+  assert.doesNotMatch(landing.content, /import React from "react"/);
+});
+
+test("buildAurumFiles emite imports aunque las rutas ya existan en App.tsx", () => {
+  const slug = "torrevieja-sur";
+  const existingApp = `
+export function App() {
+  return (
+    <Routes>
+      <Route path="/${slug}" element={<TorreviejaSurLanding />} />
+      <Route path="/${slug}-web-completa" element={<TorreviejaSurWebCompleta />} />
+      <Route path="/visual-experience/${slug}" element={<TorreviejaSurVisualExperience />} />
+      <Route path="/banners/${slug}" element={<TorreviejaSurBannerPack />} />
+      <Route path="/banners/${slug}/vertical" element={<TorreviejaSurBannerVertical />} />
+      <Route path="/banners/${slug}/horizontal" element={<TorreviejaSurBannerHorizontal />} />
+    </Routes>
+  );
+}`;
+  const payload = validPayload({ slug });
+  const aurumFiles = buildAurumFiles(payload, undefined, { existingAppTsxContent: existingApp });
+  const appPatch = aurumFiles.files.find((f) => f.path === "src/App.tsx");
+  assert.ok(appPatch, "genera patch import-only para App.tsx");
+  const patch = JSON.parse(appPatch.content);
+  assert.equal(patch.routes.length, 0, "no duplica rutas existentes");
+  assert.ok(patch.imports.includes('import { TorreviejaSurLanding } from "./TorreviejaSurLanding";'));
+  assert.ok(patch.imports.includes('import { TorreviejaSurBannerHorizontal } from "./TorreviejaSurBannerHorizontal";'));
 });
 
 // ─── Resolución de rutas alias y ambigüedad ────────────────────────────────────
