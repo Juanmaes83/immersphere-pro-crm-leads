@@ -12334,6 +12334,74 @@ function openImportResponseBundlePanel(id) {
   _showToast(label, 'var(--green)');
 }
 
+function closeImportResponseBundlePanel() {
+  const el = document.getElementById('response-bundle-import-overlay');
+  if (el) el.remove();
+}
+
+async function pasteResponseBundleFromClipboard() {
+  const ta = document.getElementById('response-bundle-import-text');
+  if (!ta) return;
+  try {
+    const text = await navigator.clipboard.readText();
+    ta.value = text || '';
+    ta.focus();
+    _showToast(text ? 'JSON pegado en la caja de importacion.' : 'El portapapeles esta vacio.', text ? 'var(--green)' : 'var(--orange)');
+  } catch(e) {
+    ta.focus();
+    _showToast('No pude leer el portapapeles. Haz Ctrl+V dentro de la caja grande.', 'var(--orange)');
+  }
+}
+
+function applyResponseBundleImportFromPanel(id) {
+  const ta = document.getElementById('response-bundle-import-text');
+  if (!ta) return;
+  const raw = (ta.value || '').trim();
+  if (!raw) { _showToast('La caja esta vacia. Pega primero el Response Bundle JSON.', 'var(--red)'); ta.focus(); return; }
+  let bundle;
+  try { bundle = JSON.parse(raw); } catch(e) { _showToast('JSON no valido: '+String(e.message||e), 'var(--red)'); ta.focus(); return; }
+  if (bundle && bundle.responseBundle && typeof bundle.responseBundle === 'object') bundle = bundle.responseBundle;
+  const result = importResponseBundle(id, bundle);
+  if (!result.ok) { _showToast('Error importando bundle: ' + result.error, 'var(--red)'); ta.focus(); return; }
+  closeImportResponseBundlePanel();
+  renderAll();
+  openModal(id);
+  const label = bundle.status === 'pr_created'
+    ? 'PRs creados - ficha en publication_pending'
+    : ('Bundle importado - status: ' + bundle.status);
+  _showToast(label, 'var(--green)');
+}
+
+function openImportResponseBundlePanel(id) {
+  const l = leads.find(x => x.id === id); if (!l) return;
+  const existing = l.previewEngine && l.previewEngine.operatorResponseBundle;
+  const hint = existing
+    ? 'Bundle previo importado: slug '+safeHtml(existing.slug||'?')+', status '+safeHtml(existing.status||'?')+'.'
+    : '';
+  closeImportResponseBundlePanel();
+  const overlay = document.createElement('div');
+  overlay.id = 'response-bundle-import-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.72);display:flex;align-items:center;justify-content:center;padding:18px';
+  overlay.innerHTML =
+    '<div style="width:min(920px,96vw);max-height:92vh;overflow:auto;background:var(--panel);border:1px solid var(--border);border-radius:10px;box-shadow:0 22px 70px rgba(0,0,0,.55);padding:18px">'+
+      '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:10px">'+
+        '<div><div class="modal-section-title" style="margin:0 0 6px 0">Importar Response Bundle</div>'+
+        '<div style="font-size:12px;color:var(--text3);line-height:1.5">Pega aqui el JSON copiado desde Operator Console. No se aplica nada hasta pulsar Importar bundle.</div>'+
+        (hint?'<div style="font-size:11px;color:var(--orange);margin-top:6px">'+hint+'</div>':'')+'</div>'+
+        '<button class="contact-btn btn-clear" onclick="closeImportResponseBundlePanel()">Cerrar</button>'+
+      '</div>'+
+      '<textarea id="response-bundle-import-text" spellcheck="false" placeholder="{ ... Response Bundle JSON ... }" style="width:100%;min-height:300px;resize:vertical;background:#070b18;color:var(--text);border:1px solid var(--border);border-radius:8px;padding:12px;font-family:ui-monospace,Consolas,monospace;font-size:12px;line-height:1.45"></textarea>'+
+      '<div class="contact-actions" style="margin-top:12px">'+
+        '<button class="contact-btn btn-email" onclick="pasteResponseBundleFromClipboard()">Pegar desde portapapeles</button>'+
+        '<button class="contact-btn btn-web" style="font-weight:800" onclick="applyResponseBundleImportFromPanel('+id+')">Importar bundle</button>'+
+        '<button class="contact-btn btn-clear" onclick="closeImportResponseBundlePanel()">Cancelar</button>'+
+      '</div>'+
+      '<div style="font-size:11px;color:var(--text3);margin-top:8px">Si el boton de pegar no funciona por permisos del navegador, haz clic dentro de la caja grande y pulsa Ctrl+V. Antes de importar debes ver texto empezando por {.</div>'+
+    '</div>';
+  document.body.appendChild(overlay);
+  setTimeout(()=>{const ta=document.getElementById('response-bundle-import-text'); if(ta) ta.focus();},0);
+}
+
 loadState();
 loadIntegrations();
 loadSearchPlans();
