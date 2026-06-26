@@ -19,6 +19,7 @@ import {
   findJobByIdempotencyKey,
 } from "./productionJobsPersistence.ts";
 import { sanitizeSlug } from "./security.ts";
+import { buildRubikFiles } from "./fileGenerators.ts";
  
 // ── Types ──
  
@@ -58,7 +59,7 @@ async function processHookGenerationAsync(
     // ── Step 1 (always runs) ──
     await updateJobStatus(jobId, { status: "building_prompt" });
  
-    const deterministicStep1Files = buildDeterministicDataFile(hookType, packagePayload);
+    const deterministicStep1Files = buildDeterministicFiles(hookType, packagePayload);
     const prompt1 = deterministicStep1Files
       ? ""
       : buildPromptForHookStep(hookType, 1, packagePayload);
@@ -117,7 +118,7 @@ async function processHookGenerationAsync(
     });
  
     // ── Step 2 (only for G2, G3, G4) ──
-    if (stepCount === 2) {
+    if (stepCount === 2 && !isCompleteDeterministicHook(hookType, deterministicStep1Files)) {
       await updateJobStatus(jobId, { status: "generating_step2" });
  
       const prompt2 = buildPromptForHookStep(
@@ -230,10 +231,11 @@ function pickString(...values: any[]): string {
   return "";
 }
 
-function buildDeterministicDataFile(
+function buildDeterministicFiles(
   hookType: "G1" | "G2" | "G3" | "G4",
   pkg: Record<string, any>
 ): Array<{ path: string; content: string }> | null {
+  if (hookType === "G4") return buildDeterministicG4Files(pkg);
   if (hookType !== "G2" && hookType !== "G3") return null;
 
   const lead = pkg?.lead || pkg?.packagePayload?.lead || {};
@@ -282,6 +284,63 @@ function buildDeterministicDataFile(
   }];
 }
  
+function isCompleteDeterministicHook(
+  hookType: "G1" | "G2" | "G3" | "G4",
+  files: Array<{ path: string; content: string }> | null
+): boolean {
+  return hookType === "G4" && Array.isArray(files) && files.length > 0;
+}
+
+function buildDeterministicG4Files(pkg: Record<string, any>): Array<{ path: string; content: string }> {
+  const slug = extractSlugFromPayload(pkg);
+  const allowedPaths = new Set([
+    ...getExpectedFilePathsForStep("G4", slug, 1),
+    ...getExpectedFilePathsForStep("G4", slug, 2),
+  ]);
+  const result = buildRubikFiles(normalizeGeneratorPayload(pkg));
+
+  if (result.errors.length > 0) {
+    throw new Error(`Deterministic G4 generation failed: ${result.errors.join("; ")}`);
+  }
+
+  return result.files
+    .filter((file) => allowedPaths.has(file.path))
+    .map((file) => ({ path: file.path, content: file.content }));
+}
+
+function normalizeGeneratorPayload(pkg: Record<string, any>): Record<string, any> {
+  const source = pkg?.packagePayload || pkg || {};
+  const lead = source.lead || {};
+  const contact =
+    source.contact ||
+    source.leadIntelligenceProfile?.contact ||
+    lead.contact ||
+    {};
+  const mediaAssets = source.mediaAssets || {};
+
+  return {
+    ...source,
+    lead: {
+      ...lead,
+      slug: pickString(lead.slug, pkg.slug) || extractSlugFromPayload(pkg),
+      name: pickString(lead.name, lead.businessName, pkg.businessName),
+      sector: pickString(lead.sector, lead.vertical, pkg.vertical),
+      zone: pickString(lead.zone, lead.city, pkg.city),
+      website: pickString(lead.website, lead.web, pkg.website),
+      primaryColor: pickString(lead.primaryColor, lead.brandColors?.primary) || "#1a1a2e",
+      accentColor: pickString(lead.accentColor, lead.brandColors?.accent) || "#d4af37",
+    },
+    contact: {
+      ...contact,
+      phone: pickString(contact.phone, contact.tel, lead.phone),
+      whatsapp: pickString(contact.whatsapp, lead.whatsapp, contact.phone, lead.phone),
+      email: pickString(contact.email, lead.email),
+      address: pickString(contact.address, contact.direction, lead.address, lead.direccion),
+    },
+    mediaAssets,
+  };
+}
+
 // ── Endpoint handler ──
  
 export async function handleAutoGenerateHook(
