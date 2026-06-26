@@ -81,10 +81,11 @@ pre{background:#0a0c14;border:1px solid #2d3148;border-radius:4px;padding:12px;f
       <button class="btn btn-secondary" onclick="doProposalPackage()">Generar proposal-package</button>
       <button class="btn btn-secondary" onclick="doPrPlan()">Generar PR plan</button>
       <button class="btn btn-secondary" onclick="doPreflight()">Ejecutar GitHub preflight</button>
+      <button class="btn btn-primary" onclick="doCreatePrs()">Crear PRs en GitHub</button>
       <button class="btn btn-primary" onclick="copyResponseBundle()">Copiar Response Bundle para CRM</button>
       <button class="btn btn-danger" onclick="clearPackage()">Limpiar</button>
     </div>
-    <div class="status warn" style="display:block;margin-top:10px">create-prs bloqueado en Fase 1C. Este panel solo prepara resultados revisables y no escribe en GitHub.</div>
+    <div class="status warn" style="display:block;margin-top:10px">Crear PRs escribe ramas y pull requests reales en GitHub. Ejecuta primero el preflight y revisa que no haya blockers.</div>
   </div>
 
   <div class="card" id="result-card">
@@ -93,6 +94,7 @@ pre{background:#0a0c14;border:1px solid #2d3148;border-radius:4px;padding:12px;f
     <div class="field"><label>Proposal Package result</label><pre id="proposal-output">Pendiente.</pre></div>
     <div class="field"><label>PR Plan result</label><pre id="plan-output">Pendiente.</pre></div>
     <div class="field"><label>GitHub Preflight result</label><pre id="preflight-output">Pendiente.</pre></div>
+    <div class="field"><label>Create PRs result</label><pre id="create-prs-output">Pendiente.</pre></div>
     <div class="field"><label>Response Bundle final</label><pre id="bundle-output">Pendiente.</pre></div>
   </div>
 </div>
@@ -102,11 +104,13 @@ var _csrf = null;
 var _proposalPackage = null;
 var _prPlan = null;
 var _githubPreflight = null;
+var _createPrsResult = null;
 var _leadSlug = "";
 
 function show(id,msg,type){var el=document.getElementById(id);el.textContent=msg;el.className='status '+type;}
 function writeJson(id,data){document.getElementById(id).textContent=JSON.stringify(data,null,2);}
 function buildResponseBundle(){
+  if(_createPrsResult&&_createPrsResult.responseBundle){return _createPrsResult.responseBundle;}
   var prPlan=_prPlan||{};
   var preflight=_githubPreflight||{};
   var pullRequests=null;
@@ -163,7 +167,7 @@ async function doLogin(){
 }
 async function doLogout(){
   try{await apiPost('/api/operator/logout',{});}catch(e){}
-  _csrf=null;_proposalPackage=null;_prPlan=null;_githubPreflight=null;_leadSlug='';
+  _csrf=null;_proposalPackage=null;_prPlan=null;_githubPreflight=null;_createPrsResult=null;_leadSlug='';
   document.getElementById('login-section').style.display='block';
   document.getElementById('console-section').style.display='none';
   document.getElementById('op-token').value='';
@@ -219,14 +223,38 @@ async function doPreflight(){
     var data=await apiPost('/api/operator/github-preflight',pkg);
     _githubPreflight=data;_leadSlug=data.leadSlug||_leadSlug;
     writeJson('preflight-output',data);refreshBundle();
-    if(data.ok&&data.canCreatePRs){show('pkg-status','Preflight OK. create-prs sigue bloqueado en Fase 1C.','ok');}
+    if(data.ok&&data.canCreatePRs){show('pkg-status','Preflight OK. Ya puedes crear PRs reales en GitHub.','ok');}
     else{var blockers=(data.blockers||[]).join(', ')||'bloqueado';show('pkg-status','Preflight bloqueado: '+blockers,'err');}
     show('result-status',data.ok?'preflight OK':'preflight bloqueado',data.ok?'ok':'err');
   }catch(e){show('pkg-status','Error: '+e.message,'err');}
 }
+async function doCreatePrs(){
+  var pkg=parsePackage();if(!pkg)return;
+  if(!_githubPreflight||!_githubPreflight.canCreatePRs){
+    show('pkg-status','Ejecuta GitHub preflight OK antes de crear PRs.','warn');
+    return;
+  }
+  var slug=(pkg.lead&&pkg.lead.slug)||_leadSlug||'este lead';
+  var ok=confirm('Vas a crear ramas y PRs reales en GitHub para '+slug+'.\\n\\nContinua solo si el preflight no tiene blockers. ¿Crear PRs ahora?');
+  if(!ok)return;
+  show('pkg-status','Creando PRs reales en GitHub...','info');
+  try{
+    var data=await apiPost('/api/operator/create-prs',pkg);
+    _createPrsResult=data;_leadSlug=data.leadSlug||_leadSlug;
+    writeJson('create-prs-output',data);refreshBundle();
+    if(data.ok&&data.responseBundle){
+      show('result-status','create-prs OK. Copia el Response Bundle real al CRM.','ok');
+      show('pkg-status','PRs creados. Copia Response Bundle para CRM.','ok');
+    }else{
+      var blockers=(data.blockers||[]).join(', ')||data.reason||data.error||'create-prs bloqueado';
+      show('result-status','create-prs no completado: '+blockers,'err');
+      show('pkg-status','create-prs no completado: '+blockers,'err');
+    }
+  }catch(e){show('pkg-status','Error creando PRs: '+e.message,'err');}
+}
 async function copyResponseBundle(){
   var bundle=buildResponseBundle();
-  if(!bundle.proposalPackage&&!bundle.prPlan&&!bundle.githubPreflight){show('pkg-status','Genera al menos un resultado antes de copiar el bundle','warn');return;}
+  if(!bundle.proposalPackage&&!bundle.prPlan&&!bundle.githubPreflight&&!_createPrsResult){show('pkg-status','Genera al menos un resultado antes de copiar el bundle','warn');return;}
   var text=JSON.stringify(bundle,null,2);
   try{await navigator.clipboard.writeText(text);}catch(e){var ta=document.createElement('textarea');ta.value=text;document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta);}
   show('pkg-status','Response Bundle copiado para CRM','ok');
@@ -237,8 +265,10 @@ function clearPackage(){
   document.getElementById('proposal-output').textContent='Pendiente.';
   document.getElementById('plan-output').textContent='Pendiente.';
   document.getElementById('preflight-output').textContent='Pendiente.';
+  document.getElementById('create-prs-output').textContent='Pendiente.';
   document.getElementById('bundle-output').textContent='Pendiente.';
-  show('pkg-status','Panel limpio. create-prs sigue bloqueado.','info');
+  _createPrsResult=null;
+  show('pkg-status','Panel limpio.','info');
 }
 (async function checkSession(){
   try{

@@ -688,6 +688,8 @@ test("buildOperatorConsoleHtml genera HTML válido con versión", async () => {
   assert.ok(html.includes("Consola Operador"));
   assert.ok(html.includes("/api/operator/login"));
   assert.ok(html.includes("x-csrf-token"));
+  assert.ok(html.includes("Crear PRs en GitHub"));
+  assert.ok(html.includes("/api/operator/create-prs"));
   assert.ok(html.includes("operator-response-bundle/1.0"));
   assert.ok(html.includes("dry_run_ok"));
   assert.ok(html.includes("plannedPublicRoutes"));
