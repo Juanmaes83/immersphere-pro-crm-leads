@@ -4623,17 +4623,32 @@ function buildProductionPackagePayloadFromLead(lead){
   };
 }
 async function persistProductionPackageBestEffort(lead){
-  if(!lead||lead.id<=0||!hasCrmPersistenceToken()) return;
+  if(!lead||lead.id<=0) return {ok:false,reason:'invalid_lead'};
+  if(!hasCrmPersistenceToken()) return {ok:false,reason:'no_token'};
   const payload=buildProductionPackagePayloadFromLead(lead);
-  if(!payload) return;
+  if(!payload) return {ok:false,reason:'no_production_package'};
   try{
     const res=await fetch(crmPersistenceApiBase()+'/api/crm/leads/'+lead.id+'/production-packages',{
       method:'POST',
       headers:{'Content-Type':'application/json','X-CRM-Persistence-Token':getCrmPersistenceToken()},
       body:JSON.stringify(payload)
     });
-    if(res.status===401) _showToast('Token de persistencia incorrecto — usa "Limpiar token" y vuelve a pegarlo.','var(--red)');
-  }catch(e){ /* backend down / network error: silent, localStorage already saved */ }
+    if(res.status===401){
+      _showToast('Token de persistencia incorrecto - usa "Limpiar token" y vuelve a pegarlo.','var(--red)');
+      return {ok:false,reason:'unauthorized',status:res.status};
+    }
+    if(!res.ok){
+      let error='server_error';
+      try{const data=await res.json();error=data&&data.error||data&&data.message||error;}catch(e){}
+      _showToast('No se pudo guardar Production Package: '+error,'var(--red)');
+      return {ok:false,reason:error,status:res.status};
+    }
+    const data=await res.json().catch(()=>({}));
+    return {ok:true,status:res.status,productionPackage:data&&data.productionPackage};
+  }catch(e){
+    _showToast('No se pudo guardar Production Package: backend no disponible.','var(--red)');
+    return {ok:false,reason:'network_error'};
+  }
 }
 async function fetchLatestProductionPackageBestEffort(leadId){
   if(!leadId||leadId<=0||!hasCrmPersistenceToken()) return null;
@@ -4748,8 +4763,12 @@ async function saveLocalToBackendForLead(leadId){
   await persistAuditRunBestEffort(l.id,l.websiteAudit);
   await persistEnrichmentProfileBestEffort(l);
   await persistApprovedMediaAssetsBestEffort(l);
-  await persistProductionPackageBestEffort(l);
-  _showToast('Guardado local enviado a backend.','var(--gold)');
+  const packageResult=await persistProductionPackageBestEffort(l);
+  resetCrmRecoveryFlagsForLead(l);
+  const fr=await fetchPersistedStateBestEffort(leadId);
+  l._syncCheck=computeSyncStatusForLead(l,fr);
+  if(packageResult&&packageResult.ok) _showToast('Production Package guardado y sincronizacion comprobada.','var(--green)');
+  else _showToast('No se guardo el Production Package ('+((packageResult&&packageResult.reason)||'error')+').','var(--red)');
   renderAll();openModal(leadId);
 }
 function keepLocalForLead(leadId){
@@ -12576,6 +12595,74 @@ function openImportResponseBundlePanel(id) {
     ? 'PRs creados — ficha en publication_pending'
     : ('Bundle importado — status: ' + bundle.status);
   _showToast(label, 'var(--green)');
+}
+
+function closeImportResponseBundlePanel() {
+  const el = document.getElementById('response-bundle-import-overlay');
+  if (el) el.remove();
+}
+
+async function pasteResponseBundleFromClipboard() {
+  const ta = document.getElementById('response-bundle-import-text');
+  if (!ta) return;
+  try {
+    const text = await navigator.clipboard.readText();
+    ta.value = text || '';
+    ta.focus();
+    _showToast(text ? 'JSON pegado en la caja de importacion.' : 'El portapapeles esta vacio.', text ? 'var(--green)' : 'var(--orange)');
+  } catch(e) {
+    ta.focus();
+    _showToast('No pude leer el portapapeles. Haz Ctrl+V dentro de la caja grande.', 'var(--orange)');
+  }
+}
+
+function applyResponseBundleImportFromPanel(id) {
+  const ta = document.getElementById('response-bundle-import-text');
+  if (!ta) return;
+  const raw = (ta.value || '').trim();
+  if (!raw) { _showToast('La caja esta vacia. Pega primero el Response Bundle JSON.', 'var(--red)'); ta.focus(); return; }
+  let bundle;
+  try { bundle = JSON.parse(raw); } catch(e) { _showToast('JSON no valido: '+String(e.message||e), 'var(--red)'); ta.focus(); return; }
+  if (bundle && bundle.responseBundle && typeof bundle.responseBundle === 'object') bundle = bundle.responseBundle;
+  const result = importResponseBundle(id, bundle);
+  if (!result.ok) { _showToast('Error importando bundle: ' + result.error, 'var(--red)'); ta.focus(); return; }
+  closeImportResponseBundlePanel();
+  renderAll();
+  openModal(id);
+  const label = bundle.status === 'pr_created'
+    ? 'PRs creados - ficha en publication_pending'
+    : ('Bundle importado - status: ' + bundle.status);
+  _showToast(label, 'var(--green)');
+}
+
+function openImportResponseBundlePanel(id) {
+  const l = leads.find(x => x.id === id); if (!l) return;
+  const existing = l.previewEngine && l.previewEngine.operatorResponseBundle;
+  const hint = existing
+    ? 'Bundle previo importado: slug '+safeHtml(existing.slug||'?')+', status '+safeHtml(existing.status||'?')+'.'
+    : '';
+  closeImportResponseBundlePanel();
+  const overlay = document.createElement('div');
+  overlay.id = 'response-bundle-import-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.72);display:flex;align-items:center;justify-content:center;padding:18px';
+  overlay.innerHTML =
+    '<div style="width:min(920px,96vw);max-height:92vh;overflow:auto;background:var(--panel);border:1px solid var(--border);border-radius:10px;box-shadow:0 22px 70px rgba(0,0,0,.55);padding:18px">'+
+      '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:10px">'+
+        '<div><div class="modal-section-title" style="margin:0 0 6px 0">Importar Response Bundle</div>'+
+        '<div style="font-size:12px;color:var(--text3);line-height:1.5">Pega aqui el JSON copiado desde Operator Console. No se aplica nada hasta pulsar Importar bundle.</div>'+
+        (hint?'<div style="font-size:11px;color:var(--orange);margin-top:6px">'+hint+'</div>':'')+'</div>'+
+        '<button class="contact-btn btn-clear" onclick="closeImportResponseBundlePanel()">Cerrar</button>'+
+      '</div>'+
+      '<textarea id="response-bundle-import-text" spellcheck="false" placeholder="{ ... Response Bundle JSON ... }" style="width:100%;min-height:300px;resize:vertical;background:#070b18;color:var(--text);border:1px solid var(--border);border-radius:8px;padding:12px;font-family:ui-monospace,Consolas,monospace;font-size:12px;line-height:1.45"></textarea>'+
+      '<div class="contact-actions" style="margin-top:12px">'+
+        '<button class="contact-btn btn-email" onclick="pasteResponseBundleFromClipboard()">Pegar desde portapapeles</button>'+
+        '<button class="contact-btn btn-web" style="font-weight:800" onclick="applyResponseBundleImportFromPanel('+id+')">Importar bundle</button>'+
+        '<button class="contact-btn btn-clear" onclick="closeImportResponseBundlePanel()">Cancelar</button>'+
+      '</div>'+
+      '<div style="font-size:11px;color:var(--text3);margin-top:8px">Si el boton de pegar no funciona por permisos del navegador, haz clic dentro de la caja grande y pulsa Ctrl+V. Antes de importar debes ver texto empezando por {.</div>'+
+    '</div>';
+  document.body.appendChild(overlay);
+  setTimeout(()=>{const ta=document.getElementById('response-bundle-import-text'); if(ta) ta.focus();},0);
 }
 
 loadState();

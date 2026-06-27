@@ -792,7 +792,7 @@ export function App() {
       assert.ok(!putPaths.includes("src/SandhouseLanding.tsx"), "no escribe src/SandhouseLanding.tsx (premium)");
       assert.ok(!putPaths.includes("src/SandhouseWebCompleta.tsx"), "no escribe src/SandhouseWebCompleta.tsx (premium)");
 
-      // App.tsx is untouched (all routes already existed).
+      // App.tsx is untouched (routes and imports already existed).
       assert.ok(!putPaths.includes("src/App.tsx"), "no toca src/App.tsx");
 
       // No parallel data file was created for the new slug.

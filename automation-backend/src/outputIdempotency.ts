@@ -182,14 +182,14 @@ export function filterGeneratedFilesByExistingOutputs(
         existing.existing.filter((e) => e.startsWith("App.tsx:")).map((e) => e.replace("App.tsx:", "")),
       );
       const missingRoutes = (wanted.routes || []).filter((r) => !existingRoutes.has(r));
-      if (missingRoutes.length === 0) return false;
       const usedComponents = new Set(
-        missingRoutes.map((r) => r.match(/<([A-Za-z0-9_]+)\s/)?.[1]).filter(Boolean),
+        (wanted.routes || []).map((r) => r.match(/<([A-Za-z0-9_]+)\s/)?.[1]).filter(Boolean),
       );
       const missingImports = (wanted.imports || []).filter((imp) => {
         const m = imp.match(/\{ ([A-Za-z0-9_]+) \}/);
         return m && usedComponents.has(m[1]);
       });
+      if (missingRoutes.length === 0 && missingImports.length === 0) return false;
       file.content = JSON.stringify({ ...wanted, imports: missingImports, routes: missingRoutes });
       return true;
     }

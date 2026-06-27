@@ -688,6 +688,11 @@ test("buildOperatorConsoleHtml genera HTML válido con versión", async () => {
   assert.ok(html.includes("Consola Operador"));
   assert.ok(html.includes("/api/operator/login"));
   assert.ok(html.includes("x-csrf-token"));
+  assert.ok(html.includes("Crear PRs en GitHub"));
+  assert.ok(html.includes("/api/operator/create-prs"));
+  assert.ok(html.includes("operator-response-bundle/1.0"));
+  assert.ok(html.includes("dry_run_ok"));
+  assert.ok(html.includes("plannedPublicRoutes"));
   assert.ok(!html.includes("localStorage"));
 });
 
@@ -712,4 +717,24 @@ test("rutas desconocidas devuelven 404", async () => {
     assert.equal(body.ok, false);
     assert.equal(body.error, "not_found");
   });
+});
+
+test("auto-generate-hook desactivado devuelve 403 controlado", async () => {
+  const prev = process.env.AUTO_GENERATE_ENABLED;
+  process.env.AUTO_GENERATE_ENABLED = "false";
+  try {
+    await withServer(async (baseUrl) => {
+      const { status, body } = await postJson(baseUrl, "/api/production/auto-generate-hook", {
+        leadId: 9999,
+        hookType: "G3",
+        idempotencyKey: "9999-G3-test-disabled",
+      });
+      assert.equal(status, 403);
+      assert.equal(body.ok, false);
+      assert.equal(body.error, "auto_generate_disabled");
+    });
+  } finally {
+    if (prev === undefined) delete process.env.AUTO_GENERATE_ENABLED;
+    else process.env.AUTO_GENERATE_ENABLED = prev;
+  }
 });

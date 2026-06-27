@@ -74,23 +74,37 @@ import {
   validateCommercialActionPayload,
 } from "./crmCommercialActionsPersistence.ts";
 import { getPersistedStateForLead } from "./crmPersistedState.ts";
-
+import { handleAutoGenerateHook } from "./autoGenerateHook.ts"; // ← CAMBIO 1: import del endpoint orquestador G1-G4
+ 
+// ──────────────────────────────────────────────────────────────────────────
+// NUEVO: persistencia PostgreSQL para los jobs del pipeline G1-G4
+// ──────────────────────────────────────────────────────────────────────────
+import {
+  ensureProductionJobsSchema,
+  createJob as createHookJob,
+  getJob as getHookJob,
+  updateJobStatus as updateHookJobStatus,
+  findJobByIdempotencyKey as findHookJobByIdempotencyKey,
+  listJobs as listHookJobs,
+} from "./productionJobsPersistence.ts";
+ 
 const DEFAULT_ALLOWED_ORIGINS = [
   "http://localhost:5500",
   "http://127.0.0.1:5500",
   "https://juanmaes83.github.io",
 ];
-
+ 
 const rateLimitBuckets = new Map();
+// Sistema de jobs EXISTENTE — NO TOCAR.
 const jobs = new Map();
-
+ 
 export function getAllowedOrigins() {
   return String(process.env.ALLOWED_ORIGINS || DEFAULT_ALLOWED_ORIGINS.join(","))
     .split(",")
     .map((item) => item.trim())
     .filter(Boolean);
 }
-
+ 
 function sendJson(res, statusCode, payload, extraHeaders = {}) {
   const body = JSON.stringify(payload, null, 2);
   res.writeHead(statusCode, {
@@ -105,7 +119,7 @@ function sendJson(res, statusCode, payload, extraHeaders = {}) {
   });
   res.end(body);
 }
-
+ 
 function sendHtml(res, statusCode, html, extraHeaders = {}) {
   const body = html;
   res.writeHead(statusCode, {
@@ -119,7 +133,7 @@ function sendHtml(res, statusCode, html, extraHeaders = {}) {
   });
   res.end(body);
 }
-
+ 
 function corsHeaders(req) {
   const origin = req.headers.origin || "";
   const allowed = getAllowedOrigins();
@@ -139,7 +153,7 @@ function corsHeaders(req) {
     "Access-Control-Allow-Headers": "Content-Type,Authorization,X-Internal-Api-Token,X-Csrf-Token,X-CRM-Persistence-Token",
   };
 }
-
+ 
 function isRateLimited(req) {
   const key = req.socket.remoteAddress || "unknown";
   const now = Date.now();
@@ -152,33 +166,37 @@ function isRateLimited(req) {
   rateLimitBuckets.set(key, bucket);
   return bucket.count > 60;
 }
-
+ 
 function isTokenRequired() {
   const token = String(process.env.INTERNAL_API_TOKEN || "").trim();
   return Boolean(token) && token !== "change-me-local-only";
 }
-
+ 
 function isAuthorized(req) {
   if (!isTokenRequired()) return true;
   return req.headers["x-internal-api-token"] === process.env.INTERNAL_API_TOKEN;
 }
-
+ 
 function prAutomationEnabled() {
   return String(process.env.GITHUB_PR_AUTOMATION_ENABLED || "false").toLowerCase() === "true";
 }
-
+ 
 function proposalPackageEnabled() {
   return String(process.env.PROPOSAL_PACKAGE_ENABLED || "true").toLowerCase() !== "false";
 }
-
+ 
 function crmIntakeEnabled() {
   return String(process.env.CRM_INTAKE_ENABLED || "false").toLowerCase() === "true";
 }
-
+ 
+function autoGenerateEnabled() {
+  return String(process.env.AUTO_GENERATE_ENABLED || "false").toLowerCase() === "true";
+}
+ 
 function hasGithubToken() {
   return Boolean(String(process.env.GITHUB_SERVER_TOKEN || "").trim());
 }
-
+ 
 function readJsonBody(req) {
   return new Promise((resolve, reject) => {
     let total = 0;
@@ -203,17 +221,12 @@ function readJsonBody(req) {
     req.on("error", reject);
   });
 }
-
+ 
 async function readAndSanitizeProductionPackage(req) {
   const rawPayload = await readJsonBody(req);
   return sanitizeProductionPackageForPrAutomation(rawPayload);
 }
-
-// Fase 8A handlers. Kept in server.ts (not crmPersistence.ts) since they
-// deal with HTTP request/response plumbing (auth, body parsing, status
-// codes) - crmPersistence.ts stays pure data/validation, same separation
-// already used elsewhere in this file (e.g. buildPrAutomationPlan.ts vs the
-// route handler that calls it).
+ 
 async function handleCreateAuditRun(req, res, headers, leadIdRaw) {
   if (!isCrmPersistenceConfigured()) {
     sendJson(res, 503, { ok: false, error: "persistence_not_configured" }, headers);
@@ -257,7 +270,7 @@ async function handleCreateAuditRun(req, res, headers, leadIdRaw) {
     sendJson(res, 500, { ok: false, error: "internal_error" }, headers);
   }
 }
-
+ 
 async function handleLatestAuditRun(req, res, headers, leadIdRaw) {
   if (!isCrmPersistenceConfigured()) {
     sendJson(res, 503, { ok: false, error: "persistence_not_configured" }, headers);
@@ -288,10 +301,7 @@ async function handleLatestAuditRun(req, res, headers, leadIdRaw) {
     sendJson(res, 500, { ok: false, error: "internal_error" }, headers);
   }
 }
-
-// Generic create/latest handler pair shared by Fase 8B/8C/8D - all three
-// follow the exact same auth -> leadId -> body -> validate -> persist shape
-// already established by handleCreateAuditRun/handleLatestAuditRun above.
+ 
 async function handleCreatePersistedResource(req, res, headers, leadIdRaw, { validate, insert, logLabel }) {
   if (!isCrmPersistenceConfigured()) {
     sendJson(res, 503, { ok: false, error: "persistence_not_configured" }, headers);
@@ -335,7 +345,7 @@ async function handleCreatePersistedResource(req, res, headers, leadIdRaw, { val
     sendJson(res, 500, { ok: false, error: "internal_error" }, headers);
   }
 }
-
+ 
 async function handleLatestPersistedResource(req, res, headers, leadIdRaw, { fetchLatest, recordKey, logLabel }) {
   if (!isCrmPersistenceConfigured()) {
     sendJson(res, 503, { ok: false, error: "persistence_not_configured" }, headers);
@@ -366,7 +376,7 @@ async function handleLatestPersistedResource(req, res, headers, leadIdRaw, { fet
     sendJson(res, 500, { ok: false, error: "internal_error" }, headers);
   }
 }
-
+ 
 async function handleCreateEnrichmentProfile(req, res, headers, leadIdRaw) {
   await handleCreatePersistedResource(req, res, headers, leadIdRaw, {
     validate: validateEnrichmentProfilePayload,
@@ -374,7 +384,7 @@ async function handleCreateEnrichmentProfile(req, res, headers, leadIdRaw) {
     logLabel: "crm_enrichment_profile",
   });
 }
-
+ 
 async function handleLatestEnrichmentProfile(req, res, headers, leadIdRaw) {
   await handleLatestPersistedResource(req, res, headers, leadIdRaw, {
     fetchLatest: getLatestEnrichmentProfile,
@@ -382,7 +392,7 @@ async function handleLatestEnrichmentProfile(req, res, headers, leadIdRaw) {
     logLabel: "crm_enrichment_profile",
   });
 }
-
+ 
 async function handleCreateApprovedMediaAssets(req, res, headers, leadIdRaw) {
   await handleCreatePersistedResource(req, res, headers, leadIdRaw, {
     validate: validateApprovedMediaAssetsPayload,
@@ -390,7 +400,7 @@ async function handleCreateApprovedMediaAssets(req, res, headers, leadIdRaw) {
     logLabel: "crm_approved_media_assets",
   });
 }
-
+ 
 async function handleLatestApprovedMediaAssets(req, res, headers, leadIdRaw) {
   await handleLatestPersistedResource(req, res, headers, leadIdRaw, {
     fetchLatest: getLatestApprovedMediaAssets,
@@ -398,7 +408,7 @@ async function handleLatestApprovedMediaAssets(req, res, headers, leadIdRaw) {
     logLabel: "crm_approved_media_assets",
   });
 }
-
+ 
 async function handleCreateProductionPackage(req, res, headers, leadIdRaw) {
   await handleCreatePersistedResource(req, res, headers, leadIdRaw, {
     validate: validateProductionPackagePayload,
@@ -406,7 +416,7 @@ async function handleCreateProductionPackage(req, res, headers, leadIdRaw) {
     logLabel: "crm_production_package",
   });
 }
-
+ 
 async function handleLatestProductionPackage(req, res, headers, leadIdRaw) {
   await handleLatestPersistedResource(req, res, headers, leadIdRaw, {
     fetchLatest: getLatestProductionPackage,
@@ -414,7 +424,7 @@ async function handleLatestProductionPackage(req, res, headers, leadIdRaw) {
     logLabel: "crm_production_package",
   });
 }
-
+ 
 async function handleCreateCommercialAction(req, res, headers, leadIdRaw) {
   await handleCreatePersistedResource(req, res, headers, leadIdRaw, {
     validate: validateCommercialActionPayload,
@@ -422,11 +432,7 @@ async function handleCreateCommercialAction(req, res, headers, leadIdRaw) {
     logLabel: "crm_commercial_action",
   });
 }
-
-// Fase 8E. Auth/leadId checks mirror handleLatestPersistedResource, but the
-// response shape (full history list, not a single "latest" record) and
-// the aggregation logic (Promise.all across 4 tables) don't fit that
-// helper, so this stays its own function.
+ 
 async function handlePersistedState(req, res, headers, leadIdRaw) {
   if (!isCrmPersistenceConfigured()) {
     sendJson(res, 503, { ok: false, error: "persistence_not_configured" }, headers);
@@ -457,7 +463,7 @@ async function handlePersistedState(req, res, headers, leadIdRaw) {
     sendJson(res, 500, { ok: false, error: "internal_error" }, headers);
   }
 }
-
+ 
 async function handleCommercialActionsHistory(req, res, headers, leadIdRaw) {
   if (!isCrmPersistenceConfigured()) {
     sendJson(res, 503, { ok: false, error: "persistence_not_configured" }, headers);
@@ -488,23 +494,47 @@ async function handleCommercialActionsHistory(req, res, headers, leadIdRaw) {
     sendJson(res, 500, { ok: false, error: "internal_error" }, headers);
   }
 }
-
+ 
+async function handleListHookJobs(req, res, headers) {
+  try {
+    const jobsList = await listHookJobs(50);
+    sendJson(res, 200, { ok: true, jobs: jobsList }, headers);
+  } catch (error) {
+    logWarn("hook_jobs_list_error", { error: sanitizeLog(error instanceof Error ? error.message : String(error)) });
+    sendJson(res, 500, { ok: false, error: "database_error" }, headers);
+  }
+}
+ 
+async function handleGetHookJob(req, res, headers, jobId) {
+  try {
+    const job = await getHookJob(jobId);
+    if (job) {
+      sendJson(res, 200, { ok: true, job }, headers);
+    } else {
+      sendJson(res, 404, { ok: false, error: "job_not_found" }, headers);
+    }
+  } catch (error) {
+    logWarn("hook_jobs_get_error", { jobId, error: sanitizeLog(error instanceof Error ? error.message : String(error)) });
+    sendJson(res, 500, { ok: false, error: "database_error" }, headers);
+  }
+}
+ 
 function getOperatorSession(req) {
   const sessionId = parseSessionCookie(req.headers.cookie);
   return { sessionId, session: getSession(sessionId) };
 }
-
+ 
 function isOperatorCsrfValid(req, session) {
   if (!session) return false;
   const provided = req.headers["x-csrf-token"] || "";
   return provided === session.csrfToken;
 }
-
+ 
 async function runGithubPreflight(plan) {
   const blockers = [];
   const warnings = [];
   const repoStatus = {};
-
+ 
   if (!hasGithubToken()) {
     blockers.push("missing_github_token");
     return {
@@ -518,25 +548,25 @@ async function runGithubPreflight(plan) {
       nextStep: "configure_github_server_token",
     };
   }
-
+ 
   for (const key of ["rubik", "aurum"]) {
     const target = plan.targetPRs[key];
     if (!target) continue;
     const { repo, headBranch } = target;
     const repoEntry = { repo, headBranch, branchExists: false, existingPR: null, fileStatuses: [] };
-
+ 
     try {
       repoEntry.branchExists = await branchExists(repo, headBranch);
       if (repoEntry.branchExists) {
         warnings.push(`${key}_branch_already_exists:${headBranch}`);
       }
-
+ 
       const existingPR = await findOpenPullRequestByHead(repo, headBranch);
       if (existingPR) {
         repoEntry.existingPR = { number: existingPR.number, url: existingPR.html_url };
         warnings.push(`${key}_existing_pr_detected:#${existingPR.number}`);
       }
-
+ 
       if (repoEntry.branchExists) {
         const keyFiles = (plan.generatedFiles || []).filter((f) => f.repo === repo).slice(0, 3);
         for (const file of keyFiles) {
@@ -548,10 +578,10 @@ async function runGithubPreflight(plan) {
     } catch (err) {
       blockers.push(`${key}_github_check_failed:${sanitizeLog(err?.message || "unknown")}`);
     }
-
+ 
     repoStatus[key] = repoEntry;
   }
-
+ 
   const canCreatePRs = blockers.length === 0;
   return {
     ok: canCreatePRs,
@@ -565,7 +595,7 @@ async function runGithubPreflight(plan) {
     nextStep: canCreatePRs ? "ready_to_create_prs" : "resolve_blockers",
   };
 }
-
+ 
 export function createRequestHandler() {
   return async function requestHandler(req, res) {
     const headers = corsHeaders(req);
@@ -574,39 +604,29 @@ export function createRequestHandler() {
       res.end();
       return;
     }
-
+ 
     const url = new URL(req.url || "/", "http://127.0.0.1");
-
-    // All /api/operator/* endpoints are exempt from the internal-token gate.
-    // The browser console has no way to supply INTERNAL_API_TOKEN; operator
-    // endpoints are protected by OPERATOR_ADMIN_TOKEN (login) and session+CSRF
-    // (all other operator POSTs).
+ 
     const isOperatorEndpoint = url.pathname.startsWith("/api/operator/");
-    // Fase 8A/8B/8C/8D: all crm-persistence POST endpoints have their own
-    // independent auth (isCrmPersistenceAuthorized / CRM_PERSISTENCE_TOKEN,
-    // checked inside each handler) and must never require
-    // INTERNAL_API_TOKEN - same reasoning as the operator-endpoint
-    // exemption above. Listed explicitly (not a generic /api/crm/ prefix
-    // match) so a future unrelated /api/crm/* POST doesn't get silently
-    // exempted too.
     const CRM_PERSISTENCE_POST_SUFFIXES = ["/audit-runs", "/enrichment-profiles", "/approved-media-assets", "/production-packages", "/commercial-actions"];
     const isCrmPersistencePostEndpoint = req.method === "POST" && url.pathname.startsWith("/api/crm/leads/")
       && CRM_PERSISTENCE_POST_SUFFIXES.some((suffix) => url.pathname.endsWith(suffix));
-    if (req.method === "POST" && !isOperatorEndpoint && !isCrmPersistencePostEndpoint && !isAuthorized(req)) {
+    const isAutoGenerateEndpoint = req.method === "POST" && url.pathname === "/api/production/auto-generate-hook"; // ← CAMBIO 2a: nueva variable de exemption
+    if (req.method === "POST" && !isOperatorEndpoint && !isCrmPersistencePostEndpoint && !isAutoGenerateEndpoint && !isAuthorized(req)) { // ← CAMBIO 2b: añadido !isAutoGenerateEndpoint
       sendJson(res, 401, { ok: false, error: "unauthorized" }, headers);
       return;
     }
-
+ 
     if (isRateLimited(req)) {
       sendJson(res, 429, { ok: false, error: "rate_limited" }, headers);
       return;
     }
-
+ 
     if (req.method === "GET" && url.pathname === "/health") {
       sendJson(res, 200, { ok: true, service: SERVICE_NAME, version: SERVICE_VERSION, mode: getMode() }, headers);
       return;
     }
-
+ 
     if (req.method === "GET" && url.pathname === "/api/production/capabilities") {
       const enabled = prAutomationEnabled();
       sendJson(res, 200, {
@@ -620,111 +640,126 @@ export function createRequestHandler() {
         crmDirectConnection: false,
         operatorConsoleAvailable: isOperatorConsoleEnabled(),
         crmIntakeEnabled: crmIntakeEnabled(),
+        autoGenerateEnabled: autoGenerateEnabled(),
         writeMode: enabled ? "enabled" : "disabled",
         allowedRepos: allowedRepos(),
       }, headers);
       return;
     }
-
-    // Fase 8A: AuditRun persistence only (EnrichmentProfile/ApprovedMediaAssets/
-    // ProductionPackage are explicitly out of scope here). Both routes require
-    // CRM_PERSISTENCE_TOKEN via X-CRM-Persistence-Token - never
-    // INTERNAL_API_TOKEN or OPERATOR_ADMIN_TOKEN, kept deliberately separate
-    // (Fase 6B). If DATABASE_URL/CRM_PERSISTENCE_TOKEN aren't configured, both
-    // return a controlled 503 - /health and every other route are unaffected.
+ 
     if (req.method === "POST" && url.pathname.startsWith("/api/crm/leads/") && url.pathname.endsWith("/audit-runs")) {
       const leadIdRaw = url.pathname.slice("/api/crm/leads/".length, -"/audit-runs".length);
       await handleCreateAuditRun(req, res, headers, leadIdRaw);
       return;
     }
-
+ 
     if (req.method === "GET" && url.pathname.startsWith("/api/crm/leads/") && url.pathname.endsWith("/audit-runs/latest")) {
       const leadIdRaw = url.pathname.slice("/api/crm/leads/".length, -"/audit-runs/latest".length);
       await handleLatestAuditRun(req, res, headers, leadIdRaw);
       return;
     }
-
-    // Fase 8B: EnrichmentProfile persistence only.
+ 
     if (req.method === "POST" && url.pathname.startsWith("/api/crm/leads/") && url.pathname.endsWith("/enrichment-profiles")) {
       const leadIdRaw = url.pathname.slice("/api/crm/leads/".length, -"/enrichment-profiles".length);
       await handleCreateEnrichmentProfile(req, res, headers, leadIdRaw);
       return;
     }
-
+ 
     if (req.method === "GET" && url.pathname.startsWith("/api/crm/leads/") && url.pathname.endsWith("/enrichment-profiles/latest")) {
       const leadIdRaw = url.pathname.slice("/api/crm/leads/".length, -"/enrichment-profiles/latest".length);
       await handleLatestEnrichmentProfile(req, res, headers, leadIdRaw);
       return;
     }
-
-    // Fase 8C: ApprovedMediaAssets persistence only.
+ 
     if (req.method === "POST" && url.pathname.startsWith("/api/crm/leads/") && url.pathname.endsWith("/approved-media-assets")) {
       const leadIdRaw = url.pathname.slice("/api/crm/leads/".length, -"/approved-media-assets".length);
       await handleCreateApprovedMediaAssets(req, res, headers, leadIdRaw);
       return;
     }
-
+ 
     if (req.method === "GET" && url.pathname.startsWith("/api/crm/leads/") && url.pathname.endsWith("/approved-media-assets/latest")) {
       const leadIdRaw = url.pathname.slice("/api/crm/leads/".length, -"/approved-media-assets/latest".length);
       await handleLatestApprovedMediaAssets(req, res, headers, leadIdRaw);
       return;
     }
-
-    // Fase 8D: ProductionPackage persistence only. Never executes AURUM/Rubik
-    // PRs - only stores the payload the CRM already built locally.
+ 
     if (req.method === "POST" && url.pathname.startsWith("/api/crm/leads/") && url.pathname.endsWith("/production-packages")) {
       const leadIdRaw = url.pathname.slice("/api/crm/leads/".length, -"/production-packages".length);
       await handleCreateProductionPackage(req, res, headers, leadIdRaw);
       return;
     }
-
+ 
     if (req.method === "GET" && url.pathname.startsWith("/api/crm/leads/") && url.pathname.endsWith("/production-packages/latest")) {
       const leadIdRaw = url.pathname.slice("/api/crm/leads/".length, -"/production-packages/latest".length);
       await handleLatestProductionPackage(req, res, headers, leadIdRaw);
       return;
     }
-
-    // Fase 8E: Persisted State Aggregator. Read-only - combines the latest
-    // record from each Fase 8A-8D table plus commercial-actions history.
-    // fourHooks/outreachMessages are read verbatim from the latest
-    // ProductionPackage, never regenerated here.
+ 
     if (req.method === "GET" && url.pathname.startsWith("/api/crm/leads/") && url.pathname.endsWith("/persisted-state")) {
       const leadIdRaw = url.pathname.slice("/api/crm/leads/".length, -"/persisted-state".length);
       await handlePersistedState(req, res, headers, leadIdRaw);
       return;
     }
-
-    // Fase 8E/8F/8G/8H: commercial action log. Never sends anything itself -
-    // only records that copy/open/mark-as-sent happened in the CRM.
+ 
     if (req.method === "POST" && url.pathname.startsWith("/api/crm/leads/") && url.pathname.endsWith("/commercial-actions")) {
       const leadIdRaw = url.pathname.slice("/api/crm/leads/".length, -"/commercial-actions".length);
       await handleCreateCommercialAction(req, res, headers, leadIdRaw);
       return;
     }
-
+ 
     if (req.method === "GET" && url.pathname.startsWith("/api/crm/leads/") && url.pathname.endsWith("/commercial-actions")) {
       const leadIdRaw = url.pathname.slice("/api/crm/leads/".length, -"/commercial-actions".length);
       await handleCommercialActionsHistory(req, res, headers, leadIdRaw);
       return;
     }
-
+ 
     if (req.method === "GET" && (url.pathname === "/api/production/jobs" || url.pathname === "/api/production/jobs/")) {
       sendJson(res, 200, { ok: true, jobs: [...jobs.values()] }, headers);
       return;
     }
-
+ 
     if (req.method === "GET" && url.pathname.startsWith("/api/production/jobs/")) {
       const jobId = decodeURIComponent(url.pathname.replace("/api/production/jobs/", ""));
       sendJson(res, jobs.has(jobId) ? 200 : 404, jobs.get(jobId) || { ok: false, error: "job_not_found" }, headers);
       return;
     }
-
+ 
+    if (req.method === "GET" && (url.pathname === "/api/production/hook-jobs" || url.pathname === "/api/production/hook-jobs/")) {
+      await handleListHookJobs(req, res, headers);
+      return;
+    }
+ 
+    if (req.method === "GET" && url.pathname.startsWith("/api/production/hook-jobs/")) {
+      const jobId = decodeURIComponent(url.pathname.replace("/api/production/hook-jobs/", ""));
+      await handleGetHookJob(req, res, headers, jobId);
+      return;
+    }
+ 
+    // ── POST /api/production/auto-generate-hook ─────────────────────────  // ← CAMBIO 3: endpoint orquestador G1-G4
+    // Pieza A.4: triggers async hook generation via Claude API.
+    // Exempted from the general POST auth gate above via isAutoGenerateEndpoint.
+    // The endpoint handler expects a parsed body wrapper and the process env.
+    if (req.method === "POST" && url.pathname === "/api/production/auto-generate-hook") {
+      try {
+        const body = await readJsonBody(req);
+        const result = await handleAutoGenerateHook({ body }, process.env);
+        sendJson(res, result.status, result.body, headers);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "request_failed";
+        sendJson(res, message === "payload_too_large" ? 413 : 400, {
+          ok: false,
+          error: message,
+        }, headers);
+      }
+      return;
+    }
+ 
     if (req.method === "POST" && url.pathname === "/api/github/dispatch-production") {
       logWarn("dispatch-production blocked in v0.1");
       sendJson(res, 200, { ok: false, reason: "disabled_in_v0_1_until_security_review" }, headers);
       return;
     }
-
+ 
     if (req.method === "POST" && url.pathname === "/api/production/dry-run") {
       try {
         const payload = await readAndSanitizeProductionPackage(req);
@@ -743,7 +778,7 @@ export function createRequestHandler() {
       }
       return;
     }
-
+ 
     if (req.method === "POST" && url.pathname === "/api/production/pr-plan") {
       try {
         const payload = await readAndSanitizeProductionPackage(req);
@@ -768,7 +803,7 @@ export function createRequestHandler() {
       }
       return;
     }
-
+ 
     if (req.method === "POST" && url.pathname === "/api/production/proposal-package") {
       try {
         const payload = await readAndSanitizeProductionPackage(req);
@@ -792,7 +827,7 @@ export function createRequestHandler() {
       }
       return;
     }
-
+ 
     if (req.method === "POST" && url.pathname === "/api/production/github-preflight") {
       try {
         const payload = await readAndSanitizeProductionPackage(req);
@@ -843,7 +878,7 @@ export function createRequestHandler() {
       }
       return;
     }
-
+ 
     if (req.method === "POST" && url.pathname === "/api/production/create-prs") {
       if (!prAutomationEnabled()) {
         sendJson(res, 200, { ok: false, reason: "disabled_until_security_flags_enabled", writeAttempted: false }, headers);
@@ -904,8 +939,7 @@ export function createRequestHandler() {
       }
       return;
     }
-
-    // ── GET /api/production/response-bundle/:jobId ───────────────────────────
+ 
     const prodBundleMatch = url.pathname.match(/^\/api\/production\/response-bundle\/([a-z0-9_-]+)$/i);
     if (req.method === "GET" && prodBundleMatch) {
       const jobId = prodBundleMatch[1];
@@ -918,8 +952,7 @@ export function createRequestHandler() {
       sendJson(res, 200, { ok: true, jobId, leadSlug: job.leadSlug, responseBundle: job.responseBundle, retrievedAt: new Date().toISOString() }, headers);
       return;
     }
-
-    // ── POST /api/crm/import-response-bundle ─────────────────────────────────
+ 
     if (req.method === "POST" && url.pathname === "/api/crm/import-response-bundle") {
       try {
         const body = await readJsonBody(req);
@@ -955,7 +988,7 @@ export function createRequestHandler() {
       }
       return;
     }
-
+ 
     if (req.method === "POST" && url.pathname === "/api/crm/intake") {
       if (!crmIntakeEnabled()) {
         sendJson(res, 200, { ok: false, reason: "crm_intake_disabled", hint: "Set CRM_INTAKE_ENABLED=true to enable" }, headers);
@@ -993,9 +1026,7 @@ export function createRequestHandler() {
       }
       return;
     }
-
-    // ── Operator Console ──
-
+ 
     if (req.method === "GET" && url.pathname === "/operator") {
       if (!isOperatorConsoleEnabled()) {
         sendJson(res, 404, { ok: false, error: "operator_console_disabled" });
@@ -1004,7 +1035,7 @@ export function createRequestHandler() {
       sendHtml(res, 200, buildOperatorConsoleHtml(SERVICE_VERSION));
       return;
     }
-
+ 
     if (req.method === "POST" && url.pathname === "/api/operator/login") {
       if (!isOperatorConsoleEnabled()) {
         sendJson(res, 404, { ok: false, error: "operator_console_disabled" }, headers);
@@ -1027,7 +1058,7 @@ export function createRequestHandler() {
       }
       return;
     }
-
+ 
     if (req.method === "POST" && url.pathname === "/api/operator/logout") {
       const { sessionId } = getOperatorSession(req);
       if (sessionId) invalidateSession(sessionId);
@@ -1037,7 +1068,7 @@ export function createRequestHandler() {
       });
       return;
     }
-
+ 
     if (req.method === "GET" && url.pathname === "/api/operator/session") {
       if (!isOperatorConsoleEnabled()) {
         sendJson(res, 200, { ok: true, authenticated: false }, headers);
@@ -1051,8 +1082,7 @@ export function createRequestHandler() {
       sendJson(res, 200, { ok: true, authenticated: true, csrfToken: session.csrfToken, expiresAt: session.expiresAt }, headers);
       return;
     }
-
-    // ── GET /api/operator/response-bundle/:jobId (no session required for GET) ─
+ 
     const operatorBundleMatch = url.pathname.match(/^\/api\/operator\/response-bundle\/([a-z0-9_-]+)$/i);
     if (req.method === "GET" && operatorBundleMatch) {
       const jobId = operatorBundleMatch[1];
@@ -1065,7 +1095,7 @@ export function createRequestHandler() {
       sendJson(res, 200, { ok: true, jobId, leadSlug: job.leadSlug, responseBundle: job.responseBundle, retrievedAt: new Date().toISOString() }, headers);
       return;
     }
-
+ 
     if (url.pathname.startsWith("/api/operator/") && req.method === "POST") {
       if (!isOperatorConsoleEnabled()) {
         sendJson(res, 404, { ok: false, error: "operator_console_disabled" }, headers);
@@ -1080,7 +1110,7 @@ export function createRequestHandler() {
         sendJson(res, 403, { ok: false, error: "csrf_token_invalid" }, headers);
         return;
       }
-
+ 
       if (url.pathname === "/api/operator/proposal-package") {
         try {
           const payload = await readAndSanitizeProductionPackage(req);
@@ -1115,7 +1145,7 @@ export function createRequestHandler() {
         }
         return;
       }
-
+ 
       if (url.pathname === "/api/operator/pr-plan") {
         try {
           const payload = await readAndSanitizeProductionPackage(req);
@@ -1129,7 +1159,7 @@ export function createRequestHandler() {
         }
         return;
       }
-
+ 
       if (url.pathname === "/api/operator/github-preflight") {
         try {
           const payload = await readAndSanitizeProductionPackage(req);
@@ -1152,7 +1182,7 @@ export function createRequestHandler() {
         }
         return;
       }
-
+ 
       if (url.pathname === "/api/operator/create-prs") {
         if (!prAutomationEnabled()) {
           sendJson(res, 200, { ok: false, reason: "disabled_until_security_flags_enabled", writeAttempted: false }, headers);
@@ -1214,15 +1244,15 @@ export function createRequestHandler() {
         }
         return;
       }
-
+ 
       sendJson(res, 404, { ok: false, error: "not_found" }, headers);
       return;
     }
-
+ 
     sendJson(res, 404, { ok: false, error: "not_found" }, headers);
   };
 }
-
+ 
 function groupByRepo(files) {
   const map = new Map();
   for (const file of files) {
@@ -1232,7 +1262,7 @@ function groupByRepo(files) {
   }
   return map;
 }
-
+ 
 function applyAppTsxPatch(current: string, patch: { imports: string[]; routes: string[] }): string {
   let result = current;
   const importBlock = patch.imports.join("\n");
@@ -1251,7 +1281,7 @@ function applyAppTsxPatch(current: string, patch: { imports: string[]; routes: s
   }
   return result;
 }
-
+ 
 function applyVercelJsonPatch(current: string, newRewrites: Array<{ source: string; destination: string }>): string {
   let parsed: Record<string, unknown>;
   try { parsed = JSON.parse(current || "{}"); } catch { parsed = {}; }
@@ -1260,7 +1290,7 @@ function applyVercelJsonPatch(current: string, newRewrites: Array<{ source: stri
   parsed.rewrites = [...existing, ...toAdd];
   return JSON.stringify(parsed, null, 2);
 }
-
+ 
 async function writeFileToRepo(repo: string, branch: string, file: Record<string, unknown>): Promise<void> {
   if (file.isPatchTarget && file.patchType === "app-tsx-routes") {
     const patch = JSON.parse(String(file.content));
@@ -1281,7 +1311,7 @@ async function writeFileToRepo(repo: string, branch: string, file: Record<string
   const info = await getFileInfo(repo, String(file.path), branch);
   await putFile(repo, branch, String(file.path), String(file.content), String(file.message), info.sha || undefined);
 }
-
+ 
 function buildResponseBundle(plan, pullRequestsByRepo: Record<string, { url: string; number: number; branch: string }>, createdAt: string) {
   const aurum = Object.entries(pullRequestsByRepo).find(([repo]) => repo.toLowerCase().includes("aurum"))?.[1] || null;
   const rubik = Object.entries(pullRequestsByRepo).find(([repo]) => repo.toLowerCase().includes("rubik"))?.[1] || null;
@@ -1305,11 +1335,7 @@ function buildResponseBundle(plan, pullRequestsByRepo: Record<string, { url: str
     createdAt,
   };
 }
-
-// Branches are always cut from the *current* main SHA, fetched fresh from
-// GitHub on every call — never from a cached/previous branch's tip. If the
-// SHA can't be confirmed we refuse to create a branch at all rather than
-// silently falling back to some other ref.
+ 
 async function ensureUpdateBranch(repo: string, desiredBranch: string, baseBranch = "main") {
   const fromSha = await getBranchHeadSha(repo, baseBranch);
   if (!fromSha) {
@@ -1323,7 +1349,7 @@ async function ensureUpdateBranch(repo: string, desiredBranch: string, baseBranc
   await createBranch(repo, desiredBranch, fromSha);
   return { branch: desiredBranch, reused: false, refreshed: false };
 }
-
+ 
 function blockedResult(blockers: string[], idempotencyNotes: string[], existingOutputReview = null) {
   return {
     ok: false,
@@ -1337,24 +1363,24 @@ function blockedResult(blockers: string[], idempotencyNotes: string[], existingO
     nextStep: "resolve_blocker",
   };
 }
-
+ 
 async function createProductionPullRequests(payload, plan, preflight = {}) {
   const createdAt = new Date().toISOString();
   const idempotencyNotes: string[] = [];
-
+ 
   const aurumMainSha = await getBranchHeadSha(AURUM_REPO, "main").catch(() => null);
   if (!aurumMainSha) {
     return blockedResult(["aurum_main_sha_unconfirmed"], idempotencyNotes);
   }
-
+ 
   const existingOutputs = await detectExistingOutputsForPlan(plan, "main");
   const existingOutputReview = await reviewExistingOutputsAgainstProductionPackage(payload, plan, existingOutputs, "main");
-
+ 
   const hasExistingOutputs = existingOutputs.overall === "all_exist" || existingOutputs.overall === "partial";
   if (hasExistingOutputs) {
     const appInfo = await getFileContent(AURUM_REPO, "src/App.tsx", "main");
     const existingAppTsxContent = appInfo.exists ? appInfo.content || "" : "";
-
+ 
     const routeResolution = resolveAurumRouteComponents(existingAppTsxContent, plan.leadSlug);
     if (routeResolution.ambiguousTypes.length > 0) {
       return blockedResult(
@@ -1363,20 +1389,14 @@ async function createProductionPullRequests(payload, plan, preflight = {}) {
         existingOutputReview.overall,
       );
     }
-
-    // If the reused components already point at a data file (e.g. sandhouse.ts),
-    // reuse that same file/export instead of creating a parallel one keyed off
-    // the incoming slug. Two reused components disagreeing on their data file
-    // is treated as unsafe to auto-resolve. The same fetched content is also
-    // used below to classify each component as premium/manual vs. something
-    // we can safely regenerate — one round-trip per component, not two.
+ 
     const reusedComponentNames = [...new Set(Object.values(routeResolution.componentByCanonicalRoute))];
     const componentContentByName = new Map<string, string>();
     for (const componentName of reusedComponentNames) {
       const componentInfo = await getFileContent(AURUM_REPO, `src/${componentName}.tsx`, "main");
       componentContentByName.set(componentName, componentInfo.exists ? componentInfo.content || "" : "");
     }
-
+ 
     const dataFileRefs = new Map<string, { path: string; exportName: string }>();
     for (const content of componentContentByName.values()) {
       const ref = extractExistingDataFileRef(content);
@@ -1386,21 +1406,13 @@ async function createProductionPullRequests(payload, plan, preflight = {}) {
       return blockedResult(["aurum_data_file_ambiguous"], idempotencyNotes, existingOutputReview.overall);
     }
     const existingDataFile = dataFileRefs.size === 1 ? [...dataFileRefs.values()][0] : undefined;
-
-    // "Reusing a component's name does not mean overwriting its content."
-    // Anything we cannot positively identify as our own previous
-    // auto-generated output (premium/manual hand-built, or simply unknown)
-    // is preserved untouched rather than regenerated from a basic template.
+ 
     const preserveComponentTypes = routeResolution.reusedTypes.filter((type) => {
       const componentName = routeResolution.componentByType[type];
       const classification = classifyExistingAurumComponent(componentContentByName.get(componentName) || "");
       return classification !== "autogenerated_safe_to_replace";
     });
-
-    // Existing data files are never fully overwritten — only a surgical,
-    // non-destructive patch of the score field, preserving everything else
-    // byte-for-byte. If that field can't be located safely, block instead of
-    // guessing at the file's structure and risking destroying it.
+ 
     let dataFileOverrideContent: string | undefined;
     let dataFilePatched = false;
     if (existingDataFile) {
@@ -1419,7 +1431,7 @@ async function createProductionPullRequests(payload, plan, preflight = {}) {
         dataFilePatched = true;
       }
     }
-
+ 
     const reconciledAurum = buildAurumFiles(payload, plan.proposalPackage, {
       existingRouteComponentMap: routeResolution.componentByCanonicalRoute,
       existingAppTsxContent,
@@ -1428,9 +1440,7 @@ async function createProductionPullRequests(payload, plan, preflight = {}) {
       dataFileOverrideContent,
     });
     const reconciledAurumPaths = new Set(reconciledAurum.files.map((f) => f.path));
-
-    // Hard gate: a preserved (premium/unknown) component must never end up
-    // in the write set, regardless of how it got there.
+ 
     const overwrittenPremiumPaths = preserveComponentTypes
       .map((type) => `src/${routeResolution.componentByType[type]}.tsx`)
       .filter((p) => reconciledAurumPaths.has(p));
@@ -1441,13 +1451,7 @@ async function createProductionPullRequests(payload, plan, preflight = {}) {
         existingOutputReview.overall,
       );
     }
-
-    // Critical existing outputs that DO need refreshing must actually be
-    // part of the write set: the manifest (always), the data file whenever
-    // one was detected (full regen or surgical patch), and any reused
-    // component that wasn't intentionally preserved as premium/unknown.
-    // App.tsx and preserved components are excluded here on purpose — their
-    // absence from the write set is the correct, intended outcome.
+ 
     const criticalAurumPaths = [
       `production-manifests/${plan.leadSlug}.json`,
       ...(existingDataFile ? [existingDataFile.path] : []),
@@ -1463,12 +1467,12 @@ async function createProductionPullRequests(payload, plan, preflight = {}) {
         existingOutputReview.overall,
       );
     }
-
+ 
     const forbiddenPatternViolations = scanForbiddenGeneratedPatterns(reconciledAurum.files);
     if (forbiddenPatternViolations.length > 0) {
       return blockedResult(forbiddenPatternViolations, idempotencyNotes, existingOutputReview.overall);
     }
-
+ 
     const appTsxPatchFile = reconciledAurum.files.find((f) => f.path === AURUM_APP_TSX && f.isPatchTarget);
     if (appTsxPatchFile) {
       const patch = JSON.parse(String(appTsxPatchFile.content));
@@ -1484,7 +1488,7 @@ async function createProductionPullRequests(payload, plan, preflight = {}) {
         );
       }
     }
-
+ 
     const rubikFiles = plan.generatedFiles.filter((f) => f.repo === RUBIK_REPO);
     plan.generatedFiles = [...rubikFiles, ...reconciledAurum.files];
     idempotencyNotes.push("aurum_files_reconciled_with_existing_app_tsx");
@@ -1496,15 +1500,10 @@ async function createProductionPullRequests(payload, plan, preflight = {}) {
     if (dataFilePatched) idempotencyNotes.push(`aurum_existing_data_file_patched:${existingDataFile!.path}`);
     idempotencyNotes.push("aurum_manifest_updated");
   }
-
+ 
   if (existingOutputs.overall === "all_exist" && existingOutputReview.overall.passed) {
     const responseBundle = buildResponseBundle(plan, {}, createdAt);
     responseBundle.status = "existing_outputs_current";
-    // Client-facing publicRoutes must always be AURUM URLs — Rubik is the
-    // internal rendering engine, never a public link. AURUM's route set is
-    // already a superset of Rubik's (landing/webCompleta have no Rubik
-    // equivalent at all), so there is nothing legitimate to merge in from
-    // existingOutputs.rubik.publicRoutes here.
     responseBundle.publicRoutes = { ...existingOutputs.aurum.publicRoutes };
     responseBundle.warnings = existingOutputReview.overall.safeWarnings;
     return {
@@ -1518,38 +1517,32 @@ async function createProductionPullRequests(payload, plan, preflight = {}) {
       nextStep: "ready_to_validate_public_urls",
     };
   }
-
+ 
   const status = hasExistingOutputs ? "existing_outputs_update_required" : "prs_created";
-
+ 
   const repoStatus = (preflight as Record<string, unknown>).repos || {};
   const grouped = groupByRepo(plan.generatedFiles);
   const pullRequests: Record<string, { url: string; number: number; branch: string; reused?: boolean }> = {};
-
+ 
   for (const [repo, rawFiles] of grouped.entries()) {
     const target = Object.values(plan.targetPRs).find((item: Record<string, unknown>) => item.repo === repo) as Record<string, string> | undefined;
     if (!target) continue;
-
+ 
     const repoKey = Object.keys(plan.targetPRs).find((k) => (plan.targetPRs[k] as Record<string, string>).repo === repo);
     const existing = repo === RUBIK_REPO ? existingOutputs.rubik : existingOutputs.aurum;
-
+ 
     if (existing.allExist && existingOutputReview[repoKey || "aurum"].passed) {
       idempotencyNotes.push(`${repoKey}_outputs_current_skipped`);
       continue;
     }
-
+ 
     const files = hasExistingOutputs ? rawFiles as Array<Record<string, unknown>> : filterGeneratedFilesByExistingOutputs(rawFiles as Array<Record<string, unknown>>, existing);
     if (files.length === 0) {
       idempotencyNotes.push(`${repoKey}_all_files_filtered_skipped`);
       continue;
     }
-
+ 
     if (hasExistingOutputs) {
-      // In stale/update mode `files` is the full unfiltered set (nothing is
-      // dropped — see the ternary above), so every file GitHub already has
-      // is about to be overwritten with fresh content. Labeling that
-      // "skipped" is actively misleading. Instead, verify it really is in
-      // the write set and block if a critical file would otherwise be left
-      // stale.
       const writePaths = new Set(files.map((f) => String(f.path)));
       const unupdatedCriticalFiles = existing.skippedFiles.filter((p) => !writePaths.has(p));
       if (unupdatedCriticalFiles.length > 0) {
@@ -1564,20 +1557,20 @@ async function createProductionPullRequests(payload, plan, preflight = {}) {
         idempotencyNotes.push(`skipped_existing_file:${repo}:${skipped}`);
       }
     }
-
+ 
     const branchInfo = await ensureUpdateBranch(repo, target.headBranch, "main");
     if (branchInfo.refreshed) {
       idempotencyNotes.push(`branch_refreshed:${target.headBranch}->${branchInfo.branch}`);
     }
-
+ 
     for (const file of files) {
       await writeFileToRepo(repo, branchInfo.branch, file);
       const info = await getFileInfo(repo, String(file.path), branchInfo.branch);
       if (info.exists && !file.isPatchTarget) idempotencyNotes.push(`file_updated:${String(file.path)}`);
     }
-
+ 
     const existingPR = (repoStatus as Record<string, Record<string, unknown>>)[repoKey || ""]?.existingPR as { url: string; number: number } | null;
-
+ 
     if (existingPR) {
       pullRequests[repo] = { url: existingPR.url, number: existingPR.number, branch: branchInfo.branch, reused: true };
       idempotencyNotes.push(`pr_reused:#${existingPR.number}`);
@@ -1592,7 +1585,7 @@ async function createProductionPullRequests(payload, plan, preflight = {}) {
       pullRequests[repo] = { url: pr.html_url, number: pr.number, branch: branchInfo.branch };
     }
   }
-
+ 
   const responseBundle = buildResponseBundle(plan, pullRequests, createdAt);
   responseBundle.status = status === "prs_created" ? "pr_created" : status;
   responseBundle.warnings = [
@@ -1601,7 +1594,7 @@ async function createProductionPullRequests(payload, plan, preflight = {}) {
     ...existingOutputReview.overall.criticalWarnings,
     ...idempotencyNotes.filter((n) => n.startsWith("skipped_existing_file:")),
   ];
-
+ 
   return {
     ok: true,
     pullRequests,
@@ -1613,10 +1606,20 @@ async function createProductionPullRequests(payload, plan, preflight = {}) {
     nextStep: Object.keys(pullRequests).length ? "human_review_required" : "resolve_write_blocker",
   };
 }
-
-export function startServer(options = {}) {
+ 
+export async function startServer(options = {}) {
   const port = Number(options.port ?? process.env.PORT ?? 8787);
   const host = options.host ?? process.env.HOST ?? "0.0.0.0";
+ 
+  try {
+    await ensureProductionJobsSchema();
+    logInfo("production_jobs_schema_ready");
+  } catch (error) {
+    logWarn("production_jobs_schema_init_failed", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+ 
   const server = http.createServer(createRequestHandler());
   return new Promise((resolve) => {
     server.listen(port, host, () => {
@@ -1625,7 +1628,8 @@ export function startServer(options = {}) {
     });
   });
 }
-
+ 
 if (import.meta.url === `file://${process.argv[1]?.replace(/\\/g, "/")}`) {
   startServer();
 }
+ 
