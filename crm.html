@@ -4871,6 +4871,8 @@ function getHookNBA(l){
   return commercialHooksNextAction(l);
 }
 function buildHookWa(l,key){
+  const productionState=(typeof ensureLeadProduction==='function'?ensureLeadProduction(l).state:'draft');
+  if(productionState!=='crm_ready_for_send'&&productionState!=='sent_or_ready_for_manual_send') return null;
   const phone=((l.whatsapp||l.telefono||'')+'').replace(/\D/g,'');
   if(!phone) return null;
   const hook=getCommercialHook(l,key);
@@ -4879,6 +4881,8 @@ function buildHookWa(l,key){
   return 'https://wa.me/'+phone+'?text='+encodeURIComponent(msg);
 }
 function buildHookMail(l,key){
+  const productionState=(typeof ensureLeadProduction==='function'?ensureLeadProduction(l).state:'draft');
+  if(productionState!=='crm_ready_for_send'&&productionState!=='sent_or_ready_for_manual_send') return null;
   if(!l.email) return null;
   const hook=getCommercialHook(l,key);
   if(!hook||!hook.url) return null;
@@ -5318,6 +5322,7 @@ function saveLeadHookUrl(id,hookKey){
   if(!Array.isArray(l._hookHistory)) l._hookHistory=[];
   l._hookHistory.push({hook:key,status:hook.status,action:'url_registered',at:hook.lastUpdate});
   l._proxAccion=commercialHooksNextAction(l);
+  if(typeof syncLeadProductionFromHooks==='function') syncLeadProductionFromHooks(l);
   saveState();renderAll();openModal(id);_showToast('URL registrada y gancho activado.','var(--green)');
 }
 function hookBriefingText(l,hookKey){
@@ -7269,6 +7274,7 @@ function openModal(id){
     ${safeRenderSection('Enriquecimiento Detectado',()=>renderLeadEnrichmentBlock(l))}
     ${safeRenderSection('Candidatos Detectados',()=>renderLeadCandidatesPanel(l))}
     ${safeRenderSection('Estado de sincronización',()=>renderSyncStatusPanel(l,!hasCrmPersistenceToken()?{overall:'token_absent',resources:{}}:(l._syncCheck||{overall:'checking',resources:{}})))}
+    ${safeRenderSection('Produccion guiada',()=>renderProductionGuidedPipeline(l))}
     ${safeRenderSection('Outreach comercial (4 ganchos)',()=>renderCommercialOutreachPanel(l))}
     ${safeRenderSection('Histórico de acciones comerciales',()=>renderCommercialActionsHistoryBlock(l._commercialActionsHistory||[]))}
 
@@ -11438,6 +11444,7 @@ function saveLeadHookUrl(id,hookKey){
   if(!Array.isArray(l._hookHistory)) l._hookHistory=[];
   l._hookHistory.push({hook:key,status:hook.status,action:'url_registered',at:hook.lastUpdate});
   l._proxAccion=commercialHooksNextAction(l);
+  if(typeof syncLeadProductionFromHooks==='function') syncLeadProductionFromHooks(l);
   saveState();renderAll();openModal(id);_showToast('URL registrada y gancho activado.','var(--green)');
 }
 function setHookProduction(id,hookKey){
@@ -11515,6 +11522,8 @@ function renderCommercialHookBlock(l){
     const cfg=commercialHookConfig(key),url=hookPrimaryUrl(hook),hasUrl=!!url,status=hook.status||'pending';
     const safeUrl=safeHtml(url),safeUrlJs=String(url).replace(/'/g,"\\'");
     const wa=buildHookWa(l,key),mail=buildHookMail(l,key);
+    const productionState=(typeof ensureLeadProduction==='function'?ensureLeadProduction(l).state:'draft');
+    const sendGateOpen=productionState==='crm_ready_for_send'||productionState==='sent_or_ready_for_manual_send';
     const preview=key==='visualExperience'&&hook.embedUrl?'<div class="hook-card-preview"><iframe src="'+safeHtml(hook.embedUrl)+'" title="Preview '+safeHtml(cfg.label)+' '+safeHtml(l.empresa||'')+'" loading="lazy" allow="autoplay; fullscreen" referrerpolicy="no-referrer-when-downgrade"></iframe></div>':'';
     const bannerLinks=key==='bannerPack'&&hasUrl?`${hook.verticalUrl?'<a href="'+safeHtml(hook.verticalUrl)+'" target="_blank" rel="noopener noreferrer" class="tpl-btn tpl-link">↗ Abrir vertical</a>':''}${hook.horizontalUrl?'<a href="'+safeHtml(hook.horizontalUrl)+'" target="_blank" rel="noopener noreferrer" class="tpl-btn tpl-link">↗ Abrir horizontal</a>':''}`:'';
     const activeActions=hasUrl?`
@@ -11550,6 +11559,244 @@ function renderCommercialHookBlock(l){
   </div>`;
 }
 function renderCommercialHooksBlock(l){return renderCommercialHookBlock(l);}
+
+// Guided production pipeline. This is the operational layer described in
+// docs/production/03-crm-integration-production-readiness.md. It coexists with
+// the commercial pipeline: lead.estado remains sales state; lead.production is
+// the production readiness state.
+const PRODUCTION_PIPELINE_STATES=[
+  {id:'draft',label:'Draft',gate:''},
+  {id:'audit_ready',label:'Audit ready',gate:''},
+  {id:'banner_base_selected',label:'Banner base',gate:'A'},
+  {id:'banner_local_validated',label:'Banner local',gate:'A'},
+  {id:'banner_public_validated',label:'Banner public',gate:'A'},
+  {id:'web_base_selected',label:'Web base',gate:'B'},
+  {id:'web_local_validated',label:'Web local',gate:'B'},
+  {id:'banner_embedded_in_web',label:'Banner embedded',gate:'C'},
+  {id:'web_public_validated',label:'Web public',gate:'B'},
+  {id:'crm_ready_for_send',label:'CRM ready',gate:'D'},
+  {id:'sent_or_ready_for_manual_send',label:'Ready/send',gate:'D'}
+];
+const PRODUCTION_GATE_COPY={
+  A:{label:'Gate A - Banner',blocks:'Canvas empty, logo broken, QR broken, tool screen shown',recovery:['Open the local banner route with ?clean=1.','Confirm the real logo, QR and final render are visible.','Use only the public clean URL/embed URL, never a tool or gesture-lab URL.']},
+  B:{label:'Gate B - Web',blocks:'Build failure, broken route, wrong logo, generic copy',recovery:['Run/build or check the public Vercel deployment.','Open the exact public URL and inspect client logo, texts and CTA.','Do not approve if it looks like a generic template.']},
+  C:{label:'Gate C - Integration',blocks:'Empty iframe, local URL, wrong-client URL',recovery:['Open the complete web public URL.','Verify the banner iframe is visible and uses the same lead slug.','Reject localhost, gesture-lab and URLs from another client.']},
+  D:{label:'Gate D - Send',blocks:'Missing CRM URLs, old links, failed Vercel',recovery:['Confirm CRM fields contain the final public URLs.','Copy WhatsApp/email only from crm_ready_for_send or later.','If Vercel failed, do not send.']}
+};
+function emptyLeadProduction(lead){
+  const slug=toLeadSlug((lead&&lead.empresa)||('lead-'+((lead&&lead.id)||'')));
+  return {
+    state:'draft',
+    leadSlug:slug,
+    audit:{status:'',validatedAt:''},
+    banner:{baseUsed:'',publicUrl:'',embedUrl:'',commitSha:'',status:'',warnings:[]},
+    web:{baseUsed:'',publicUrl:'',commitSha:'',status:'',warnings:[]},
+    integration:{bannerEmbedded:false,iframeVisible:false,status:''},
+    send:{status:'',whatsappReady:false,emailReady:false,reviewedByHuman:false},
+    updatedAt:'',
+    history:[]
+  };
+}
+function ensureLeadProduction(lead){
+  if(!lead) return emptyLeadProduction({});
+  const base=emptyLeadProduction(lead);
+  const current=lead.production&&typeof lead.production==='object'?lead.production:{};
+  lead.production={
+    ...base,
+    ...current,
+    audit:{...base.audit,...(current.audit||{})},
+    banner:{...base.banner,...(current.banner||{}),warnings:Array.isArray(current.banner&&current.banner.warnings)?current.banner.warnings:[]},
+    web:{...base.web,...(current.web||{}),warnings:Array.isArray(current.web&&current.web.warnings)?current.web.warnings:[]},
+    integration:{...base.integration,...(current.integration||{})},
+    send:{...base.send,...(current.send||{})},
+    history:Array.isArray(current.history)?current.history:[]
+  };
+  if(!lead.production.leadSlug) lead.production.leadSlug=base.leadSlug;
+  if(!PRODUCTION_PIPELINE_STATES.some(s=>s.id===lead.production.state)) lead.production.state='draft';
+  return lead.production;
+}
+function productionUrlIsPublic(url){
+  const u=trimHookUrl(url);
+  if(!u) return false;
+  if(!fourHooksUrlIsValid(u)) return false;
+  if(/\/gesture-lab\/|editor|localhost|127\.0\.0\.1|file:\/\//i.test(u)) return false;
+  return true;
+}
+function productionStateIndex(state){
+  return Math.max(0,PRODUCTION_PIPELINE_STATES.findIndex(s=>s.id===state));
+}
+function productionNextState(current){
+  const idx=productionStateIndex(current);
+  return PRODUCTION_PIPELINE_STATES[Math.min(idx+1,PRODUCTION_PIPELINE_STATES.length-1)];
+}
+function syncLeadProductionFromHooks(lead){
+  if(!lead) return null;
+  const p=ensureLeadProduction(lead);
+  const hooks=ensureLeadCommercialHooks(lead)||{};
+  const visual=hooks.visualExperience||{};
+  const web=hooks.fullWebDemo||{};
+  const audit=buildAuditFromLead(lead);
+  if(audit.status&&audit.status!=='missing'){
+    p.audit.status=audit.status;
+    if(!p.audit.validatedAt) p.audit.validatedAt=(lead.websiteAudit&&lead.websiteAudit.updatedAt)||new Date().toISOString();
+  }
+  if(visual.url&&productionUrlIsPublic(visual.url)) p.banner.publicUrl=visual.url;
+  if(visual.embedUrl&&productionUrlIsPublic(visual.embedUrl)) p.banner.embedUrl=visual.embedUrl;
+  if(visual.status&&visual.status!=='pending') p.banner.status=visual.status;
+  if(!p.banner.baseUsed&&visual.url) p.banner.baseUsed='registered_hook';
+  if(web.url&&productionUrlIsPublic(web.url)) p.web.publicUrl=web.url;
+  if(web.status&&web.status!=='pending') p.web.status=web.status;
+  if(!p.web.baseUsed&&web.url) p.web.baseUsed='registered_hook';
+  if(p.banner.embedUrl&&p.web.publicUrl&&!p.integration.bannerEmbedded) p.integration.bannerEmbedded=true;
+  p.send.whatsappReady=!!(lead.whatsapp||lead.telefono)&&productionUrlIsPublic(p.web.publicUrl);
+  p.send.emailReady=!!lead.email&&productionUrlIsPublic(p.web.publicUrl);
+  p.updatedAt=new Date().toISOString();
+  return p;
+}
+function productionChecksForState(lead,targetState){
+  const p=syncLeadProductionFromHooks(lead)||ensureLeadProduction(lead);
+  const manual=typeof getLeadManualAssets==='function'?getLeadManualAssets(lead):emptyLeadManualAssets();
+  const hooks=ensureLeadCommercialHooks(lead)||{};
+  const visual=hooks.visualExperience||{};
+  const web=hooks.fullWebDemo||{};
+  const hasAudit=p.audit.status&&p.audit.status!=='missing';
+  const hasLogo=!!manual.logoUrl || !!(lead.logoUrl||lead.logo);
+  const checks={
+    draft:[],
+    audit_ready:[
+      {ok:hasAudit,label:'Auditoria disponible o importada',gate:''}
+    ],
+    banner_base_selected:[
+      {ok:!!(p.banner.baseUsed||visual.url||visual.embedUrl),label:'Base de banderola seleccionada',gate:'A'},
+      {ok:hasLogo,label:'Logo real del cliente detectado/aprobado',gate:'A'}
+    ],
+    banner_local_validated:[
+      {ok:['local_validated','public_validated','generated','published'].includes(p.banner.status)||['generated','published'].includes(visual.status),label:'Banderola validada localmente',gate:'A'}
+    ],
+    banner_public_validated:[
+      {ok:productionUrlIsPublic(p.banner.publicUrl),label:'URL publica de banderola valida',gate:'A'},
+      {ok:productionUrlIsPublic(p.banner.embedUrl),label:'URL embed limpia valida',gate:'A'}
+    ],
+    web_base_selected:[
+      {ok:!!(p.web.baseUsed||web.url),label:'Base de web completa seleccionada',gate:'B'}
+    ],
+    web_local_validated:[
+      {ok:['local_validated','public_validated','generated','published'].includes(p.web.status)||['generated','published'].includes(web.status),label:'Web validada localmente',gate:'B'}
+    ],
+    banner_embedded_in_web:[
+      {ok:p.integration.bannerEmbedded===true,label:'Banderola integrada en la web',gate:'C'},
+      {ok:p.integration.iframeVisible===true,label:'Iframe visible confirmado',gate:'C'}
+    ],
+    web_public_validated:[
+      {ok:productionUrlIsPublic(p.web.publicUrl),label:'URL publica de web valida',gate:'B'}
+    ],
+    crm_ready_for_send:[
+      {ok:productionUrlIsPublic(p.banner.publicUrl),label:'CRM contiene URL publica de banderola',gate:'D'},
+      {ok:productionUrlIsPublic(p.web.publicUrl),label:'CRM contiene URL publica de web',gate:'D'},
+      {ok:p.integration.iframeVisible===true,label:'Integracion revisada antes de enviar',gate:'D'}
+    ],
+    sent_or_ready_for_manual_send:[
+      {ok:p.send.reviewedByHuman===true,label:'Revision humana confirmada',gate:'D'},
+      {ok:p.send.whatsappReady===true||p.send.emailReady===true,label:'WhatsApp o email listo',gate:'D'}
+    ]
+  };
+  return checks[targetState]||[];
+}
+function productionBlockersForNextState(lead){
+  const p=ensureLeadProduction(lead),next=productionNextState(p.state);
+  return productionChecksForState(lead,next.id).filter(c=>!c.ok);
+}
+function setProductionManualFlag(id,flag){
+  const lead=leads.find(x=>x.id===id);if(!lead)return;
+  const p=syncLeadProductionFromHooks(lead)||ensureLeadProduction(lead);
+  if(flag==='banner_local') p.banner.status='local_validated';
+  if(flag==='web_local') p.web.status='local_validated';
+  if(flag==='iframe_visible'){p.integration.bannerEmbedded=true;p.integration.iframeVisible=true;p.integration.status='validated';}
+  if(flag==='human_review'){p.send.reviewedByHuman=true;p.send.status='reviewed';}
+  p.updatedAt=new Date().toISOString();
+  p.history.push({action:'manual_flag',flag,at:p.updatedAt});
+  saveState();renderAll();openModal(id);_showToast('Validacion guardada.','var(--green)');
+}
+function advanceProductionState(id){
+  const lead=leads.find(x=>x.id===id);if(!lead)return;
+  const p=syncLeadProductionFromHooks(lead)||ensureLeadProduction(lead);
+  const next=productionNextState(p.state);
+  const blockers=productionChecksForState(lead,next.id).filter(c=>!c.ok);
+  if(blockers.length){_showToast('Bloqueado: '+blockers[0].label,'var(--red)');return;}
+  if(next.id===p.state){_showToast('Produccion ya esta en el ultimo estado.','var(--green)');return;}
+  p.state=next.id;
+  p.updatedAt=new Date().toISOString();
+  p.history.push({action:'advance_state',state:next.id,at:p.updatedAt});
+  saveState();renderAll();openModal(id);_showToast('Estado actualizado: '+next.label,'var(--green)');
+}
+function copyProductionJsonForCodex(id){
+  const lead=leads.find(x=>x.id===id);if(!lead)return;
+  const p=syncLeadProductionFromHooks(lead)||ensureLeadProduction(lead);
+  const payload={
+    lead:normalizeLeadForFourHooks(lead),
+    production:p,
+    commercialHooks:ensureLeadCommercialHooks(lead),
+    assets:typeof getLeadManualAssets==='function'?getLeadManualAssets(lead):{},
+    audit:buildAuditFromLead(lead)
+  };
+  const text=JSON.stringify(payload,null,2);
+  navigator.clipboard.writeText(text).catch(()=>{const ta=document.createElement('textarea');ta.value=text;document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta);});
+  _showToast('JSON de produccion copiado para Codex.','var(--accent2)');
+}
+function productionGateSummary(lead){
+  const gates=['A','B','C','D'];
+  return gates.map(g=>{
+    const relevant=PRODUCTION_PIPELINE_STATES.filter(s=>s.gate===g).flatMap(s=>productionChecksForState(lead,s.id));
+    const total=relevant.length,ok=relevant.filter(c=>c.ok).length;
+    return {gate:g,label:PRODUCTION_GATE_COPY[g].label,ok,total,passed:total>0&&ok===total};
+  });
+}
+function renderProductionGuidedPipeline(lead){
+  const p=syncLeadProductionFromHooks(lead)||ensureLeadProduction(lead);
+  const idx=productionStateIndex(p.state),next=productionNextState(p.state),blockers=productionChecksForState(lead,next.id).filter(c=>!c.ok);
+  const canAdvance=blockers.length===0&&next.id!==p.state;
+  const gates=productionGateSummary(lead);
+  const manual=typeof getLeadManualAssets==='function'?getLeadManualAssets(lead):emptyLeadManualAssets();
+  const assetRows=[
+    ['Logo',manual.logoUrl?'aprobado':(lead.logoUrl||lead.logo?'detectado':'faltante')],
+    ['Hero',manual.heroImage?'aprobado':'pendiente'],
+    ['Imagenes',manual.propertyImages&&manual.propertyImages.length?manual.propertyImages.length+' aprobadas':'pendiente'],
+    ['Video',manual.videoUrl?'aprobado':'pendiente'],
+    ['QR',productionUrlIsPublic(p.banner.publicUrl)?'derivado de URL publica':'pendiente']
+  ].map(r=>'<div style="display:flex;justify-content:space-between;gap:10px;border-bottom:1px solid var(--line);padding:4px 0"><span>'+safeHtml(r[0])+'</span><strong>'+safeHtml(r[1])+'</strong></div>').join('');
+  const steps=PRODUCTION_PIPELINE_STATES.map((s,i)=>'<span class="tag '+(i<idx?'est-cerrado':(i===idx?'est-visual':'est-sin'))+'" style="font-size:9px">'+(i+1)+'. '+safeHtml(s.label)+'</span>').join('');
+  const gateHtml=gates.map(g=>'<div class="hook-card-url" style="margin:4px 0"><strong>'+safeHtml(g.label)+'</strong> '+(g.passed?'OK':(g.ok+'/'+g.total))+'<div style="font-size:10px;color:var(--text3)">'+safeHtml(PRODUCTION_GATE_COPY[g.gate].blocks)+'</div></div>').join('');
+  const blockerHtml=blockers.length?'<div class="pl-warning" style="margin-top:8px"><strong>Bloqueado para avanzar a '+safeHtml(next.label)+':</strong><ul>'+blockers.map(b=>'<li>'+safeHtml((b.gate?('Gate '+b.gate+': '):'')+b.label)+'</li>').join('')+'</ul>'+(blockers[0].gate?'<div style="margin-top:6px"><strong>Recovery:</strong><ol>'+PRODUCTION_GATE_COPY[blockers[0].gate].recovery.map(x=>'<li>'+safeHtml(x)+'</li>').join('')+'</ol></div>':'')+'</div>':'<div class="hook-form-hint" style="margin-top:8px;color:var(--green)">Siguiente estado desbloqueado.</div>';
+  const sendEnabled=p.state==='crm_ready_for_send'||p.state==='sent_or_ready_for_manual_send';
+  return `<div class="modal-section" data-section="guided-production">
+    <div style="display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap">
+      <div class="modal-section-title" style="margin:0">Produccion guiada</div>
+      <span class="tag est-visual">lead.production</span>
+    </div>
+    <div style="margin:8px 0;display:flex;gap:5px;flex-wrap:wrap">${steps}</div>
+    <div class="info-grid">
+      <div class="info-item"><label>Estado actual</label><span>${safeHtml(p.state)}</span></div>
+      <div class="info-item"><label>Siguiente</label><span>${safeHtml(next.id)}</span></div>
+      <div class="info-item"><label>Banner publico</label><span>${p.banner.publicUrl?'<a href="'+safeHtml(p.banner.publicUrl)+'" target="_blank" rel="noopener noreferrer">abrir</a>':'-'}</span></div>
+      <div class="info-item"><label>Web publica</label><span>${p.web.publicUrl?'<a href="'+safeHtml(p.web.publicUrl)+'" target="_blank" rel="noopener noreferrer">abrir</a>':'-'}</span></div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px;margin-top:10px">
+      <div class="hook-card-url"><strong>Assets aprobados</strong>${assetRows}</div>
+      <div>${gateHtml}</div>
+    </div>
+    ${blockerHtml}
+    <div class="contact-actions" style="margin-top:10px">
+      <button class="contact-btn btn-web" type="button" onclick="advanceProductionState(${lead.id})" ${canAdvance?'':'disabled'}>Avanzar estado</button>
+      <button class="contact-btn btn-email" type="button" onclick="copyProductionJsonForCodex(${lead.id})">Copiar JSON para Codex</button>
+      <button class="contact-btn btn-maps" type="button" onclick="setProductionManualFlag(${lead.id},'banner_local')">Confirmar banner local</button>
+      <button class="contact-btn btn-maps" type="button" onclick="setProductionManualFlag(${lead.id},'web_local')">Confirmar web local</button>
+      <button class="contact-btn btn-maps" type="button" onclick="setProductionManualFlag(${lead.id},'iframe_visible')">Confirmar iframe visible</button>
+      <button class="contact-btn btn-wa" type="button" ${sendEnabled?'':'disabled'} onclick="copyFourHooksField(${lead.id},'whatsapp')">WhatsApp gateado</button>
+      <button class="contact-btn btn-email" type="button" ${sendEnabled?'':'disabled'} onclick="copyFourHooksField(${lead.id},'email')">Email gateado</button>
+      <button class="contact-btn btn-tel" type="button" onclick="setProductionManualFlag(${lead.id},'human_review')">Revision humana OK</button>
+    </div>
+  </div>`;
+}
 function hookListBadges(l){
   const hooks=ensureLeadCommercialHooks(l)||{};
   const label=(key)=>{
@@ -12202,6 +12449,7 @@ function connectExistingFourHooksEngines(id){
   const bpChanged=(isOk(pr.bannerPack)&&!bp.url)||(isOk(pr.bannerVertical)&&!bp.verticalUrl)||(isOk(pr.bannerHorizontal)&&!bp.horizontalUrl);
   if(bpChanged){if(isOk(pr.bannerPack)&&!bp.url){bp.url=pr.bannerPack;bp.packUrl=pr.bannerPack;}if(isOk(pr.bannerVertical)&&!bp.verticalUrl)bp.verticalUrl=pr.bannerVertical;if(isOk(pr.bannerHorizontal)&&!bp.horizontalUrl)bp.horizontalUrl=pr.bannerHorizontal;bp.assetStatus='generated';bp.lastUpdate=now;if(stale(bp.status))bp.status='generated';l._hookHistory.push({hook:'bannerPack',status:'generated',action:'auto_registered',at:now});registered++;}
   l._proxAccion=commercialHooksNextAction(l);l.updatedAt=now;
+  if(typeof syncLeadProductionFromHooks==='function') syncLeadProductionFromHooks(l);
   saveState();renderAll();openModal(id);
   const pubCount=typeof payload.publishedOutputCount==='number'?payload.publishedOutputCount:registered;
   const totalCount=typeof payload.generatedReviewCount==='number'?payload.generatedReviewCount:4;
@@ -12308,6 +12556,7 @@ function importResponseBundle(leadId, bundle) {
   if (typeof commercialHooksNextAction === 'function') l._proxAccion = commercialHooksNextAction(l);
   else l._proxAccion = 'Revisar PRs en GitHub. Una vez aprobados y mergeados, confirmar publicación.';
   l.updatedAt = now;
+  if (typeof syncLeadProductionFromHooks === 'function') syncLeadProductionFromHooks(l);
   saveState();
   return {ok:true, slug:bundle.slug, status:bundle.status, importedAt:now};
 }
