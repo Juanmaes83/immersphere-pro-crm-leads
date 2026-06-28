@@ -12021,15 +12021,15 @@ const PRODUCTION_BASES_SEED={
     {slug:'casas-y-mar-visita-propiedad',label:'Casas y Mar — Visita Propiedad',
      publicUrl:'https://rubik-sota-director-de-orquesta.vercel.app/dynamic-motion-banner/casas-y-mar-visita-propiedad/',
      embedUrl:'https://rubik-sota-director-de-orquesta.vercel.app/dynamic-motion-banner/casas-y-mar-visita-propiedad/?embed=1',
-     repo:'Rubik-Sota-Director-de-Orquesta',validatedAt:'',status:'pending',
-     note:'Pendiente: bug clean-mode en casas-y-mar-v1.html (race condition DOM). Fix conocido: portar wrap __applyCleanBody + DOMContentLoaded listener de torrevieja-sur-v1.html (commit a77b961). Hasta entonces, la URL raiz muestra el editor de Gesture Lab en navegador real.'}
+     repo:'Rubik-Sota-Director-de-Orquesta',validatedAt:'2026-06-28',status:'validated',
+     note:'Verificado visualmente en navegador real 2026-06-28. URL publica y embed renderizan limpios. Misma arquitectura que torrevieja-sur (rewrite vercel.json -> gesture-lab/dynamic-motion-banners/rubik-sota-dynamic-motion-banners-casas-y-mar-v1.html con clean-mode activado por pathname).'}
   ],
   webs:[
     {slug:'casas-y-mar-premium',label:'Casas y Mar — Web Premium',
      publicUrl:'https://aurum-properties-boutique.vercel.app/casas-y-mar',
      embedUrl:'',
-     repo:'AURUM_PROPERTIES_BOUTIQUE',validatedAt:'',status:'pending',
-     note:'Pendiente: ruta cableada y secciones personalizadas OK, pero el iframe del banner muestra el editor porque depende de la banderola (ver nota de la banderola). Verificacion visual humana requerida tras portar fix clean-mode.'}
+     repo:'AURUM_PROPERTIES_BOUTIQUE',validatedAt:'2026-06-28',status:'validated',
+     note:'Verificado visualmente 2026-06-28. Ruta /casas-y-mar wired en App.tsx con vercel.json rewrite. 18 secciones personalizadas. VisualExperienceBannerSection iframe muestra la banderola limpia (embedUrl = directorio raiz + ?embed=1, patron canonico identico a Torrevieja Sur).'}
   ]
 };
 function getValidatedBases(){
