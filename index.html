@@ -11793,6 +11793,7 @@ function emptyLeadProduction(lead){
     web:{baseUsed:'',publicUrl:'',commitSha:'',status:'',warnings:[]},
     integration:{bannerEmbedded:false,iframeVisible:false,status:''},
     send:{status:'',whatsappReady:false,emailReady:false,reviewedByHuman:false},
+    urlChecks:{},
     updatedAt:'',
     history:[]
   };
@@ -11809,6 +11810,7 @@ function ensureLeadProduction(lead){
     web:{...base.web,...(current.web||{}),warnings:Array.isArray(current.web&&current.web.warnings)?current.web.warnings:[]},
     integration:{...base.integration,...(current.integration||{})},
     send:{...base.send,...(current.send||{})},
+    urlChecks:(current.urlChecks&&typeof current.urlChecks==='object')?current.urlChecks:{},
     history:Array.isArray(current.history)?current.history:[]
   };
   if(!lead.production.leadSlug) lead.production.leadSlug=base.leadSlug;
@@ -11819,7 +11821,7 @@ function productionUrlIsPublic(url){
   const u=trimHookUrl(url);
   if(!u) return false;
   if(!fourHooksUrlIsValid(u)) return false;
-  if(/\/gesture-lab\/|editor|localhost|127\.0\.0\.1|file:\/\//i.test(u)) return false;
+  if(/\/gesture-lab\/|editor|localhost|127\.0\.0\.1|file:\/\/|controles/i.test(u)) return false;
   return true;
 }
 function productionStateIndex(state){
@@ -11885,7 +11887,8 @@ function productionChecksForState(lead,targetState){
     ],
     banner_embedded_in_web:[
       {ok:p.integration.bannerEmbedded===true,label:'Banderola integrada en la web',gate:'C'},
-      {ok:p.integration.iframeVisible===true,label:'Iframe visible confirmado',gate:'C'}
+      {ok:p.integration.iframeVisible===true,label:'Iframe visible confirmado',gate:'C'},
+      {ok:!productionUrlCrossClientSlug(p.banner.embedUrl,lead),label:'URL iframe no apunta a otro cliente',gate:'C'}
     ],
     web_public_validated:[
       {ok:productionUrlIsPublic(p.web.publicUrl),label:'URL publica de web valida',gate:'B'}
@@ -11968,6 +11971,9 @@ function renderProductionGuidedPipeline(lead){
   const gateHtml=gates.map(g=>'<div class="hook-card-url" style="margin:4px 0"><strong>'+safeHtml(g.label)+'</strong> '+(g.passed?'OK':(g.ok+'/'+g.total))+'<div style="font-size:10px;color:var(--text3)">'+safeHtml(PRODUCTION_GATE_COPY[g.gate].blocks)+'</div></div>').join('');
   const blockerHtml=blockers.length?'<div class="pl-warning" style="margin-top:8px"><strong>Bloqueado para avanzar a '+safeHtml(next.label)+':</strong><ul>'+blockers.map(b=>'<li>'+safeHtml((b.gate?('Gate '+b.gate+': '):'')+b.label)+'</li>').join('')+'</ul>'+(blockers[0].gate?'<div style="margin-top:6px"><strong>Recovery:</strong><ol>'+PRODUCTION_GATE_COPY[blockers[0].gate].recovery.map(x=>'<li>'+safeHtml(x)+'</li>').join('')+'</ol></div>':'')+'</div>':'<div class="hook-form-hint" style="margin-top:8px;color:var(--green)">Siguiente estado desbloqueado.</div>';
   const sendEnabled=p.state==='crm_ready_for_send'||p.state==='sent_or_ready_for_manual_send';
+  const bPub=productionUrlStatusBadge(lead,'banner.publicUrl',p.banner.publicUrl);
+  const bEmbed=productionUrlStatusBadge(lead,'banner.embedUrl',p.banner.embedUrl);
+  const bWeb=productionUrlStatusBadge(lead,'web.publicUrl',p.web.publicUrl);
   return `<div class="modal-section" data-section="guided-production">
     <div style="display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap">
       <div class="modal-section-title" style="margin:0">Produccion guiada</div>
@@ -11977,8 +11983,17 @@ function renderProductionGuidedPipeline(lead){
     <div class="info-grid">
       <div class="info-item"><label>Estado actual</label><span>${safeHtml(p.state)}</span></div>
       <div class="info-item"><label>Siguiente</label><span>${safeHtml(next.id)}</span></div>
-      <div class="info-item"><label>Banner publico</label><span>${p.banner.publicUrl?'<a href="'+safeHtml(p.banner.publicUrl)+'" target="_blank" rel="noopener noreferrer">abrir</a>':'-'}</span></div>
-      <div class="info-item"><label>Web publica</label><span>${p.web.publicUrl?'<a href="'+safeHtml(p.web.publicUrl)+'" target="_blank" rel="noopener noreferrer">abrir</a>':'-'}</span></div>
+      <div class="info-item"><label>Banner publico</label><span>${p.banner.publicUrl?'<a href="'+safeHtml(p.banner.publicUrl)+'" target="_blank" rel="noopener noreferrer">abrir</a>':'-'} ${bPub}</span></div>
+      <div class="info-item"><label>Banner embed</label><span>${p.banner.embedUrl?'<a href="'+safeHtml(p.banner.embedUrl)+'" target="_blank" rel="noopener noreferrer">abrir</a>':'-'} ${bEmbed}</span></div>
+      <div class="info-item"><label>Web publica</label><span>${p.web.publicUrl?'<a href="'+safeHtml(p.web.publicUrl)+'" target="_blank" rel="noopener noreferrer">abrir</a>':'-'} ${bWeb}</span></div>
+    </div>
+    <div class="hook-card-url" style="margin-top:10px">
+      <strong>Bases de replicacion</strong>
+      <div style="margin-top:6px;display:grid;gap:6px">
+        <div><label style="font-size:10px;color:var(--text3)">Banderola base</label><div style="margin-top:3px">${renderValidatedBasePicker(lead,'banner')}</div></div>
+        <div><label style="font-size:10px;color:var(--text3)">Web completa base</label><div style="margin-top:3px">${renderValidatedBasePicker(lead,'web')}</div></div>
+        <button class="tpl-btn" type="button" style="background:none;color:var(--accent2);font-size:11px;padding:4px 0;border:none" onclick="openBasesManager()">+ Gestionar bases validadas</button>
+      </div>
     </div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px;margin-top:10px">
       <div class="hook-card-url"><strong>Assets aprobados</strong>${assetRows}</div>
@@ -11987,7 +12002,8 @@ function renderProductionGuidedPipeline(lead){
     ${blockerHtml}
     <div class="contact-actions" style="margin-top:10px">
       <button class="contact-btn btn-web" type="button" onclick="advanceProductionState(${lead.id})" ${canAdvance?'':'disabled'}>Avanzar estado</button>
-      <button class="contact-btn btn-email" type="button" onclick="copyProductionJsonForCodex(${lead.id})">Copiar JSON para Codex</button>
+      <button class="contact-btn btn-email" type="button" onclick="copyProductionJsonForCodex(${lead.id})">Copiar JSON Codex</button>
+      <button class="contact-btn btn-tel" type="button" onclick="verifyAllProductionUrls(${lead.id})">Verificar URLs</button>
       <button class="contact-btn btn-maps" type="button" onclick="setProductionManualFlag(${lead.id},'banner_local')">Confirmar banner local</button>
       <button class="contact-btn btn-maps" type="button" onclick="setProductionManualFlag(${lead.id},'web_local')">Confirmar web local</button>
       <button class="contact-btn btn-maps" type="button" onclick="setProductionManualFlag(${lead.id},'iframe_visible')">Confirmar iframe visible</button>
@@ -11997,6 +12013,196 @@ function renderProductionGuidedPipeline(lead){
     </div>
   </div>`;
 }
+
+// ─── 4C: Validated bases registry ──────────────────────────────────────────
+const PRODUCTION_BASES_KEY='imm_validated_bases';
+const PRODUCTION_BASES_SEED={
+  banners:[
+    {slug:'casas-y-mar-visita-propiedad',label:'Casas y Mar — Visita Propiedad',
+     publicUrl:'https://rubik-sota-director-de-orquesta.vercel.app/dynamic-motion-banner/casas-y-mar-visita-propiedad/',
+     embedUrl:'https://rubik-sota-director-de-orquesta.vercel.app/dynamic-motion-banner/casas-y-mar-visita-propiedad/?embed=1',
+     repo:'Rubik-Sota-Director-de-Orquesta',validatedAt:'',status:'pending'}
+  ],
+  webs:[
+    {slug:'casas-y-mar-premium',label:'Casas y Mar — Web Premium',
+     publicUrl:'https://aurum-properties-boutique.vercel.app/casas-y-mar',
+     embedUrl:'',repo:'AURUM_PROPERTIES_BOUTIQUE',validatedAt:'',status:'pending'}
+  ]
+};
+function getValidatedBases(){
+  try{
+    const raw=localStorage.getItem(PRODUCTION_BASES_KEY);
+    if(raw){const d=JSON.parse(raw);if(d&&Array.isArray(d.banners)&&Array.isArray(d.webs))return d;}
+  }catch(e){}
+  return JSON.parse(JSON.stringify(PRODUCTION_BASES_SEED));
+}
+function saveValidatedBases(data){
+  try{localStorage.setItem(PRODUCTION_BASES_KEY,JSON.stringify(data));}catch(e){}
+}
+function addValidatedBase(type,base){
+  if(!base||!base.slug||!base.label) return false;
+  const d=getValidatedBases();
+  const arr=type==='banner'?d.banners:d.webs;
+  if(arr.some(b=>b.slug===base.slug)) return false;
+  arr.push({slug:base.slug,label:base.label,publicUrl:base.publicUrl||'',embedUrl:base.embedUrl||'',repo:base.repo||'',validatedAt:base.validatedAt||'',status:base.status||'pending'});
+  saveValidatedBases(d);return true;
+}
+function removeValidatedBase(type,slug){
+  const d=getValidatedBases();
+  if(type==='banner') d.banners=d.banners.filter(b=>b.slug!==slug);
+  else d.webs=d.webs.filter(b=>b.slug!==slug);
+  saveValidatedBases(d);
+}
+function markBaseValidated(type,slug){
+  const d=getValidatedBases();
+  const arr=type==='banner'?d.banners:d.webs;
+  const b=arr.find(x=>x.slug===slug);if(!b)return;
+  b.status='validated';b.validatedAt=new Date().toISOString().slice(0,10);
+  saveValidatedBases(d);
+}
+function selectProductionBase(id,type,slug){
+  const lead=leads.find(x=>x.id===id);if(!lead)return;
+  const p=syncLeadProductionFromHooks(lead)||ensureLeadProduction(lead);
+  const d=getValidatedBases();
+  const arr=type==='banner'?d.banners:d.webs;
+  const base=arr.find(b=>b.slug===slug);
+  if(!base){_showToast('Base no encontrada.','var(--red)');return;}
+  if(type==='banner'){
+    p.banner.baseUsed=slug;
+    if(base.publicUrl&&!p.banner.publicUrl) p.banner.publicUrl=base.publicUrl;
+    if(base.embedUrl&&!p.banner.embedUrl) p.banner.embedUrl=base.embedUrl;
+  }else{
+    p.web.baseUsed=slug;
+    if(base.publicUrl&&!p.web.publicUrl) p.web.publicUrl=base.publicUrl;
+  }
+  p.updatedAt=new Date().toISOString();
+  p.history.push({action:'base_selected',type,slug,at:p.updatedAt});
+  saveState();renderAll();openModal(id);_showToast('Base seleccionada: '+base.label,'var(--green)');
+}
+function renderValidatedBasePicker(lead,type){
+  const d=getValidatedBases();
+  const arr=type==='banner'?d.banners:d.webs;
+  const p=ensureLeadProduction(lead);
+  const current=type==='banner'?p.banner.baseUsed:p.web.baseUsed;
+  if(!arr.length) return '<span class="hook-form-hint">Sin bases. <button class="tpl-btn" style="background:none;color:var(--accent2);font-size:11px;padding:0;border:none" type="button" onclick="openBasesManager()">Añadir</button></span>';
+  const opts=arr.map(b=>'<option value="'+safeHtml(b.slug)+'"'+(b.slug===current?' selected':'')+'>'+safeHtml(b.label)+(b.status==='validated'?' ✓':' (pendiente)')+'</option>').join('');
+  return '<select class="svc-edit-select" style="max-width:300px;font-size:11px" onchange="selectProductionBase('+lead.id+',\''+type+'\',this.value)"><option value="">— elegir base —</option>'+opts+'</select>';
+}
+function openBasesManager(){
+  let el=document.getElementById('bases-manager-overlay');
+  if(!el){el=document.createElement('div');el.id='bases-manager-overlay';el.className='modal-overlay';el.setAttribute('onclick','if(event.target===this)closeBasesManager()');document.body.appendChild(el);}
+  el.innerHTML=renderBasesManagerModal();el.style.display='flex';
+}
+function closeBasesManager(){const el=document.getElementById('bases-manager-overlay');if(el)el.style.display='none';}
+function saveNewBase(){
+  const typeEl=document.getElementById('bm-type');
+  const type=typeEl?typeEl.value:'banner';
+  const slug=((document.getElementById('bm-slug')&&document.getElementById('bm-slug').value)||'').trim().toLowerCase().replace(/\s+/g,'-');
+  const label=((document.getElementById('bm-label')&&document.getElementById('bm-label').value)||'').trim();
+  const publicUrl=((document.getElementById('bm-pub')&&document.getElementById('bm-pub').value)||'').trim();
+  const embedUrl=((document.getElementById('bm-embed')&&document.getElementById('bm-embed').value)||'').trim();
+  const repo=((document.getElementById('bm-repo')&&document.getElementById('bm-repo').value)||'').trim();
+  if(!slug||!label){_showToast('Slug y nombre son obligatorios.','var(--red)');return;}
+  const ok=addValidatedBase(type,{slug,label,publicUrl,embedUrl,repo});
+  if(!ok){_showToast('Ya existe una base con ese slug.','var(--red)');return;}
+  openBasesManager();_showToast('Base añadida: '+label,'var(--green)');
+}
+function deleteBase(type,slug){removeValidatedBase(type,slug);openBasesManager();_showToast('Base eliminada.','var(--gold)');}
+function validateBase(type,slug){markBaseValidated(type,slug);openBasesManager();_showToast('Base marcada como validada.','var(--green)');}
+function renderBasesManagerModal(){
+  const d=getValidatedBases();
+  const row=(type,b)=>'<div style="display:flex;gap:8px;align-items:center;padding:5px 0;border-bottom:1px solid var(--border);flex-wrap:wrap"><div style="flex:1;min-width:0"><strong style="font-size:11px">'+safeHtml(b.label)+'</strong><div style="font-size:10px;color:var(--text3)">'+safeHtml(b.slug)+' · '+safeHtml(b.repo||'—')+(b.validatedAt?' · '+safeHtml(b.validatedAt):'')+'</div></div><span class="tag '+(b.status==='validated'?'est-cerrado':'est-sin')+'" style="font-size:9px">'+safeHtml(b.status)+'</span><button class="tpl-btn" type="button" style="background:none;color:var(--green);border:none;font-size:11px;padding:3px 6px" onclick="validateBase(\''+type+'\',\''+safeHtml(b.slug)+'\')">✓ Validar</button><button class="tpl-btn" type="button" style="background:none;color:var(--red);border:none;font-size:11px;padding:3px 6px" onclick="deleteBase(\''+type+'\',\''+safeHtml(b.slug)+'\')">✕</button></div>';
+  const rowsB=d.banners.map(b=>row('banner',b)).join('')||'<div class="hook-form-hint">Sin banderolas registradas.</div>';
+  const rowsW=d.webs.map(b=>row('web',b)).join('')||'<div class="hook-form-hint">Sin webs registradas.</div>';
+  return `<div style="background:var(--bg2);border-radius:14px;max-width:600px;width:100%;max-height:90vh;overflow-y:auto;padding:0">
+    <div class="modal-header"><div class="modal-title">Bases validadas</div><button class="modal-close" type="button" onclick="closeBasesManager()">✕</button></div>
+    <div class="modal-body">
+      <p class="hook-form-hint" style="margin-bottom:12px">Marca una base como validada cuando hayas comprobado que la URL publica funciona y el resultado visual es correcto. Las bases aparecen como opciones en el picker del pipeline.</p>
+      <div style="margin-bottom:16px"><strong style="font-size:12px">Banderolas</strong><div style="margin-top:6px">${rowsB}</div></div>
+      <div style="margin-bottom:16px"><strong style="font-size:12px">Webs completas</strong><div style="margin-top:6px">${rowsW}</div></div>
+      <details style="margin-top:8px"><summary style="cursor:pointer;font-size:12px;font-weight:600;color:var(--accent2)">+ Añadir nueva base</summary>
+        <div style="display:grid;gap:7px;margin-top:10px">
+          <select id="bm-type" class="svc-edit-select"><option value="banner">Banderola</option><option value="web">Web completa</option></select>
+          <input id="bm-slug" class="svc-edit-input" placeholder="slug (ej: torrevieja-sur-visita-propiedad)">
+          <input id="bm-label" class="svc-edit-input" placeholder="Nombre visible">
+          <input id="bm-pub" class="svc-edit-input" placeholder="URL publica (https://...)">
+          <input id="bm-embed" class="svc-edit-input" placeholder="URL embed (opcional, para banderolas)">
+          <input id="bm-repo" class="svc-edit-input" placeholder="Repo origen (opcional)">
+          <button class="contact-btn btn-web" type="button" onclick="saveNewBase()">Añadir base</button>
+        </div>
+      </details>
+    </div>
+  </div>`;
+}
+
+// ─── 4D: URL validation layer ───────────────────────────────────────────────
+const PRODUCTION_URL_BLOCKED_PATTERNS=[
+  {pattern:/\/gesture-lab\//i,reason:'Ruta gesture-lab (interna)'},
+  {pattern:/localhost|127\.0\.0\.1/i,reason:'URL local (localhost)'},
+  {pattern:/file:\/\//i,reason:'Ruta de archivo local'},
+  {pattern:/[?&]editor=|\/editor\b/i,reason:'Ruta de editor'},
+  {pattern:/[?&]controles=|\/controles\b/i,reason:'Ruta con controles visibles'}
+];
+function productionUrlBlockedReason(url){
+  const u=String(url||'').trim();if(!u)return null;
+  for(const {pattern,reason} of PRODUCTION_URL_BLOCKED_PATTERNS){if(pattern.test(u))return reason;}
+  return null;
+}
+function productionUrlCrossClientSlug(url,lead){
+  if(!url||!lead)return null;
+  const u=url.toLowerCase();
+  const leadSlug=toLeadSlug(lead.empresa||'');
+  const p=ensureLeadProduction(lead);
+  const allowed=new Set([leadSlug,(p.banner.baseUsed||'').toLowerCase(),(p.web.baseUsed||'').toLowerCase()].filter(Boolean));
+  const others=(typeof leads!=='undefined'?leads:[]).filter(x=>x.id!==lead.id).map(x=>toLeadSlug(x.empresa||'')).filter(s=>s&&!allowed.has(s));
+  for(const slug of others){if(u.includes('/'+slug))return slug;}
+  return null;
+}
+function productionUrlFullValidation(url,lead){
+  const blocked=productionUrlBlockedReason(url);
+  if(blocked)return{ok:false,level:'error',reason:blocked};
+  const cross=productionUrlCrossClientSlug(url,lead);
+  if(cross)return{ok:false,level:'warning',reason:'URL parece apuntar a otro cliente ('+cross+')'};
+  if(!productionUrlIsPublic(url))return{ok:false,level:'error',reason:'URL no valida o no publica'};
+  return{ok:true,level:'ok',reason:''};
+}
+function storeUrlCheckResult(lead,fieldKey,status,reason){
+  const p=ensureLeadProduction(lead);
+  if(!p.urlChecks)p.urlChecks={};
+  p.urlChecks[fieldKey]={status,reason:reason||'',checkedAt:new Date().toISOString()};
+  p.updatedAt=new Date().toISOString();
+}
+function checkProductionUrlHttp(url,lead,fieldKey,cb){
+  const v=productionUrlFullValidation(url,lead);
+  if(!v.ok){storeUrlCheckResult(lead,fieldKey,v.level,v.reason);if(cb)cb({status:v.level,reason:v.reason});return;}
+  fetch(url,{method:'HEAD',mode:'no-cors',credentials:'omit'})
+    .then(()=>{storeUrlCheckResult(lead,fieldKey,'ok','');if(cb)cb({status:'ok',reason:''});})
+    .catch(()=>{storeUrlCheckResult(lead,fieldKey,'error','No alcanzable');if(cb)cb({status:'error',reason:'No alcanzable'});});
+}
+function verifyAllProductionUrls(id){
+  const lead=leads.find(x=>x.id===id);if(!lead)return;
+  const p=syncLeadProductionFromHooks(lead)||ensureLeadProduction(lead);
+  let pending=0;
+  const done=()=>{pending--;if(pending<=0){saveState();renderAll();openModal(id);_showToast('Verificacion completada.','var(--green)');}};
+  const check=(url,field)=>{if(!url)return;pending++;checkProductionUrlHttp(url,lead,field,done);};
+  check(p.banner.publicUrl,'banner.publicUrl');
+  check(p.banner.embedUrl,'banner.embedUrl');
+  check(p.web.publicUrl,'web.publicUrl');
+  if(pending===0){saveState();renderAll();openModal(id);_showToast('Sin URLs para verificar.','var(--gold)');}
+}
+function productionUrlStatusBadge(lead,fieldKey,url){
+  if(!url)return'<span style="color:var(--text3);font-size:10px">—</span>';
+  const p=ensureLeadProduction(lead);
+  const check=(p.urlChecks||{})[fieldKey];
+  const v=productionUrlFullValidation(url,lead);
+  if(!v.ok)return'<span style="color:'+(v.level==='warning'?'var(--gold)':'var(--red)')+';font-size:11px" title="'+safeHtml(v.reason)+'">'+(v.level==='warning'?'⚠':'⛔')+'</span>';
+  if(!check)return'<span style="color:var(--text3);font-size:11px" title="Sin verificar — pulsa Verificar URLs">⏳</span>';
+  if(check.status==='ok')return'<span style="color:var(--green);font-size:11px" title="OK · '+safeHtml(check.checkedAt||'')+'">✓</span>';
+  if(check.status==='error')return'<span style="color:var(--red);font-size:11px" title="'+safeHtml(check.reason||'Error')+'">✗</span>';
+  if(check.status==='warning')return'<span style="color:var(--gold);font-size:11px" title="'+safeHtml(check.reason||'Advertencia')+'">⚠</span>';
+  return'<span style="color:var(--text3);font-size:11px">⏳</span>';
+}
+
 function hookListBadges(l){
   const hooks=ensureLeadCommercialHooks(l)||{};
   const label=(key)=>{
