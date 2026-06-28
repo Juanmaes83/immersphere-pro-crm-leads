@@ -21,6 +21,15 @@ nav{background:var(--bg2);border-bottom:1px solid var(--border);padding:0 20px;d
 .nav-tab.active{color:var(--accent2);background:rgba(124,58,237,.15)}
 .nav-right{margin-left:auto;display:flex;gap:6px;align-items:center;flex-shrink:0}
 .badge-pill{background:rgba(124,58,237,.2);color:var(--accent2);border:1px solid rgba(124,58,237,.3);padding:3px 9px;border-radius:20px;font-size:11px;font-weight:600;white-space:nowrap}
+.nav-keys-wrap{position:relative}
+.nav-keys-btn{background:var(--bg3);border:1px solid var(--border);color:var(--text2);padding:5px 10px;border-radius:7px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap}
+.nav-keys-btn.is-ready{background:rgba(16,185,129,.12);color:var(--green);border-color:rgba(16,185,129,.35)}
+.nav-keys-panel{position:absolute;top:calc(100% + 8px);right:0;background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:12px;width:300px;box-shadow:0 8px 30px rgba(0,0,0,.4);z-index:200}
+.nav-keys-row{display:flex;align-items:center;justify-content:space-between;gap:6px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.06);font-size:11px}
+.nav-keys-row:last-child{border-bottom:none}
+.nav-keys-label{display:flex;flex-direction:column;gap:2px;color:var(--text2)}
+.nav-keys-label small{color:var(--text3);font-size:9px}
+.nav-keys-actions{display:flex;gap:4px;flex-shrink:0}
 .nav-action-btn{background:var(--bg3);border:1px solid var(--border);color:var(--text2);padding:5px 10px;border-radius:7px;font-size:11px;font-weight:600;cursor:pointer;transition:all .2s;white-space:nowrap}
 .nav-action-btn:hover{border-color:var(--accent);color:var(--accent2)}
 
@@ -909,6 +918,7 @@ body.preview-mode{background:radial-gradient(circle at 20% -10%,rgba(124,58,237,
     <button class="nav-tab" data-view="integraciones">🔗 Integraciones</button>
   </div>
   <div class="nav-right">
+    <div class="nav-keys-wrap" id="nav-keys-wrap"></div>
     <button class="nav-action-btn" onclick="exportarJSON()">⬇ JSON</button>
     <button class="nav-action-btn" onclick="importarJSON()">⬆ JSON</button>
     <button class="nav-action-btn" onclick="exportarCSV()">⬇ CSV</button>
@@ -3023,7 +3033,7 @@ async function auditLeadWebsite(leadId){
     const data=await res.json();
     if(!data.ok) throw new Error(data.error||'No se pudo auditar la web.');
     applyWebsiteAuditToLead(l,websiteAuditFromResponse(data,l));
-    saveState();renderAll();setTimeout(()=>openModal(leadId),80);
+    saveState();renderAll();setTimeout(()=>{openModal(leadId);scrollAndHighlight("[data-section='website-audit']");},80);
     if(l.id>0) persistAuditRunBestEffort(l.id,l.websiteAudit);
     if(l.id>0) persistEnrichmentProfileBestEffort(l);
   }catch(err){
@@ -3589,6 +3599,131 @@ function openOperatorConsole(id){
   const pkgJson=JSON.stringify(pkg,null,2);
   navigator.clipboard.writeText(pkgJson).then(()=>{_showToast('Paquete copiado — pégalo en Operator Console al abrirse.','var(--accent2)');}).catch(()=>{});
   window.open(IMMERSPHERE_BACKEND_URL+'/operator','_blank','noopener,noreferrer');
+}
+// Camino automatico de un clic, alternativo al de arriba (que sigue intacto
+// como respaldo manual). Reutiliza /api/production/* - los mismos 4 pasos
+// que el Operator Console ya ejecuta a mano (proposal-package -> pr-plan ->
+// github-preflight -> create-prs), pero llamados directamente desde el CRM
+// con fetch(), sin pestaña aparte ni copiar/pegar JSON. Usa
+// X-Internal-Api-Token (no la sesion/cookie del Operator Console) para no
+// tocar su modelo de seguridad: header cross-origin normal, mismo patron ya
+// probado con CRM_PERSISTENCE_TOKEN en el resto del CRM. El merge de cada PR
+// sigue siendo 100% manual en GitHub - esto solo automatiza la creacion del
+// PR y el guardado del resultado en la ficha.
+const INTERNAL_API_TOKEN_KEY='crm_internal_api_token';
+function getInternalApiToken(){
+  try{return sessionStorage.getItem(INTERNAL_API_TOKEN_KEY)||'';}catch(e){return '';}
+}
+function hasInternalApiToken(){return !!getInternalApiToken();}
+function connectInternalApiToken(){
+  const current=getInternalApiToken();
+  const value=prompt(current?'Token interno de publicación (ya hay uno guardado en esta pestaña; pega uno nuevo para sustituirlo, o cancela para mantenerlo):':'Pega el token interno de publicación (INTERNAL_API_TOKEN). Permite crear PRs reales en AURUM/Rubik. Se guarda solo en esta pestaña (sessionStorage) y se borra al cerrarla.');
+  if(value===null) return false;
+  const trimmed=value.trim();
+  if(!trimmed){_showToast('Token vacío — no se ha guardado.','var(--text3)');return false;}
+  try{sessionStorage.setItem(INTERNAL_API_TOKEN_KEY,trimmed);}catch(e){}
+  _showToast('Token interno guardado para esta pestaña.','var(--green)');
+  renderKeysWidget();
+  return true;
+}
+function clearInternalApiToken(){
+  try{sessionStorage.removeItem(INTERNAL_API_TOKEN_KEY);}catch(e){}
+  _showToast('Token interno eliminado.','var(--accent2)');
+  renderKeysWidget();
+}
+// Widget fijo en la barra superior (visible en cualquier vista, no solo
+// dentro de una ficha) para conectar las dos claves de sesion de una sola
+// vez, en vez de que aparezcan como ventanas sorpresa a mitad de un flujo.
+// No crea ningun mecanismo de token nuevo - solo le da un sitio fijo y
+// visible a connectCrmPersistence()/connectInternalApiToken(), que ya
+// existian y ya funcionaban.
+function toggleKeysPanel(forceOpen){
+  const panel=document.getElementById('nav-keys-panel');
+  if(!panel) return;
+  const willOpen=forceOpen!==undefined?forceOpen:panel.style.display==='none';
+  panel.style.display=willOpen?'block':'none';
+}
+function renderKeysWidget(){
+  const wrap=document.getElementById('nav-keys-wrap');
+  if(!wrap) return;
+  const hasP=hasCrmPersistenceToken();
+  const hasI=hasInternalApiToken();
+  const bothReady=hasP&&hasI;
+  wrap.innerHTML=
+    '<button class="nav-keys-btn'+(bothReady?' is-ready':'')+'" onclick="toggleKeysPanel()">'
+    +(bothReady?'🔑 Claves conectadas':'🔑 Conectar claves')+'</button>'
+    +'<div class="nav-keys-panel" id="nav-keys-panel" style="display:none">'
+    +'<div class="nav-keys-row"><div class="nav-keys-label">Persistencia<small>guardar/recuperar datos del lead</small></div>'
+    +'<span style="color:'+(hasP?'var(--green)':'var(--text3)')+'">'+(hasP?'✓ conectada':'sin conectar')+'</span>'
+    +'<div class="nav-keys-actions">'
+    +'<button class="contact-btn btn-maps" style="font-size:9px;padding:3px 7px" onclick="connectCrmPersistence();renderKeysWidget();toggleKeysPanel(true)">Conectar</button>'
+    +(hasP?'<button class="contact-btn btn-tel" style="font-size:9px;padding:3px 7px" onclick="clearCrmPersistenceToken();renderKeysWidget();toggleKeysPanel(true)">Limpiar</button>':'')
+    +'</div></div>'
+    +'<div class="nav-keys-row"><div class="nav-keys-label">Publicación<small>crea PRs reales en AURUM/Rubik</small></div>'
+    +'<span style="color:'+(hasI?'var(--green)':'var(--text3)')+'">'+(hasI?'✓ conectada':'sin conectar')+'</span>'
+    +'<div class="nav-keys-actions">'
+    +'<button class="contact-btn btn-maps" style="font-size:9px;padding:3px 7px" onclick="connectInternalApiToken();renderKeysWidget();toggleKeysPanel(true)">Conectar</button>'
+    +(hasI?'<button class="contact-btn btn-tel" style="font-size:9px;padding:3px 7px" onclick="clearInternalApiToken();renderKeysWidget();toggleKeysPanel(true)">Limpiar</button>':'')
+    +'</div></div>'
+    +'</div>';
+}
+async function generateAndPublishFourHooks(id){
+  const l=leads.find(x=>x.id===id);if(!l)return;
+  if(!hasInternalApiToken()){
+    if(!connectInternalApiToken()||!hasInternalApiToken()) return;
+  }
+  if(!confirmPreflightBeforeAction(id,'generar y publicar los 4 ganchos reales')) return;
+  const headers={'Content-Type':'application/json','X-Internal-Api-Token':getInternalApiToken()};
+  // Siempre reconstruye fresco, nunca reutiliza un paquete ya guardado de
+  // un intento anterior (getStoredFourHooksPayload) - bug real encontrado
+  // en uso real: un paquete generado ANTES de un fix de datos (p.ej. el de
+  // mediaAssets.source) se quedaba persistido en previewEngine con los
+  // datos viejos, y este boton seguia mandandolo tal cual aunque el codigo
+  // que lo construye ya estuviera corregido. Publicar de verdad debe
+  // reflejar siempre el estado actual del lead, nunca un borrador
+  // potencialmente desactualizado.
+  const rawPkg=buildProductionPackageFromLead(l);
+  const pkg=sanitizeProductionPackageForRailway(rawPkg);
+  const base=crmPersistenceApiBase();
+  try{
+    _showToast('1/4 Generando propuesta...','var(--accent2)');
+    const ppRes=await fetch(base+'/api/production/proposal-package',{method:'POST',headers,body:JSON.stringify(pkg)});
+    if(ppRes.status===401){_showToast('Token interno incorrecto — usa "Limpiar token interno" y vuelve a pegarlo.','var(--red)');return;}
+    const ppData=await ppRes.json();
+    if(!ppData.ok){_showToast('Paquete con errores: '+((ppData.errors||ppData.validation&&ppData.validation.errors||[]).join(', ')||'desconocido'),'var(--red)');return;}
+
+    _showToast('2/4 Calculando plan de PRs...','var(--accent2)');
+    const planRes=await fetch(base+'/api/production/pr-plan',{method:'POST',headers,body:JSON.stringify(pkg)});
+    const planData=await planRes.json();
+    if(!planData.ok){_showToast('Plan bloqueado: '+((planData.validation&&planData.validation.errors||[]).join(', ')||'error'),'var(--red)');return;}
+
+    _showToast('3/4 Comprobando GitHub (preflight)...','var(--accent2)');
+    const pfRes=await fetch(base+'/api/production/github-preflight',{method:'POST',headers,body:JSON.stringify(pkg)});
+    const pfData=await pfRes.json();
+    if(!pfData.canCreatePRs){
+      _showToast('Bloqueado antes de crear PRs: '+((pfData.blockers||[]).join(', ')||'desconocido'),'var(--red)');
+      return;
+    }
+    const warnTxt=(pfData.warnings||[]).length?('\n\nAvisos:\n- '+pfData.warnings.join('\n- ')):'';
+    const confirmMsg='Esto va a crear PRs REALES en AURUM y Rubik para '+(l.empresa||'')+'.'+warnTxt+'\n\nNo se mergean automáticamente — tendrás que revisarlos y mergearlos tú mismo en GitHub.\n\n¿Confirmas crear los PRs ahora?';
+    if(!confirm(confirmMsg)){_showToast('Cancelado — no se ha creado ningún PR.','var(--text3)');return;}
+
+    _showToast('4/4 Creando PRs reales...','var(--accent2)');
+    const crRes=await fetch(base+'/api/production/create-prs',{method:'POST',headers,body:JSON.stringify(pkg)});
+    if(crRes.status===401){_showToast('Token interno incorrecto — usa "Limpiar token interno" y vuelve a pegarlo.','var(--red)');return;}
+    const crData=await crRes.json();
+    if(!crData.ok||!crData.responseBundle){
+      _showToast('No se pudieron crear los PRs: '+(crData.reason||(crData.blockers||[]).join(', ')||'error desconocido'),'var(--red)');
+      return;
+    }
+    const result=importResponseBundle(id,crData.responseBundle);
+    if(!result.ok){_showToast('PRs creados pero no se pudo guardar en la ficha: '+result.error,'var(--red)');return;}
+    saveState();renderAll();openModal(id);
+    setTimeout(()=>scrollAndHighlight("[data-section='four-hooks-proposal']"),120);
+    _showToast('PRs reales creados y guardados en la ficha — revisa y mergea en GitHub.','var(--green)');
+  }catch(e){
+    _showToast('Error de red hablando con el backend: '+String(e&&e.message||e),'var(--red)');
+  }
 }
 function renderProductionBase(l){
   try{
@@ -4187,7 +4322,7 @@ function renderWebsiteAudit(l){
   const urls=(a.auditedUrls||[]).slice(0,4).map((u,i)=>'<div style="font-size:11px;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+safeHtml((a.pageTypesAudited||[])[i]||'url')+': '+safeHtml(u)+'</div>').join('');
   const evidence=Object.entries(a.evidence||{}).slice(0,6).map(([k,v])=>'<div style="font-size:11px;color:var(--text3)"><strong>'+safeHtml(k)+':</strong> '+safeHtml((v||[]).slice(0,2).join(' | '))+'</div>').join('');
   return `
-    <div class="modal-section">
+    <div class="modal-section" data-section="website-audit">
       <div class="modal-section-title">Auditoría Web</div>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
         <span class="tag ${a.status==='success'?'est-cerrado':(a.status==='failed'?'est-pendiente':'est-visual')}">${auditStatusLabel(a)}</span>
@@ -4221,7 +4356,7 @@ function renderWebsiteAudit(l){
         ${a.error?'<br><strong style="color:var(--red)">Error:</strong> '+safeHtml(a.error):''}
       </div>
       <div class="contact-actions" style="margin-top:10px">
-        <button class="contact-btn btn-web" id="audit-web-btn-${l.id}" onclick="auditLeadWebsite(${l.id})">${a.status==='success'?'Reauditar web':'Auditar web'}</button>
+        <button class="contact-btn btn-web" style="font-weight:700" id="audit-web-btn-${l.id}" onclick="auditLeadWebsite(${l.id})">${a.status==='success'?'1. Reauditar web':'1. Auditar web'}</button>
         <button class="contact-btn btn-email" onclick="copyWebsiteAuditSummary(${l.id})">Copiar resumen de oportunidad</button>
       </div>
       ${renderCrmPersistenceStatus(l.id)}
@@ -7176,6 +7311,70 @@ function exportarCSV(){
 
 // ── Modal ─────────────────────────────────────────────────────────────────────
 let _currentModalLeadId=null;
+// Linea de progreso de 5 pasos, mostrada arriba del todo de cada ficha.
+// No inventa ningun estado nuevo - lee directamente de l.websiteAudit,
+// getStoredFourHooksPayload(l) y computeProductionPreflight(l), que ya
+// existian. El paso "Aprobar" no se puede verificar contra GitHub sin un
+// cambio de backend (una pagina de AURUM responde 200 aunque la ruta del
+// lead todavia no exista, asi que un simple fetch no sirve) - por eso ese
+// paso depende de previewEngine.manuallyConfirmedMerged, una confirmacion
+// manual explicita (ver markLeadMerged()), nunca detectada sola.
+function scrollAndHighlight(selector){
+  const el=document.querySelector(selector);
+  if(!el) return;
+  el.scrollIntoView({behavior:'smooth',block:'start'});
+  const prevTransition=el.style.transition;
+  const prevBg=el.style.backgroundColor;
+  el.style.transition='background-color .3s';
+  el.style.backgroundColor='rgba(196,169,106,0.25)';
+  setTimeout(()=>{el.style.backgroundColor=prevBg;el.style.transition=prevTransition;},2000);
+}
+function renderLeadProgressStepper(l){
+  const dot={gray:'⚪',gold:'🟡',green:'🟢',red:'🔴'};
+  const auditStatus=l.websiteAudit&&l.websiteAudit.status;
+  const step1=auditStatus==='success'?'green':(auditStatus==='failed'?'red':'gray');
+
+  const pkg=getStoredFourHooksPayload(l);
+  let step2='gray';
+  if(pkg){
+    const pf=computeProductionPreflight(l);
+    step2=pf.level==='red'?'red':(pf.level==='yellow'?'gold':'green');
+  }
+
+  const pe=l.previewEngine||{};
+  const bundleStatus=pe.operatorResponseBundleStatus;
+  const merged=pe.manuallyConfirmedMerged===true;
+  let step3='gray';
+  if(bundleStatus==='pr_created'||bundleStatus==='published') step3='gold';
+  if(bundleStatus==='failed') step3='red';
+  if(merged) step3='green';
+
+  let step4='gray';
+  if(bundleStatus==='pr_created') step4='gold';
+  if(merged) step4='green';
+
+  const hasCandidateUrls=bundleStatus==='pr_created'||merged;
+  const step5=merged?'green':(hasCandidateUrls?'gold':'gray');
+
+  const steps=[
+    {icon:'🔍',label:'Auditar',state:step1},
+    {icon:'🎯',label:'Crear ganchos',state:step2},
+    {icon:'🚀',label:'Publicar',state:step3},
+    {icon:'✅',label:'Aprobar',state:step4},
+    {icon:'🌐',label:'Ver online',state:step5},
+  ];
+  const target="[data-section='four-hooks-proposal']";
+  const audTarget="[data-section='website-audit']";
+  const nodes=steps.map((st,i)=>{
+    const scrollTarget=i===0?audTarget:target;
+    return '<button type="button" onclick="scrollAndHighlight(\''+scrollTarget+'\')" style="background:none;border:none;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:2px;padding:4px 8px;min-width:64px">'
+      +'<span style="font-size:16px;line-height:1">'+dot[st.state]+'</span>'
+      +'<span style="font-size:9px;color:var(--text3);white-space:nowrap">'+st.icon+' '+st.label+'</span>'
+      +'</button>'
+      +(i<steps.length-1?'<span style="color:var(--border);font-size:13px;padding-top:6px">→</span>':'');
+  }).join('');
+  return '<div class="modal-section" style="padding:8px 10px;display:flex;align-items:flex-start;justify-content:center;gap:0;flex-wrap:wrap;background:var(--bg3);border-radius:10px;margin-bottom:14px">'+nodes+'</div>';
+}
 function openModal(id){
   const l=leads.find(x=>x.id===id);if(!l) return;
   _currentModalLeadId=id;
@@ -7217,6 +7416,7 @@ function openModal(id){
   const safeMaps=nbeSafeUrl(l.googleMapsUrl)||mapsUrl;
 
   document.getElementById('m-body').innerHTML=`
+    ${renderLeadProgressStepper(l)}
     <!-- TEMP + NBA -->
     <div style="display:flex;gap:10px;align-items:center;margin-bottom:14px;flex-wrap:wrap">
       <span class="temp-badge ${tc.cls}" style="font-size:13px;padding:5px 12px">${tc.icon} ${tc.label}</span>
@@ -11122,7 +11322,7 @@ function resetPremiumProposal(id){
   saveState();openModal(id);_showToast('Propuesta premium reiniciada.','var(--red)');
 }
 
-function renderAll(){renderDashboard();renderLeads();renderTop10();renderPipeline();renderJourney();renderCatalogo();renderIntegraciones();renderAgenteResumen();renderVisualProposals();renderSearchPlanner();renderCsvSearchPlanOptions();}
+function renderAll(){renderDashboard();renderLeads();renderTop10();renderPipeline();renderJourney();renderCatalogo();renderIntegraciones();renderAgenteResumen();renderVisualProposals();renderSearchPlanner();renderCsvSearchPlanOptions();renderKeysWidget();}
 
 // ── Events ────────────────────────────────────────────────────────────────────
 document.querySelectorAll('.nav-tab').forEach(tab=>{
@@ -11593,6 +11793,7 @@ function emptyLeadProduction(lead){
     web:{baseUsed:'',publicUrl:'',commitSha:'',status:'',warnings:[]},
     integration:{bannerEmbedded:false,iframeVisible:false,status:''},
     send:{status:'',whatsappReady:false,emailReady:false,reviewedByHuman:false},
+    urlChecks:{},
     updatedAt:'',
     history:[]
   };
@@ -11609,6 +11810,7 @@ function ensureLeadProduction(lead){
     web:{...base.web,...(current.web||{}),warnings:Array.isArray(current.web&&current.web.warnings)?current.web.warnings:[]},
     integration:{...base.integration,...(current.integration||{})},
     send:{...base.send,...(current.send||{})},
+    urlChecks:(current.urlChecks&&typeof current.urlChecks==='object')?current.urlChecks:{},
     history:Array.isArray(current.history)?current.history:[]
   };
   if(!lead.production.leadSlug) lead.production.leadSlug=base.leadSlug;
@@ -11619,7 +11821,7 @@ function productionUrlIsPublic(url){
   const u=trimHookUrl(url);
   if(!u) return false;
   if(!fourHooksUrlIsValid(u)) return false;
-  if(/\/gesture-lab\/|editor|localhost|127\.0\.0\.1|file:\/\//i.test(u)) return false;
+  if(/\/gesture-lab\/|editor|localhost|127\.0\.0\.1|file:\/\/|controles/i.test(u)) return false;
   return true;
 }
 function productionStateIndex(state){
@@ -11685,7 +11887,8 @@ function productionChecksForState(lead,targetState){
     ],
     banner_embedded_in_web:[
       {ok:p.integration.bannerEmbedded===true,label:'Banderola integrada en la web',gate:'C'},
-      {ok:p.integration.iframeVisible===true,label:'Iframe visible confirmado',gate:'C'}
+      {ok:p.integration.iframeVisible===true,label:'Iframe visible confirmado',gate:'C'},
+      {ok:!productionUrlCrossClientSlug(p.banner.embedUrl,lead),label:'URL iframe no apunta a otro cliente',gate:'C'}
     ],
     web_public_validated:[
       {ok:productionUrlIsPublic(p.web.publicUrl),label:'URL publica de web valida',gate:'B'}
@@ -11768,6 +11971,9 @@ function renderProductionGuidedPipeline(lead){
   const gateHtml=gates.map(g=>'<div class="hook-card-url" style="margin:4px 0"><strong>'+safeHtml(g.label)+'</strong> '+(g.passed?'OK':(g.ok+'/'+g.total))+'<div style="font-size:10px;color:var(--text3)">'+safeHtml(PRODUCTION_GATE_COPY[g.gate].blocks)+'</div></div>').join('');
   const blockerHtml=blockers.length?'<div class="pl-warning" style="margin-top:8px"><strong>Bloqueado para avanzar a '+safeHtml(next.label)+':</strong><ul>'+blockers.map(b=>'<li>'+safeHtml((b.gate?('Gate '+b.gate+': '):'')+b.label)+'</li>').join('')+'</ul>'+(blockers[0].gate?'<div style="margin-top:6px"><strong>Recovery:</strong><ol>'+PRODUCTION_GATE_COPY[blockers[0].gate].recovery.map(x=>'<li>'+safeHtml(x)+'</li>').join('')+'</ol></div>':'')+'</div>':'<div class="hook-form-hint" style="margin-top:8px;color:var(--green)">Siguiente estado desbloqueado.</div>';
   const sendEnabled=p.state==='crm_ready_for_send'||p.state==='sent_or_ready_for_manual_send';
+  const bPub=productionUrlStatusBadge(lead,'banner.publicUrl',p.banner.publicUrl);
+  const bEmbed=productionUrlStatusBadge(lead,'banner.embedUrl',p.banner.embedUrl);
+  const bWeb=productionUrlStatusBadge(lead,'web.publicUrl',p.web.publicUrl);
   return `<div class="modal-section" data-section="guided-production">
     <div style="display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap">
       <div class="modal-section-title" style="margin:0">Produccion guiada</div>
@@ -11777,8 +11983,17 @@ function renderProductionGuidedPipeline(lead){
     <div class="info-grid">
       <div class="info-item"><label>Estado actual</label><span>${safeHtml(p.state)}</span></div>
       <div class="info-item"><label>Siguiente</label><span>${safeHtml(next.id)}</span></div>
-      <div class="info-item"><label>Banner publico</label><span>${p.banner.publicUrl?'<a href="'+safeHtml(p.banner.publicUrl)+'" target="_blank" rel="noopener noreferrer">abrir</a>':'-'}</span></div>
-      <div class="info-item"><label>Web publica</label><span>${p.web.publicUrl?'<a href="'+safeHtml(p.web.publicUrl)+'" target="_blank" rel="noopener noreferrer">abrir</a>':'-'}</span></div>
+      <div class="info-item"><label>Banner publico</label><span>${p.banner.publicUrl?'<a href="'+safeHtml(p.banner.publicUrl)+'" target="_blank" rel="noopener noreferrer">abrir</a>':'-'} ${bPub}</span></div>
+      <div class="info-item"><label>Banner embed</label><span>${p.banner.embedUrl?'<a href="'+safeHtml(p.banner.embedUrl)+'" target="_blank" rel="noopener noreferrer">abrir</a>':'-'} ${bEmbed}</span></div>
+      <div class="info-item"><label>Web publica</label><span>${p.web.publicUrl?'<a href="'+safeHtml(p.web.publicUrl)+'" target="_blank" rel="noopener noreferrer">abrir</a>':'-'} ${bWeb}</span></div>
+    </div>
+    <div class="hook-card-url" style="margin-top:10px">
+      <strong>Bases de replicacion</strong>
+      <div style="margin-top:6px;display:grid;gap:6px">
+        <div><label style="font-size:10px;color:var(--text3)">Banderola base</label><div style="margin-top:3px">${renderValidatedBasePicker(lead,'banner')}</div></div>
+        <div><label style="font-size:10px;color:var(--text3)">Web completa base</label><div style="margin-top:3px">${renderValidatedBasePicker(lead,'web')}</div></div>
+        <button class="tpl-btn" type="button" style="background:none;color:var(--accent2);font-size:11px;padding:4px 0;border:none" onclick="openBasesManager()">+ Gestionar bases validadas</button>
+      </div>
     </div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px;margin-top:10px">
       <div class="hook-card-url"><strong>Assets aprobados</strong>${assetRows}</div>
@@ -11787,7 +12002,8 @@ function renderProductionGuidedPipeline(lead){
     ${blockerHtml}
     <div class="contact-actions" style="margin-top:10px">
       <button class="contact-btn btn-web" type="button" onclick="advanceProductionState(${lead.id})" ${canAdvance?'':'disabled'}>Avanzar estado</button>
-      <button class="contact-btn btn-email" type="button" onclick="copyProductionJsonForCodex(${lead.id})">Copiar JSON para Codex</button>
+      <button class="contact-btn btn-email" type="button" onclick="copyProductionJsonForCodex(${lead.id})">Copiar JSON Codex</button>
+      <button class="contact-btn btn-tel" type="button" onclick="verifyAllProductionUrls(${lead.id})">Verificar URLs</button>
       <button class="contact-btn btn-maps" type="button" onclick="setProductionManualFlag(${lead.id},'banner_local')">Confirmar banner local</button>
       <button class="contact-btn btn-maps" type="button" onclick="setProductionManualFlag(${lead.id},'web_local')">Confirmar web local</button>
       <button class="contact-btn btn-maps" type="button" onclick="setProductionManualFlag(${lead.id},'iframe_visible')">Confirmar iframe visible</button>
@@ -11797,6 +12013,199 @@ function renderProductionGuidedPipeline(lead){
     </div>
   </div>`;
 }
+
+// ─── 4C: Validated bases registry ──────────────────────────────────────────
+const PRODUCTION_BASES_KEY='imm_validated_bases';
+const PRODUCTION_BASES_SEED={
+  banners:[
+    {slug:'casas-y-mar-visita-propiedad',label:'Casas y Mar — Visita Propiedad',
+     publicUrl:'https://rubik-sota-director-de-orquesta.vercel.app/dynamic-motion-banner/casas-y-mar-visita-propiedad/',
+     embedUrl:'https://rubik-sota-director-de-orquesta.vercel.app/dynamic-motion-banner/casas-y-mar-visita-propiedad/?embed=1',
+     repo:'Rubik-Sota-Director-de-Orquesta',validatedAt:'2026-06-28',status:'validated',
+     note:'Verificado visualmente en navegador real 2026-06-28. URL publica y embed renderizan limpios. Misma arquitectura que torrevieja-sur (rewrite vercel.json -> gesture-lab/dynamic-motion-banners/rubik-sota-dynamic-motion-banners-casas-y-mar-v1.html con clean-mode activado por pathname).'}
+  ],
+  webs:[
+    {slug:'casas-y-mar-premium',label:'Casas y Mar — Web Premium',
+     publicUrl:'https://aurum-properties-boutique.vercel.app/casas-y-mar',
+     embedUrl:'',
+     repo:'AURUM_PROPERTIES_BOUTIQUE',validatedAt:'2026-06-28',status:'validated',
+     note:'Verificado visualmente 2026-06-28. Ruta /casas-y-mar wired en App.tsx con vercel.json rewrite. 18 secciones personalizadas. VisualExperienceBannerSection iframe muestra la banderola limpia (embedUrl = directorio raiz + ?embed=1, patron canonico identico a Torrevieja Sur).'}
+  ]
+};
+function getValidatedBases(){
+  try{
+    const raw=localStorage.getItem(PRODUCTION_BASES_KEY);
+    if(raw){const d=JSON.parse(raw);if(d&&Array.isArray(d.banners)&&Array.isArray(d.webs))return d;}
+  }catch(e){}
+  return JSON.parse(JSON.stringify(PRODUCTION_BASES_SEED));
+}
+function saveValidatedBases(data){
+  try{localStorage.setItem(PRODUCTION_BASES_KEY,JSON.stringify(data));}catch(e){}
+}
+function addValidatedBase(type,base){
+  if(!base||!base.slug||!base.label) return false;
+  const d=getValidatedBases();
+  const arr=type==='banner'?d.banners:d.webs;
+  if(arr.some(b=>b.slug===base.slug)) return false;
+  arr.push({slug:base.slug,label:base.label,publicUrl:base.publicUrl||'',embedUrl:base.embedUrl||'',repo:base.repo||'',validatedAt:base.validatedAt||'',status:base.status||'pending'});
+  saveValidatedBases(d);return true;
+}
+function removeValidatedBase(type,slug){
+  const d=getValidatedBases();
+  if(type==='banner') d.banners=d.banners.filter(b=>b.slug!==slug);
+  else d.webs=d.webs.filter(b=>b.slug!==slug);
+  saveValidatedBases(d);
+}
+function markBaseValidated(type,slug){
+  const d=getValidatedBases();
+  const arr=type==='banner'?d.banners:d.webs;
+  const b=arr.find(x=>x.slug===slug);if(!b)return;
+  b.status='validated';b.validatedAt=new Date().toISOString().slice(0,10);
+  saveValidatedBases(d);
+}
+function selectProductionBase(id,type,slug){
+  const lead=leads.find(x=>x.id===id);if(!lead)return;
+  const p=syncLeadProductionFromHooks(lead)||ensureLeadProduction(lead);
+  const d=getValidatedBases();
+  const arr=type==='banner'?d.banners:d.webs;
+  const base=arr.find(b=>b.slug===slug);
+  if(!base){_showToast('Base no encontrada.','var(--red)');return;}
+  if(type==='banner'){
+    p.banner.baseUsed=slug;
+    if(base.publicUrl&&!p.banner.publicUrl) p.banner.publicUrl=base.publicUrl;
+    if(base.embedUrl&&!p.banner.embedUrl) p.banner.embedUrl=base.embedUrl;
+  }else{
+    p.web.baseUsed=slug;
+    if(base.publicUrl&&!p.web.publicUrl) p.web.publicUrl=base.publicUrl;
+  }
+  p.updatedAt=new Date().toISOString();
+  p.history.push({action:'base_selected',type,slug,at:p.updatedAt});
+  saveState();renderAll();openModal(id);_showToast('Base seleccionada: '+base.label,'var(--green)');
+}
+function renderValidatedBasePicker(lead,type){
+  const d=getValidatedBases();
+  const arr=type==='banner'?d.banners:d.webs;
+  const p=ensureLeadProduction(lead);
+  const current=type==='banner'?p.banner.baseUsed:p.web.baseUsed;
+  if(!arr.length) return '<span class="hook-form-hint">Sin bases. <button class="tpl-btn" style="background:none;color:var(--accent2);font-size:11px;padding:0;border:none" type="button" onclick="openBasesManager()">Añadir</button></span>';
+  const opts=arr.map(b=>'<option value="'+safeHtml(b.slug)+'"'+(b.slug===current?' selected':'')+'>'+safeHtml(b.label)+(b.status==='validated'?' ✓':' (pendiente)')+'</option>').join('');
+  return '<select class="svc-edit-select" style="max-width:300px;font-size:11px" onchange="selectProductionBase('+lead.id+',\''+type+'\',this.value)"><option value="">— elegir base —</option>'+opts+'</select>';
+}
+function openBasesManager(){
+  let el=document.getElementById('bases-manager-overlay');
+  if(!el){el=document.createElement('div');el.id='bases-manager-overlay';el.className='modal-overlay';el.setAttribute('onclick','if(event.target===this)closeBasesManager()');document.body.appendChild(el);}
+  el.innerHTML=renderBasesManagerModal();el.style.display='flex';
+}
+function closeBasesManager(){const el=document.getElementById('bases-manager-overlay');if(el)el.style.display='none';}
+function saveNewBase(){
+  const typeEl=document.getElementById('bm-type');
+  const type=typeEl?typeEl.value:'banner';
+  const slug=((document.getElementById('bm-slug')&&document.getElementById('bm-slug').value)||'').trim().toLowerCase().replace(/\s+/g,'-');
+  const label=((document.getElementById('bm-label')&&document.getElementById('bm-label').value)||'').trim();
+  const publicUrl=((document.getElementById('bm-pub')&&document.getElementById('bm-pub').value)||'').trim();
+  const embedUrl=((document.getElementById('bm-embed')&&document.getElementById('bm-embed').value)||'').trim();
+  const repo=((document.getElementById('bm-repo')&&document.getElementById('bm-repo').value)||'').trim();
+  if(!slug||!label){_showToast('Slug y nombre son obligatorios.','var(--red)');return;}
+  const ok=addValidatedBase(type,{slug,label,publicUrl,embedUrl,repo});
+  if(!ok){_showToast('Ya existe una base con ese slug.','var(--red)');return;}
+  openBasesManager();_showToast('Base añadida: '+label,'var(--green)');
+}
+function deleteBase(type,slug){removeValidatedBase(type,slug);openBasesManager();_showToast('Base eliminada.','var(--gold)');}
+function validateBase(type,slug){markBaseValidated(type,slug);openBasesManager();_showToast('Base marcada como validada.','var(--green)');}
+function renderBasesManagerModal(){
+  const d=getValidatedBases();
+  const row=(type,b)=>'<div style="display:flex;gap:8px;align-items:center;padding:5px 0;border-bottom:1px solid var(--border);flex-wrap:wrap"><div style="flex:1;min-width:0"><strong style="font-size:11px">'+safeHtml(b.label)+'</strong><div style="font-size:10px;color:var(--text3)">'+safeHtml(b.slug)+' · '+safeHtml(b.repo||'—')+(b.validatedAt?' · '+safeHtml(b.validatedAt):'')+'</div></div><span class="tag '+(b.status==='validated'?'est-cerrado':'est-sin')+'" style="font-size:9px">'+safeHtml(b.status)+'</span><button class="tpl-btn" type="button" style="background:none;color:var(--green);border:none;font-size:11px;padding:3px 6px" onclick="validateBase(\''+type+'\',\''+safeHtml(b.slug)+'\')">✓ Validar</button><button class="tpl-btn" type="button" style="background:none;color:var(--red);border:none;font-size:11px;padding:3px 6px" onclick="deleteBase(\''+type+'\',\''+safeHtml(b.slug)+'\')">✕</button></div>';
+  const rowsB=d.banners.map(b=>row('banner',b)).join('')||'<div class="hook-form-hint">Sin banderolas registradas.</div>';
+  const rowsW=d.webs.map(b=>row('web',b)).join('')||'<div class="hook-form-hint">Sin webs registradas.</div>';
+  return `<div style="background:var(--bg2);border-radius:14px;max-width:600px;width:100%;max-height:90vh;overflow-y:auto;padding:0">
+    <div class="modal-header"><div class="modal-title">Bases validadas</div><button class="modal-close" type="button" onclick="closeBasesManager()">✕</button></div>
+    <div class="modal-body">
+      <p class="hook-form-hint" style="margin-bottom:12px">Marca una base como validada cuando hayas comprobado que la URL publica funciona y el resultado visual es correcto. Las bases aparecen como opciones en el picker del pipeline.</p>
+      <div style="margin-bottom:16px"><strong style="font-size:12px">Banderolas</strong><div style="margin-top:6px">${rowsB}</div></div>
+      <div style="margin-bottom:16px"><strong style="font-size:12px">Webs completas</strong><div style="margin-top:6px">${rowsW}</div></div>
+      <details style="margin-top:8px"><summary style="cursor:pointer;font-size:12px;font-weight:600;color:var(--accent2)">+ Añadir nueva base</summary>
+        <div style="display:grid;gap:7px;margin-top:10px">
+          <select id="bm-type" class="svc-edit-select"><option value="banner">Banderola</option><option value="web">Web completa</option></select>
+          <input id="bm-slug" class="svc-edit-input" placeholder="slug (ej: torrevieja-sur-visita-propiedad)">
+          <input id="bm-label" class="svc-edit-input" placeholder="Nombre visible">
+          <input id="bm-pub" class="svc-edit-input" placeholder="URL publica (https://...)">
+          <input id="bm-embed" class="svc-edit-input" placeholder="URL embed (opcional, para banderolas)">
+          <input id="bm-repo" class="svc-edit-input" placeholder="Repo origen (opcional)">
+          <button class="contact-btn btn-web" type="button" onclick="saveNewBase()">Añadir base</button>
+        </div>
+      </details>
+    </div>
+  </div>`;
+}
+
+// ─── 4D: URL validation layer ───────────────────────────────────────────────
+const PRODUCTION_URL_BLOCKED_PATTERNS=[
+  {pattern:/\/gesture-lab\//i,reason:'Ruta gesture-lab (interna)'},
+  {pattern:/localhost|127\.0\.0\.1/i,reason:'URL local (localhost)'},
+  {pattern:/file:\/\//i,reason:'Ruta de archivo local'},
+  {pattern:/[?&]editor=|\/editor\b/i,reason:'Ruta de editor'},
+  {pattern:/[?&]controles=|\/controles\b/i,reason:'Ruta con controles visibles'}
+];
+function productionUrlBlockedReason(url){
+  const u=String(url||'').trim();if(!u)return null;
+  for(const {pattern,reason} of PRODUCTION_URL_BLOCKED_PATTERNS){if(pattern.test(u))return reason;}
+  return null;
+}
+function productionUrlCrossClientSlug(url,lead){
+  if(!url||!lead)return null;
+  const u=url.toLowerCase();
+  const leadSlug=toLeadSlug(lead.empresa||'');
+  const p=ensureLeadProduction(lead);
+  const allowed=new Set([leadSlug,(p.banner.baseUsed||'').toLowerCase(),(p.web.baseUsed||'').toLowerCase()].filter(Boolean));
+  const others=(typeof leads!=='undefined'?leads:[]).filter(x=>x.id!==lead.id).map(x=>toLeadSlug(x.empresa||'')).filter(s=>s&&!allowed.has(s));
+  for(const slug of others){if(u.includes('/'+slug))return slug;}
+  return null;
+}
+function productionUrlFullValidation(url,lead){
+  const blocked=productionUrlBlockedReason(url);
+  if(blocked)return{ok:false,level:'error',reason:blocked};
+  const cross=productionUrlCrossClientSlug(url,lead);
+  if(cross)return{ok:false,level:'warning',reason:'URL parece apuntar a otro cliente ('+cross+')'};
+  if(!productionUrlIsPublic(url))return{ok:false,level:'error',reason:'URL no valida o no publica'};
+  return{ok:true,level:'ok',reason:''};
+}
+function storeUrlCheckResult(lead,fieldKey,status,reason){
+  const p=ensureLeadProduction(lead);
+  if(!p.urlChecks)p.urlChecks={};
+  p.urlChecks[fieldKey]={status,reason:reason||'',checkedAt:new Date().toISOString()};
+  p.updatedAt=new Date().toISOString();
+}
+function checkProductionUrlHttp(url,lead,fieldKey,cb){
+  const v=productionUrlFullValidation(url,lead);
+  if(!v.ok){storeUrlCheckResult(lead,fieldKey,v.level,v.reason);if(cb)cb({status:v.level,reason:v.reason});return;}
+  fetch(url,{method:'HEAD',mode:'no-cors',credentials:'omit'})
+    .then(()=>{storeUrlCheckResult(lead,fieldKey,'ok','');if(cb)cb({status:'ok',reason:''});})
+    .catch(()=>{storeUrlCheckResult(lead,fieldKey,'error','No alcanzable');if(cb)cb({status:'error',reason:'No alcanzable'});});
+}
+function verifyAllProductionUrls(id){
+  const lead=leads.find(x=>x.id===id);if(!lead)return;
+  const p=syncLeadProductionFromHooks(lead)||ensureLeadProduction(lead);
+  let pending=0;
+  const done=()=>{pending--;if(pending<=0){saveState();renderAll();openModal(id);_showToast('Verificacion completada.','var(--green)');}};
+  const check=(url,field)=>{if(!url)return;pending++;checkProductionUrlHttp(url,lead,field,done);};
+  check(p.banner.publicUrl,'banner.publicUrl');
+  check(p.banner.embedUrl,'banner.embedUrl');
+  check(p.web.publicUrl,'web.publicUrl');
+  if(pending===0){saveState();renderAll();openModal(id);_showToast('Sin URLs para verificar.','var(--gold)');}
+}
+function productionUrlStatusBadge(lead,fieldKey,url){
+  if(!url)return'<span style="color:var(--text3);font-size:10px">—</span>';
+  const p=ensureLeadProduction(lead);
+  const check=(p.urlChecks||{})[fieldKey];
+  const v=productionUrlFullValidation(url,lead);
+  if(!v.ok)return'<span style="color:'+(v.level==='warning'?'var(--gold)':'var(--red)')+';font-size:11px" title="'+safeHtml(v.reason)+'">'+(v.level==='warning'?'⚠':'⛔')+'</span>';
+  if(!check)return'<span style="color:var(--text3);font-size:11px" title="Sin verificar — pulsa Verificar URLs">⏳</span>';
+  if(check.status==='ok')return'<span style="color:var(--green);font-size:11px" title="OK · '+safeHtml(check.checkedAt||'')+'">✓</span>';
+  if(check.status==='error')return'<span style="color:var(--red);font-size:11px" title="'+safeHtml(check.reason||'Error')+'">✗</span>';
+  if(check.status==='warning')return'<span style="color:var(--gold);font-size:11px" title="'+safeHtml(check.reason||'Advertencia')+'">⚠</span>';
+  return'<span style="color:var(--text3);font-size:11px">⏳</span>';
+}
+
 function hookListBadges(l){
   const hooks=ensureLeadCommercialHooks(l)||{};
   const label=(key)=>{
@@ -11965,31 +12374,41 @@ function buildMediaAssetsFromLead(lead){
   const manual=getLeadManualAssets(l);
   const manualStatus=manual.assetsApproved?'approved':'pending_validation';
 
+  // Bug real encontrado en uso real (no en pruebas previas, que nunca
+  // habian llegado hasta esta validacion con datos de assets manuales):
+  // estos 4 campos "source" usaban 'crm_manual_url'/'fallback_internal_library'/
+  // 'approved_fallback', ninguno de los cuales esta en los sets que el
+  // backend realmente acepta (LOGO_SOURCES/PROPERTY_IMAGE_SOURCES/
+  // VIDEO_SOURCES/ASSET_STATUSES en validateProductionPackage.ts - 'manual'
+  // y 'approved' SI lo estan). El backend rechazaba el paquete con
+  // "invalid_source" en cuanto un lead tenia un asset manual real
+  // aprobado - justo el caso de United Real Estate.
   const logo=fourHooksText(manual.logoUrl||l.logoUrl||l.logo||(l.assets&&l.assets.logo),'');
-  const logoSource=manual.logoUrl?'crm_manual_url':(logo?'manual':'placeholder');
+  const logoSource=manual.logoUrl?'manual':(logo?'manual':'placeholder');
   const logoStatus=manual.logoUrl?manualStatus:(logo?'candidate':'missing');
 
   const favicon=fourHooksText(l.favicon||(l.assets&&l.assets.favicon),'');
 
   const heroUrl=fourHooksText(manual.heroImage||l.heroImage||l.image,'');
-  const heroSource=manual.heroImage?'crm_manual_url':(heroUrl?'manual':'placeholder');
+  const heroSource=manual.heroImage?'manual':(heroUrl?'manual':'placeholder');
   const heroStatus=manual.heroImage?manualStatus:(heroUrl?'candidate':'missing');
 
   const detectedImages=manual.propertyImages.length
     ?manual.propertyImages
     :fourHooksList([l.propertyImages,l.assets&&l.assets.images,l.foto,l.fotos]);
-  const imagesSource=manual.propertyImages.length?'crm_manual_url':'manual';
+  const imagesSource='manual';
   const imagesStatus=manual.propertyImages.length?manualStatus:'candidate';
   const propertyImages=detectedImages.filter(u=>u!==logo&&u!==heroUrl).slice(0,8).map((url,i)=>({url,source:imagesSource,status:imagesStatus,recommendedUse:(i===0&&!heroUrl)?'hero':'gallery'}));
 
   const video=fourHooksText(manual.videoUrl||l.videoUrl||l.video||(l.assets&&l.assets.video),'');
   // Fase 7G: a manually-applied fallback (INTERNAL_FALLBACK_LIBRARY.video) is
-  // a real internal asset but must never be tagged crm_manual_url/approved
-  // like a genuine client asset — it stays fallback_internal_library until
-  // explicitly marked approved_fallback via assetsApproved.
+  // a real internal asset, not the client's own - tagged as 'placeholder'
+  // (a real, backend-accepted source) so it's never mistaken for a
+  // genuine client asset, same intent as before just with a value the
+  // validator actually accepts.
   const isInternalFallbackVideo=!!(manual.videoUrl&&typeof INTERNAL_FALLBACK_LIBRARY!=='undefined'&&INTERNAL_FALLBACK_LIBRARY.video&&manual.videoUrl===INTERNAL_FALLBACK_LIBRARY.video.url);
-  const videoSource=isInternalFallbackVideo?'fallback_internal_library':(manual.videoUrl?'crm_manual_url':(video?'manual':'aurum_default'));
-  const videoStatus=isInternalFallbackVideo?(manual.assetsApproved?'approved_fallback':'pending_validation'):(manual.videoUrl?manualStatus:(video?'candidate':'pending_validation'));
+  const videoSource=isInternalFallbackVideo?'placeholder':(manual.videoUrl?'manual':(video?'manual':'aurum_default'));
+  const videoStatus=isInternalFallbackVideo?(manual.assetsApproved?'approved':'pending_validation'):(manual.videoUrl?manualStatus:(video?'candidate':'pending_validation'));
   const videos=video?[{url:video,source:videoSource,status:videoStatus,recommendedUse:'hero'}]:[{url:'/VIDEO_AURUM_HEROWEB.mp4',source:'aurum_default',status:'pending_validation',recommendedUse:'hero'}];
 
   const brandColors=manual.brandColors.length?manual.brandColors:(Array.isArray(l.brandColors)?l.brandColors:[]);
@@ -12451,6 +12870,7 @@ function connectExistingFourHooksEngines(id){
   l._proxAccion=commercialHooksNextAction(l);l.updatedAt=now;
   if(typeof syncLeadProductionFromHooks==='function') syncLeadProductionFromHooks(l);
   saveState();renderAll();openModal(id);
+  setTimeout(()=>scrollAndHighlight("[data-section='four-hooks-proposal']"),120);
   const pubCount=typeof payload.publishedOutputCount==='number'?payload.publishedOutputCount:registered;
   const totalCount=typeof payload.generatedReviewCount==='number'?payload.generatedReviewCount:4;
   const msg=pubCount>0?(pubCount+'/'+totalCount+' ganchos con URL pública.'+(pubCount<totalCount?' Abre Operator Console para los restantes.':'')):(validation.errors.length?'Paquete generado con errores de datos a revisar.':'Propuesta generada. Abre Operator Console para publicar URLs.');
@@ -12462,6 +12882,58 @@ function copyFourHooksField(id,field){const l=leads.find(x=>x.id===id);if(!l)ret
 function downloadFourHooksPackage(id){const l=leads.find(x=>x.id===id);if(!l)return;const p=getStoredFourHooksPayload(l)||buildProductionPackageFromLead(l),blob=new Blob([JSON.stringify(p,null,2)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=(p.lead.slug||'production-package')+'-production-package.json';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),500);}
 function copyOperatorInstructions(id){const l=leads.find(x=>x.id===id);if(!l)return;const p=getStoredFourHooksPayload(l)||buildProductionPackageFromLead(l),txt='OPERADOR - '+p.lead.name+'\n\n1. Abrir '+IMMERSPHERE_BACKEND_URL+'/operator\n2. Login con credencial de operador, nunca desde el frontend publico.\n3. Pegar Production Package JSON copiado desde CRM.\n4. Ejecutar proposal-package/pr-plan/github-preflight.\n5. No ejecutar create-prs sin autorizacion explicita.\n6. Revisar warnings antes de crear PRs.\n\nSlug: '+p.lead.slug;navigator.clipboard.writeText(txt).catch(()=>{});_showToast('Instrucciones operador copiadas.','var(--accent2)');}
 function saveRailwayResponseForLead(id,type){const l=leads.find(x=>x.id===id);if(!l)return;const label=type==='bundle'?'Response Bundle de Operator Console':type;const raw=prompt('Pega la respuesta JSON de Railway para '+label+':','');if(raw===null)return;let data;try{data=JSON.parse(raw);}catch(e){_showToast('JSON no valido.','var(--red)');return;}const pe=l.previewEngine||emptyPreviewEngine(),patch={...pe};if(data&&data.source==='operator-console'){if(data.proposalPackage)patch.fourHooksProposal=data.proposalPackage;if(data.prPlan)patch.prPlan=data.prPlan;if(data.githubPreflight)patch.githubPreflight=data.githubPreflight;patch.operatorResponseBundle=data;patch.operatorResponseSavedAt=new Date().toISOString();}else{if(type==='proposal-package')patch.fourHooksProposal=data;if(type==='pr-plan')patch.prPlan=data;if(type==='github-preflight')patch.githubPreflight=data;}l.previewEngine=patch;l.updatedAt=new Date().toISOString();saveState();renderAll();openModal(id);_showToast(data&&data.source==='operator-console'?'Response Bundle guardado.':'Respuesta Railway guardada.','var(--green)');}
+// Pasos 4 (Aprobar) y 5 (Ver online). No se puede detectar solo que un PR
+// ya se mergeo: una pagina de AURUM responde 200 aunque la ruta de este
+// lead en concreto no exista todavia (SPA con fallback), asi que un fetch
+// no demuestra nada. Por eso el paso 4 depende de una confirmacion manual
+// explicita (markLeadMerged), nunca de una comprobacion automatica - se
+// dice asi, sin maquillarlo, en el propio texto del boton.
+function markLeadMerged(id){
+  const l=leads.find(x=>x.id===id);if(!l)return;
+  if(!confirm('Confirma que YA revisaste y mergeaste de verdad los PRs en GitHub para '+(l.empresa||'')+'.\n\nEsto no se comprueba automáticamente — es tu palabra.')) return;
+  const pe=l.previewEngine||{};
+  pe.manuallyConfirmedMerged=true;
+  pe.manuallyConfirmedMergedAt=new Date().toISOString();
+  l.previewEngine=pe;
+  l.updatedAt=new Date().toISOString();
+  saveState();renderAll();openModal(id);
+  _showToast('Marcado como aprobado y mergeado.','var(--green)');
+}
+function unmarkLeadMerged(id){
+  const l=leads.find(x=>x.id===id);if(!l)return;
+  const pe=l.previewEngine||{};
+  pe.manuallyConfirmedMerged=false;
+  l.previewEngine=pe;
+  l.updatedAt=new Date().toISOString();
+  saveState();renderAll();openModal(id);
+  _showToast('Desmarcado.','var(--text3)');
+}
+function renderLeadApprovalBlock(l){
+  const pe=l.previewEngine||{};
+  const status=pe.operatorResponseBundleStatus;
+  if(status!=='pr_created'&&status!=='published'&&!pe.manuallyConfirmedMerged) return '';
+  const prUrls=pe.prUrls||{};
+  const planned=(pe.operatorResponseBundle&&pe.operatorResponseBundle.plannedPublicRoutes)||{};
+  const prLinks=[
+    prUrls.aurum&&prUrls.aurum.url?'<a href="'+safeHtml(prUrls.aurum.url)+'" target="_blank" rel="noopener noreferrer" class="contact-btn btn-web">Ver PR AURUM #'+(prUrls.aurum.number||'')+'</a>':'',
+    prUrls.rubik&&prUrls.rubik.url?'<a href="'+safeHtml(prUrls.rubik.url)+'" target="_blank" rel="noopener noreferrer" class="contact-btn btn-web">Ver PR Rubik #'+(prUrls.rubik.number||'')+'</a>':'',
+  ].filter(Boolean).join('');
+  const merged=pe.manuallyConfirmedMerged===true;
+  const onlineLinks=Object.keys(planned).filter(k=>planned[k]).map(k=>
+    '<a href="'+safeHtml(planned[k])+'" target="_blank" rel="noopener noreferrer" class="contact-btn btn-maps" style="font-size:10px;padding:4px 8px">'
+    +(merged?'🌐 Ver online: ':'Abrir (puede no estar publicado aún): ')+safeHtml(k)+'</a>'
+  ).join('');
+  return '<div style="margin:10px 0;padding:10px;border:1px solid '+(merged?'rgba(16,185,129,0.4)':'rgba(245,158,11,0.4)')+';border-radius:8px;background:'+(merged?'rgba(16,185,129,0.05)':'rgba(245,158,11,0.05)')+'">'
+    +'<div style="font-weight:700;margin-bottom:4px">'+(merged?'✅ 4. Aprobado y mergeado':'✅ 4. Aprobar (revisar y mergear en GitHub)')+'</div>'
+    +(merged?'':'<div class="hook-explain" style="margin-bottom:8px">PR(s) real(es) creado(s). Revísalos y mergéalos tú en GitHub — esto NO se hace automáticamente. Cuando lo hayas hecho de verdad, confírmalo aquí.</div>')
+    +'<div class="contact-actions" style="margin-bottom:6px">'+prLinks+'</div>'
+    +(merged
+      ?'<div class="contact-actions"><span class="tag est-cerrado">Confirmado '+new Date(pe.manuallyConfirmedMergedAt||Date.now()).toLocaleString('es-ES')+'</span><button class="contact-btn btn-tel" style="font-size:9px;padding:3px 8px" onclick="unmarkLeadMerged('+l.id+')">Desmarcar</button></div>'
+      :'<div class="contact-actions"><button class="contact-btn btn-web" style="font-weight:700" onclick="markLeadMerged('+l.id+')">✅ Ya lo revisé y mergeé en GitHub</button></div>')
+    +'<div style="font-weight:700;margin:10px 0 4px">🌐 5. Ver online</div>'
+    +(onlineLinks?'<div class="contact-actions">'+onlineLinks+'</div>':'<div class="hook-explain">Sin rutas previstas todavía.</div>')
+    +'</div>';
+}
 function renderFourHooksProposalPanel(l){
   const pe=l.previewEngine||{},payload=pe.productionPackagePayload,validation=pe.productionPackageValidation||{errors:[],warnings:[]},has=!!payload,p=payload||buildProductionPackageFromLead(l),d=p.commercialDiagnosis||{},h=p.fourHooks||{},pr=p.publicRoutes||{},cr=p.candidateRoutes||{};
   const reviewable=p.reviewableFourHooks||buildReviewableFourHooksFromProductionPackage({fourHooks:h,publicRoutes:pr,candidateRoutes:cr,commercialDiagnosis:d});
@@ -12477,7 +12949,7 @@ function renderFourHooksProposalPanel(l){
   const routeRow=(label,key)=>{const pub=pr[key]||'',cand=cr[key]||'';if(pub&&fourHooksUrlIsValid(pub))return '<div style="font-size:11px;color:var(--text3);word-break:break-all;margin:2px 0"><strong style="color:var(--text2)">'+safeHtml(label)+':</strong> <a href="'+safeHtml(pub)+'" target="_blank" rel="noopener noreferrer" style="color:var(--accent2)">'+safeHtml(pub)+'</a></div>';if(cand&&fourHooksUrlIsValid(cand))return '<div style="font-size:11px;color:var(--text3);word-break:break-all;margin:2px 0"><strong style="color:var(--text2)">'+safeHtml(label)+':</strong> <span style="font-size:10px;color:var(--text3)">[candidata]</span> '+safeHtml(cand)+'</div>';return '<div style="font-size:11px;color:var(--text3);margin:2px 0"><strong style="color:var(--text2)">'+safeHtml(label)+':</strong> <em>Pendiente de publicación</em></div>';};
   // Hook card: uses reviewableFourHooks — never renders candidateUrl as a live link
   const hookCard=(rh,num)=>{const pubBadge=rh.published?'<span class="tag est-cerrado">Publicado</span>':'<span class="tag est-pendiente">Pendiente publicación</span>';let urlHtml='';if(rh.published&&rh.publicUrl){urlHtml='<div class="hook-card-url"><a href="'+safeHtml(rh.publicUrl)+'" target="_blank" rel="noopener noreferrer" style="color:var(--accent2);word-break:break-all">'+safeHtml(rh.publicUrl)+'</a></div>';}else if(rh.candidateUrl){urlHtml='<div class="hook-card-url" style="word-break:break-all"><span style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;display:block;margin-bottom:2px">Ruta candidata — pendiente de publicación</span>'+safeHtml(rh.candidateUrl)+'</div>';}else{urlHtml='<div class="hook-card-url" style="color:var(--text3);font-style:italic">Sin ruta pública — pendiente de publicación</div>';}return '<div class="hook-card"><div class="hook-card-head"><span class="hook-badge">G'+num+'</span><span class="tag est-visual">Generado</span>'+pubBadge+'</div><div class="hook-card-title">'+safeHtml(rh.title||'')+'</div><div class="hook-card-desc">'+safeHtml(rh.description||'')+'</div>'+urlHtml+'</div>';};
-  return`<div class="modal-section" data-section="four-hooks-proposal"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px"><div class="modal-section-title" style="margin:0">Propuesta 4 ganchos</div><div style="display:flex;gap:6px;flex-wrap:wrap">${chip}${readyChip}</div></div>${counterHtml}<div class="hook-explain">Genera un paquete operativo personalizado desde la ficha, auditoria y datos disponibles. No expone tokens y no ejecuta create-prs.</div><div class="contact-actions" style="margin:10px 0"><button class="contact-btn btn-web" onclick="connectExistingFourHooksEngines(${l.id})">${has?'Regenerar 4 ganchos personalizados':'Generar 4 ganchos personalizados'}</button><button class="contact-btn btn-wa" onclick="copyFourHooksField(${l.id},'whatsapp')">Copiar WhatsApp</button><button class="contact-btn btn-email" onclick="copyFourHooksField(${l.id},'email')">Copiar email</button><button class="contact-btn btn-maps" onclick="copyFourHooksField(${l.id},'summary')">Copiar resumen</button><button class="contact-btn btn-email" onclick="copyFourHooksField(${l.id},'json')">Copiar JSON</button><button class="contact-btn btn-tel" onclick="downloadFourHooksPackage(${l.id})">Descargar JSON</button><button class="contact-btn btn-web" onclick="openOperatorConsole(${l.id})">Abrir Operator Console</button><button class="contact-btn btn-maps" onclick="copyOperatorInstructions(${l.id})">Instrucciones operador</button><button class="contact-btn btn-tel" onclick="openImportResponseBundlePanel(${l.id})">Importar Response Bundle</button></div>${has?`<div class="hook-strategy">${safeHtml(d.opportunityDetected||'Propuesta personalizada generada.')}</div><div class="info-grid"><div class="info-item"><label>Lead</label><span>${safeHtml(p.lead.name)}</span></div><div class="info-item"><label>Slug</label><span>${safeHtml(p.lead.slug)}</span></div><div class="info-item"><label>Auditoria</label><span>${safeHtml(p.audit.status)}</span></div><div class="info-item"><label>Score</label><span>${safeHtml(String(p.audit.signals.score||0))}</span></div></div><div style="margin:10px 0">${routeRow('EV','visualExperience')}${routeRow('Landing','landing')}${routeRow('Web completa','webCompleta')}${routeRow('Banner pack','bannerPack')}${routeRow('Vertical','bannerVertical')}${routeRow('Horizontal','bannerHorizontal')}</div><div class="hook-grid">${reviewable.map((rh,i)=>hookCard(rh,i+1)).join('')}</div>${(errList||warnList)?'<div style="margin-top:10px;display:grid;gap:8px">'+(errList?'<div class="pl-warning"><strong>Errores:</strong><ul>'+errList+'</ul></div>':'')+(warnList?'<div class="hook-form-hint"><strong>Warnings:</strong><ul>'+warnList+'</ul></div>':'')+'</div>':''}<div class="contact-actions" style="margin-top:10px"><button class="contact-btn btn-email" onclick="saveRailwayResponseForLead(${l.id},'proposal-package')">Pegar proposal-package</button><button class="contact-btn btn-email" onclick="saveRailwayResponseForLead(${l.id},'pr-plan')">Pegar pr-plan</button><button class="contact-btn btn-email" onclick="saveRailwayResponseForLead(${l.id},'github-preflight')">Pegar github-preflight</button><button class="contact-btn btn-web" onclick="openImportResponseBundlePanel(${l.id})" style="font-weight:700">Importar Response Bundle</button></div>`:'<div style="font-size:12px;color:var(--text3);line-height:1.6">Pulsa generar para crear diagnostico, 4 ganchos, rutas, mensajes y Production Package JSON compatible con backend.</div>'}</div>`;
+  return`<div class="modal-section" data-section="four-hooks-proposal"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px"><div class="modal-section-title" style="margin:0">Propuesta 4 ganchos</div><div style="display:flex;gap:6px;flex-wrap:wrap">${chip}${readyChip}</div></div>${counterHtml}<div class="hook-explain">Genera un paquete operativo personalizado desde la ficha, auditoria y datos disponibles. No expone tokens y no ejecuta create-prs.</div><div class="contact-actions" style="margin:10px 0"><button class="contact-btn btn-web" style="font-weight:700" onclick="connectExistingFourHooksEngines(${l.id})">${has?'2. Recrear las 4 propuestas visuales':'2. Crear las 4 propuestas visuales'}</button></div>${has?`<div style="margin:10px 0;padding:10px;border:1px solid rgba(196,169,106,0.35);border-radius:8px;background:rgba(196,169,106,0.05)"><div style="font-weight:700;margin-bottom:4px">🚀 3. Publicar de verdad (crea la propuesta real)</div><div class="hook-explain" style="margin-bottom:8px">Ejecuta de un tirón proposal-package → pr-plan → github-preflight → create-prs. Crea PRs REALES en AURUM/Rubik (igual que Costa Invest/Casas y Mar) — pide confirmación explícita antes de crear nada, y nunca mergea automáticamente.</div><div class="contact-actions"><button class="contact-btn btn-web" style="font-weight:700" onclick="generateAndPublishFourHooks(${l.id})">🚀 Generar y publicar 4 ganchos (real)</button><span style="font-size:10px;color:var(--text3);align-self:center">${hasInternalApiToken()?'☁ Token interno conectado':'☁ Sin token interno'}</span></div></div>${renderLeadApprovalBlock(l)}`:''}<details style="margin:6px 0"><summary style="cursor:pointer;font-size:11px;color:var(--text3)">Opciones avanzadas ▾</summary><div class="contact-actions" style="margin:8px 0 0 0;flex-wrap:wrap"><button class="contact-btn btn-wa" onclick="copyFourHooksField(${l.id},'whatsapp')">Copiar WhatsApp</button><button class="contact-btn btn-email" onclick="copyFourHooksField(${l.id},'email')">Copiar email</button><button class="contact-btn btn-maps" onclick="copyFourHooksField(${l.id},'summary')">Copiar resumen</button><button class="contact-btn btn-email" onclick="copyFourHooksField(${l.id},'json')">Copiar JSON</button><button class="contact-btn btn-tel" onclick="downloadFourHooksPackage(${l.id})">Descargar JSON</button><button class="contact-btn btn-maps" style="font-size:10px;padding:4px 8px" onclick="connectInternalApiToken()">🔌 Conectar token interno</button><button class="contact-btn btn-maps" style="font-size:10px;padding:4px 8px" onclick="clearInternalApiToken()">Limpiar token interno</button><button class="contact-btn btn-web" onclick="openOperatorConsole(${l.id})">Abrir Operator Console (manual)</button><button class="contact-btn btn-maps" onclick="copyOperatorInstructions(${l.id})">Instrucciones operador</button><button class="contact-btn btn-tel" onclick="openImportResponseBundlePanel(${l.id})">Importar Response Bundle</button>${has?`<button class="contact-btn btn-email" onclick="saveRailwayResponseForLead(${l.id},'proposal-package')">Pegar proposal-package</button><button class="contact-btn btn-email" onclick="saveRailwayResponseForLead(${l.id},'pr-plan')">Pegar pr-plan</button><button class="contact-btn btn-email" onclick="saveRailwayResponseForLead(${l.id},'github-preflight')">Pegar github-preflight</button>`:''}</div></details>${has?`<div class="hook-strategy">${safeHtml(d.opportunityDetected||'Propuesta personalizada generada.')}</div><div class="info-grid"><div class="info-item"><label>Lead</label><span>${safeHtml(p.lead.name)}</span></div><div class="info-item"><label>Slug</label><span>${safeHtml(p.lead.slug)}</span></div><div class="info-item"><label>Auditoria</label><span>${safeHtml(p.audit.status)}</span></div><div class="info-item"><label>Score</label><span>${safeHtml(String(p.audit.signals.score||0))}</span></div></div><div style="margin:10px 0">${routeRow('EV','visualExperience')}${routeRow('Landing','landing')}${routeRow('Web completa','webCompleta')}${routeRow('Banner pack','bannerPack')}${routeRow('Vertical','bannerVertical')}${routeRow('Horizontal','bannerHorizontal')}</div><div class="hook-grid">${reviewable.map((rh,i)=>hookCard(rh,i+1)).join('')}</div>${(errList||warnList)?'<div style="margin-top:10px;display:grid;gap:8px">'+(errList?'<div class="pl-warning"><strong>Errores:</strong><ul>'+errList+'</ul></div>':'')+(warnList?'<div class="hook-form-hint"><strong>Warnings:</strong><ul>'+warnList+'</ul></div>':'')+'</div>':''}`:'<div style="font-size:12px;color:var(--text3);line-height:1.6">Pulsa generar para crear diagnostico, 4 ganchos, rutas, mensajes y Production Package JSON compatible con backend.</div>'}</div>`;
 }
 
 // ── Response Bundle import — Platform B ──────────────────────────────────────
